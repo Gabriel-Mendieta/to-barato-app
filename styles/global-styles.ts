@@ -5,10 +5,10 @@ export const globalStyles = StyleSheet.create({
 
     pesosBacground: {
         width: "100%",
-        height: 300,
+        height: 225,
         alignItems: "center",
-        paddingTop: 94,
+        paddingTop: 55,
         paddingBottom: 62,
-        marginBottom: 23,
+        marginBottom: 15,
     }
 })

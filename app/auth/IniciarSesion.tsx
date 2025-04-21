@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { SafeAreaView, View, ScrollView, ImageBackground, Image, Text, TextInput, TouchableOpacity, } from "react-native";
-import peso from '../assets/images/peso_dominicano.jpg';
+import { SafeAreaView, View, ScrollView, ImageBackground, Image, Text, TextInput, TouchableOpacity, Pressable, Animated, } from "react-native";
+import peso from '../../assets/images/peso_dominicano.jpg';
 import useFonts from 'expo-font';
 import { globalStyles } from "@/styles/global-styles";
 export default () => {
@@ -59,17 +59,14 @@ export default () => {
                                 // alignItems: "center",
                             }}>
                             <Text
+                                className="font-lexend-medium flex-initial color-white bottom-0"
                                 style={{
-                                    alignItems: "flex-start",
-                                    color: "#FFFFFF",
                                     fontSize: 47,
-                                    fontWeight: "bold",
-                                    marginBottom: 0,
-                                    fontFamily: 'Lexend',
                                 }}>
                                 {"To’"}
                             </Text>
                             <Text
+                                className="font-lexend-medium"
                                 style={{
                                     color: "#FFFFFF",
                                     fontSize: 47,
@@ -81,17 +78,18 @@ export default () => {
                     </View>
                 </ImageBackground>
                 <Text
+                    className="font-lexend-black"
                     style={{
                         color: "#101418",
-                        fontSize: 32,
-                        fontWeight: "bold",
+                        fontSize: 30,
                         textAlign: "center",
-                        marginBottom: 23,
+                        marginBottom: 15,
                         marginHorizontal: 43,
                     }}>
                     {"Ayuda a tu bolsillo\ncon nosotros!"}
                 </Text>
                 <Text
+                    className="font-lexend-medium"
                     style={{
                         color: "#001D35",
                         fontSize: 12,
@@ -102,6 +100,8 @@ export default () => {
                     {"Correo electronico o telefono"}
                 </Text>
                 <TextInput
+                    className="font-lexend-light"
+
                     placeholder={"mario.luciano@gmail.com"}
                     value={textInput1}
                     onChangeText={onChangeTextInput1}
@@ -120,6 +120,8 @@ export default () => {
                     }}
                 />
                 <Text
+                    className="font-lexend-medium"
+
                     style={{
                         color: "#7D747E",
                         fontSize: 14,
@@ -129,6 +131,8 @@ export default () => {
                     {"Igrese su correo o telefono"}
                 </Text>
                 <Text
+                    className="font-lexend-medium"
+
                     style={{
                         color: "#001D35",
                         fontSize: 12,
@@ -136,7 +140,7 @@ export default () => {
                         marginBottom: 4,
                         marginLeft: 30,
                     }}>
-                    {"Contrasena"}
+                    {"Contraseña"}
                 </Text>
                 <TouchableOpacity
                     style={{
@@ -169,10 +173,12 @@ export default () => {
                     />
                 </TouchableOpacity>
                 <Text
+                    className="font-lexend-medium"
+
                     style={{
                         color: "#7D747E",
                         fontSize: 14,
-                        marginBottom: 23,
+                        marginBottom: 20,
                         marginLeft: 30,
                     }}>
                     {"Ingrese su contrasena"}
@@ -183,7 +189,7 @@ export default () => {
                         backgroundColor: "#33618D",
                         borderRadius: 6,
                         paddingVertical: 8,
-                        marginBottom: 23,
+                        marginBottom: 15,
                         marginHorizontal: 31,
                     }} onPress={() => alert('Pressed!')}>
                     <Text
@@ -198,7 +204,7 @@ export default () => {
                 <View
                     style={{
                         alignItems: "center",
-                        marginBottom: 32,
+                        marginBottom: 20,
                         marginHorizontal: 31,
                     }}>
                     <View
@@ -211,8 +217,8 @@ export default () => {
                     <View
                         style={{
                             position: "absolute",
-                            bottom: 11,
-                            right: 0,
+                            bottom: 8,
+                            right: 180,
                             left: 0,
                             height: 1,
                             alignSelf: "stretch",
@@ -220,6 +226,7 @@ export default () => {
                         }}>
                     </View>
                     <Text
+                        className="font-lexend-medium"
                         style={{
                             position: "absolute",
                             bottom: 0,
@@ -232,15 +239,39 @@ export default () => {
                         }}>
                         {"O"}
                     </Text>
+                    <View
+                        style={{
+                            position: "absolute",
+                            bottom: 8,
+                            right: 0,
+                            left: 180,
+                            height: 1,
+                            alignSelf: "stretch",
+                            backgroundColor: "#B5C1CC",
+                        }}>
+                    </View>
                 </View>
                 <View
                     style={{
                         alignItems: "center",
-                        marginBottom: 30,
+                        marginBottom: 15,
+                        flexDirection: "column",
                     }}>
                     <View
                         style={{
                             flexDirection: "row",
+                            width: 325,
+                            alignItems: "center",
+                            alignContent: "center",
+                            backgroundColor: "#FFFFFF",
+                            shadowColor: "#dddddd",
+                            borderColor: "#dddddd",
+                            shadowOpacity: 1,
+                            paddingTop: 9,
+                            paddingBottom: 9,
+                            marginBottom: 10,
+                            borderRadius: 8,
+
                         }}>
                         <Image
                             source={{ uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/2zz0srva.png" }}
@@ -250,30 +281,85 @@ export default () => {
                                 width: 24,
                                 height: 24,
                                 marginRight: 15,
+                                marginLeft: 56
                             }}
                         />
                         <Text
+                            className="font-lexend-medium"
                             style={{
                                 color: "#000000",
                                 fontSize: 16,
                                 fontWeight: "bold",
                             }}>
-                            {"Continue Google"}
+                            {"Continuar con Google"}
                         </Text>
+                    </View>
+                    <View
+                        style={{
+                            flexDirection: "row",
+                            width: 325,
+                            alignItems: "center",
+                            alignContent: "center",
+                            backgroundColor: "#FFFFFF",
+                            shadowColor: "#dddddd",
+                            borderColor: "#dddddd",
+                            shadowOpacity: 1,
+                            paddingTop: 9,
+                            paddingBottom: 9,
+                            borderRadius: 8,
+
+                        }}>
+                        <Image
+                            source={{ uri: "https://img.icons8.com/?size=100&id=30840&format=png&color=000000" }}
+                            resizeMode={"stretch"}
+                            style={{
+                                borderRadius: 10,
+                                width: 24,
+                                height: 24,
+                                marginRight: 15,
+                                marginLeft: 56
+                            }}
+                        />
+                        <Text
+                            className="font-lexend-medium"
+                            style={{
+                                color: "#000000",
+                                fontSize: 16,
+                                fontWeight: "bold",
+                            }}>
+                            {"Continuar con Apple"}
+                        </Text>
+
                     </View>
                 </View>
                 <View
+
                     style={{
                         alignItems: "center",
-                        marginBottom: 76,
+                        marginBottom: 10,
+                        flexDirection: "row"
                     }}>
                     <Text
+                        className="font-lexend-light"
+
                         style={{
                             color: "#000000",
                             fontSize: 16,
-                            width: 259,
+                            width: 200,
+                            marginLeft: 70,
+
                         }}>
-                        {"No tienes una cuenta? Registrate"}
+                        {"No tienes una cuenta?"}
+                    </Text>
+                    <Text
+                        className="font-lexend-medium"
+                        style={{
+                            color: "#7F5610",
+                            fontSize: 16,
+                            width: 150,
+                            marginLeft: -26,
+                        }}>
+                        {"Registrate"}
                     </Text>
                 </View>
             </ScrollView>
