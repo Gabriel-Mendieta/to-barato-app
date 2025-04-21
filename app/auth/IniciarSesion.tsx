@@ -3,6 +3,7 @@ import { SafeAreaView, View, ScrollView, ImageBackground, Image, Text, TextInput
 import peso from '../../assets/images/peso_dominicano.jpg';
 import useFonts from 'expo-font';
 import { globalStyles } from "@/styles/global-styles";
+import { router } from "expo-router";
 export default () => {
 
     const [textInput1, onChangeTextInput1] = useState('');
@@ -183,7 +184,7 @@ export default () => {
                     }}>
                     {"Ingrese su contrasena"}
                 </Text>
-                <TouchableOpacity
+                <Pressable
                     style={{
                         alignItems: "center",
                         backgroundColor: "#33618D",
@@ -191,7 +192,7 @@ export default () => {
                         paddingVertical: 8,
                         marginBottom: 15,
                         marginHorizontal: 31,
-                    }} onPress={() => alert('Pressed!')}>
+                    }} onPress={() => router.push('/home')}>
                     <Text
                         style={{
                             color: "#F8F9FF",
@@ -200,7 +201,7 @@ export default () => {
                         }}>
                         {"Iniciar Sesion"}
                     </Text>
-                </TouchableOpacity>
+                </Pressable>
                 <View
                     style={{
                         alignItems: "center",

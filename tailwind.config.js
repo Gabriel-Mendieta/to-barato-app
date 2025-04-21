@@ -16,6 +16,7 @@ module.exports = {
         caution: '#EDCA04',
         danger: '#D1170F',
         info: '#02A8E0',
+        container: '#001D35',
       },
 
       fontFamily: {
