@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { router } from 'expo-router';
 
 // --- Datos de ejemplo (igual que antes) ---
 const popularSearchesData = [
@@ -182,11 +183,13 @@ const HomeScreen = () => {
                     <Icon name="home" size={26} color={activeTab === 'Inicio' ? '#3b82f6' : '#6b7280'} /> {/* Usando colores directos */}
                     <Text className={`text-[10px] mt-0.5 ${activeTab === 'Inicio' ? activeTabColor : inactiveTabColor}`}>Inicio</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Listas')}>
+                <TouchableOpacity className="items-center" onPress={() => {
+                    router.push('/lista'); // Navegación a la pantalla de listas
+                }}>
                     <Icon name="list-alt" size={26} color={activeTab === 'Listas' ? '#3b82f6' : '#6b7280'} />
                     <Text className={`text-[10px] mt-0.5 ${activeTab === 'Listas' ? activeTabColor : inactiveTabColor}`}>Listas</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Proveedores')}>
+                <TouchableOpacity className="items-center" onPress={() => router.push('/map')}>
                     <Icon name="store" size={26} color={activeTab === 'Proveedores' ? '#3b82f6' : '#6b7280'} />
                     <Text className={`text-[10px] mt-0.5 ${activeTab === 'Proveedores' ? activeTabColor : inactiveTabColor}`}>Proveedores</Text>
                 </TouchableOpacity>
