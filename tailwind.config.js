@@ -17,6 +17,7 @@ module.exports = {
         danger: '#D1170F',
         info: '#02A8E0',
         container: '#001D35',
+        gold: '#7F5610',
       },
 
       fontFamily: {
