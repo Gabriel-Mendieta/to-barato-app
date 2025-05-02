@@ -36,13 +36,25 @@ const StackLayout = () => {
                         color: '#33618D',
                         fontSize: 20,
                     },
-                    // headerShown: false,
+                    headerShown: false,
                 }}
             />
             <Stack.Screen
                 name='map/index'
                 options={{
                     title: 'Home Screen',
+                    headerTitleStyle: {
+                        fontFamily: 'Lexend-Medium',
+                        color: '#000',
+
+                    },
+                    headerShown: false,
+                }}
+            />
+            <Stack.Screen
+                name='perfil/index'
+                options={{
+                    title: 'Perfil',
                     headerTitleStyle: {
                         fontFamily: 'Lexend-Medium',
                         color: '#000',

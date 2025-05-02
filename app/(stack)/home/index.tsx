@@ -8,7 +8,7 @@ import {
     TouchableOpacity,
     FlatList,
     StatusBar,
-    Platform // Import Platform
+    Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -110,7 +110,7 @@ const HomeScreen = () => {
                 </View>
             </View>
 
-            <View className="bg-white py-1 border-b border-gray-200">
+            <View className="bg-white py-1 border-b border-gray-200 flex-row justify-around items-center">
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10 }}>
                     {categories.map((category) => (
                         <TouchableOpacity
@@ -130,7 +130,7 @@ const HomeScreen = () => {
 
             <ScrollView className="flex-1">
                 <View className="mt-5 px-4">
-                    <Text className="text-lg font-bold text-gray-800 mb-4">Búsquedas Populares</Text>
+                    <Text className="text-xl text-gray-800 mb-4 font-lexend-black">Ofertas</Text>
                     <FlatList
                         data={popularSearchesData}
                         renderItem={({ item }) => <ProductCard item={item} />}
@@ -142,7 +142,7 @@ const HomeScreen = () => {
                 </View>
 
                 <View className="mt-5 px-4">
-                    <Text className="text-lg font-bold text-gray-800 mb-4">Mercado</Text>
+                    <Text className="text-xl text-gray-800 mb-4 font-lexend-black">Productos más buscados</Text>
                     <FlatList
                         data={marketData}
                         renderItem={({ item }) => <ProductCard item={item} />}
@@ -172,7 +172,7 @@ const HomeScreen = () => {
                     <Icon name="store" size={26} color={activeTab === 'Proveedores' ? '#3b82f6' : '#6b7280'} />
                     <Text className={`text-[10px] mt-0.5 ${activeTab === 'Proveedores' ? activeTabColor : inactiveTabColor}`}>Proveedores</Text>
                 </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Perfil')}>
+                <TouchableOpacity className="items-center" onPress={() => router.push('/perfil')}>
                     <Icon name="person" size={26} color={activeTab === 'Perfil' ? '#3b82f6' : '#6b7280'} />
                     <Text className={`text-[10px] mt-0.5 ${activeTab === 'Perfil' ? activeTabColor : inactiveTabColor}`}>Perfil</Text>
                 </TouchableOpacity>
