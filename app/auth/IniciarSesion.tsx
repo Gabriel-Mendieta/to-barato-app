@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { SafeAreaView, View, ScrollView, ImageBackground, Image, Text, TextInput, TouchableOpacity, Pressable, Animated, } from "react-native";
-import peso from '../../../assets/images/peso_dominicano.jpg';
+import peso from '../../assets/images/peso_dominicano.jpg';
 import { globalStyles } from "@/styles/global-styles";
 import { router } from "expo-router";
 import CustomButton from "@/components/shared/CustomButton";
 export default () => {
 
+    const [passwordVisible, setPasswordVisible] = useState(false);
+    const [password, setPassword] = useState("");
     const [textInput1, onChangeTextInput1] = useState('');
     return (
         <SafeAreaView
@@ -143,36 +145,24 @@ export default () => {
                     }}>
                     Contraseña
                 </Text>
-                <TouchableOpacity
-                    style={{
-                        flexDirection: "row",
-                        backgroundColor: "#F8F9FF",
-                        borderColor: "#DBE1E7",
-                        borderRadius: 5,
-                        borderWidth: 1,
-                        paddingVertical: 5,
-                        paddingHorizontal: 9,
-                        marginBottom: 6,
-                        marginHorizontal: 31,
-                    }} onPress={() => alert('Pressed!')}>
-                    <Text
-                        style={{
-                            color: "#101418",
-                            fontSize: 16,
-                            marginVertical: 2,
-                            flex: 1,
-                        }}>
-                        **************
-                    </Text>
-                    <Image
-                        source={{ uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/itm6kgg5.png" }}
-                        resizeMode={"stretch"}
-                        style={{
-                            width: 24,
-                            height: 24,
-                        }}
+                <View className="flex-row items-center bg-[#F8F9FF] border border-[#DBE1E7] rounded px-3 mb-1.5 mx-8">
+                    <TextInput
+                        className="flex-1 font-lexend-light text-base text-[#101418]"
+                        secureTextEntry={!passwordVisible}
+                        placeholder="************"
+                        value={password}
+                        onChangeText={setPassword}
                     />
-                </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)}>
+                        <Image
+                            source={{
+                                uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/itm6kgg5.png",
+                            }}
+                            resizeMode="contain"
+                            className="w-5 h-5 ml-2"
+                        />
+                    </TouchableOpacity>
+                </View>
                 <Text
                     className="font-lexend-medium"
 
@@ -185,7 +175,7 @@ export default () => {
                     Ingrese su contrasena
                 </Text>
                 <CustomButton color="primary" textFont="medium"
-                    onPress={() => router.push('/home')}
+                    onPress={() => router.push('/tabs/home')}
                 >
                     Iniciar Sesion
                 </CustomButton>

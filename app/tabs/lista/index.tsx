@@ -66,27 +66,6 @@ const ShoppingListScreen = () => {
             />
 
 
-            <View className={`flex-row justify-around items-center bg-white border-t border-gray-300 py-2 ${Platform.OS === 'ios' ? 'pb-5' : 'pb-2'}`}>
-                <TouchableOpacity className="items-center" onPress={() => router.push('/home')}>
-                    < MaterialCommunityIcons name="home-outline" size={26} color={activeTab === 'Inicio' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Inicio' ? activeTabColor : inactiveTabColor}`}>Inicio</Text>
-                </TouchableOpacity>
-
-                <Pressable className="items-center" onPress={() => setActiveTab('Listas')}>
-                    <MaterialCommunityIcons name={activeTab === 'Listas' ? "format-list-bulleted" : "format-list-bulleted"} size={26} color={activeTab === 'Listas' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Listas' ? activeTabColor : inactiveTabColor}`}>Listas</Text>
-                </Pressable>
-
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Proveedores')}>
-                    <MaterialCommunityIcons name="store-outline" size={26} color={activeTab === 'Proveedores' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Proveedores' ? activeTabColor : inactiveTabColor}`}>Proveedores</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Perfil')}>
-                    <MaterialCommunityIcons name="account-outline" size={26} color={activeTab === 'Perfil' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Perfil' ? activeTabColor : inactiveTabColor}`}>Perfil</Text>
-                </TouchableOpacity>
-            </View>
         </SafeAreaView >
     );
 };

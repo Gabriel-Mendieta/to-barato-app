@@ -46,8 +46,8 @@ const HomeScreen = () => {
 
     const activeTabColor = 'text-blue-600';
     const inactiveTabColor = 'text-gray-500';
-    const activeCategoryColor = 'colors-container';
-    const activeCategoryBorderColor = 'colors-container';
+    const activeCategoryColor = 'colors-gold';
+    const activeCategoryBorderColor = 'colors-gold';
     const inactiveCategoryColor = 'text-gray-600';
 
 
@@ -110,8 +110,10 @@ const HomeScreen = () => {
                 </View>
             </View>
 
-            <View className="bg-white py-1 border-b border-gray-200 flex-row justify-around items-center">
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 10 }}>
+            <View className="bg-white py-1 border-b border-gray-200">
+                <ScrollView horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingHorizontal: 50 }}>
                     {categories.map((category) => (
                         <TouchableOpacity
                             key={category}
@@ -156,27 +158,6 @@ const HomeScreen = () => {
                 <View className="h-5" />
 
             </ScrollView>
-
-            <View className={`flex-row justify-around items-center bg-white border-t border-gray-300 py-2 ${Platform.OS === 'ios' ? 'pb-5' : 'pb-2'}`}>
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Inicio')}>
-                    <Icon name="home" size={26} color={activeTab === 'Inicio' ? '#3b82f6' : '#6b7280'} /> {/* Usando colores directos */}
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Inicio' ? activeTabColor : inactiveTabColor}`}>Inicio</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => {
-                    router.push('/lista');
-                }}>
-                    <Icon name="list-alt" size={26} color={activeTab === 'Listas' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Listas' ? activeTabColor : inactiveTabColor}`}>Listas</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => router.push('/map')}>
-                    <Icon name="store" size={26} color={activeTab === 'Proveedores' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Proveedores' ? activeTabColor : inactiveTabColor}`}>Proveedores</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => router.push('/perfil')}>
-                    <Icon name="person" size={26} color={activeTab === 'Perfil' ? '#3b82f6' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Perfil' ? activeTabColor : inactiveTabColor}`}>Perfil</Text>
-                </TouchableOpacity>
-            </View>
         </SafeAreaView>
     );
 };

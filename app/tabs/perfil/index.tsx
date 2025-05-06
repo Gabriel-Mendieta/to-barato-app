@@ -9,19 +9,17 @@ import {
     TouchableOpacity,
     StatusBar,
     Platform,
-    ImageSourcePropType // Import ImageSourcePropType for image source typing
 } from 'react-native';
-// Importa los sets de iconos que necesites
+
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-// --- Interfaces de Tipos ---
 interface ProfileData {
     name: string;
     phone: string;
     email: string;
-    imageUrl: string; // O podrías usar ImageSourcePropType si fuera local
+    imageUrl: string;
 }
 
 interface ProfileOption {
@@ -34,12 +32,11 @@ interface ProfileOption {
 
 interface ProfileOptionItemProps {
     item: ProfileOption;
-    onPress: (item: ProfileOption) => void; // Función que recibe el item presionado
+    onPress: (item: ProfileOption) => void;
 }
 
 type TabName = 'Inicio' | 'Listas' | 'Proveedores' | 'Perfil';
 
-// --- Datos de ejemplo con tipos ---
 const profileData: ProfileData = {
     name: 'Mario Luciano',
     phone: '809-123-4567',
@@ -62,7 +59,6 @@ const ProfileOptionItem: React.FC<ProfileOptionItemProps> = ({ item, onPress }) 
         onPress={() => onPress(item)} // Llama a la función onPress pasando el item
     >
         <View className="flex-row items-center flex-1">
-            {/* Asegúrate que Ionicons acepte 'string' para name, lo cual es común */}
             <Ionicons name={item.icon} size={22} color="#4B5563" />
             <Text className="text-base text-gray-700 ml-4">{item.text}</Text>
         </View>
@@ -84,7 +80,7 @@ const ProfileScreen: React.FC = () => {
     // Función para manejar el press en las opciones (Tipada)
     const handleOptionPress = (item: ProfileOption): void => {
         if (item.action === 'logout') {
-            router.push('/auth/IniciarSesion');
+            router.push('../../auth/IniciarSesion');
             // Lógica real de logout
         } else if (item.screen) {
             console.log("Navegando a:", item.screen);
@@ -96,12 +92,11 @@ const ProfileScreen: React.FC = () => {
         <SafeAreaView className="flex-1 bg-gray-100">
             <StatusBar barStyle="light-content" className='bg-container' />
 
-            {/* --- Cabecera --- */}
+
             <View className={`flex-row justify-between items-center bg-container px-4 py-3 ${Platform.OS === 'android' ? 'pt-4' : 'pt-3'}`}>
-                {/* Ajuste de padding top para Android */}
+
                 <View className="flex-row items-center">
-                    {/* <Icon name="shopping-basket" size={28} color="#FFFFFF" className="mr-2" />
-                               <Text className="text-white text-lg font-bold">To' Barato</Text> */}
+
                     <View
                         style={{
                             flexDirection: "row",
@@ -152,14 +147,14 @@ const ProfileScreen: React.FC = () => {
                     <TouchableOpacity>
                         <Ionicons name="notifications-outline" size={26} color="#FFFFFF" />
                     </TouchableOpacity>
-                    {/* <Text className="text-white ml-4 text-base">{'</>'}</Text> */}
+
                 </View>
             </View>
 
-            {/* Contenido Principal */}
+
             <ScrollView className="flex-1">
 
-                {/* Sección de Información del Perfil */}
+
                 <View className="items-center pt-8 pb-6">
                     <Text className="text-2xl font-bold text-gray-800 mb-6">Perfil</Text>
                     <Image
@@ -172,9 +167,9 @@ const ProfileScreen: React.FC = () => {
                     <Text className="text-sm text-gray-600">{profileData.email}</Text>
                 </View>
 
-                {/* Sección de Opciones del Perfil */}
+
                 <View className="pb-6">
-                    {/* TypeScript infiere el tipo de 'item' aquí como ProfileOption */}
+
                     {profileOptions.map((item) => (
                         <ProfileOptionItem
                             key={item.id}
@@ -185,30 +180,6 @@ const ProfileScreen: React.FC = () => {
                 </View>
 
             </ScrollView>
-
-            {/* Barra de Navegación Inferior */}
-            {/* La lógica de activeTab y colores es la misma */}
-            <View className={`flex-row justify-around items-center bg-white border-t border-gray-300 py-2 ${Platform.OS === 'ios' ? 'pb-5' : 'pb-2'}`}>
-                {/* Ajuste de padding bottom para iOS */}
-                <TouchableOpacity className="items-center" onPress={() => router.push('/home')}>
-                    <Icon name="home" size={26} color={activeTab === 'Inicio' ? '#001D35' : '#6b7280'} /> {/* Usando colores directos */}
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Inicio' ? activeTabColor : inactiveTabColor}`}>Inicio</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => {
-                    router.push('/lista'); // Navegación a la pantalla de listas
-                }}>
-                    <Icon name="list-alt" size={26} color={activeTab === 'Listas' ? '#001D35' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Listas' ? activeTabColor : inactiveTabColor}`}>Listas</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => router.push('/map')}>
-                    <Icon name="store" size={26} color={activeTab === 'Proveedores' ? '#001D35' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Proveedores' ? activeTabColor : inactiveTabColor}`}>Proveedores</Text>
-                </TouchableOpacity>
-                <TouchableOpacity className="items-center" onPress={() => setActiveTab('Perfil')}>
-                    <Icon name="person" size={26} color={activeTab === 'Perfil' ? '#001D35' : '#6b7280'} />
-                    <Text className={`text-[10px] mt-0.5 ${activeTab === 'Perfil' ? activeTabColor : inactiveTabColor}`}>Perfil</Text>
-                </TouchableOpacity>
-            </View>
         </SafeAreaView>
     );
 };
