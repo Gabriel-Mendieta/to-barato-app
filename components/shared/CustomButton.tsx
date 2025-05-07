@@ -1,5 +1,6 @@
 import { View, Text, Pressable, PressableProps, Image } from 'react-native'
 import React from 'react'
+import { Ionicons } from '@expo/vector-icons';
 
 interface Props extends PressableProps {
     children: string;
@@ -45,11 +46,7 @@ const CustomButton = ({ children, color, onPress, onLongPress, variant = 'contai
                 onPress={onPress}
                 onLongPress={onLongPress}
             >
-                <Image
-                    source={{ uri: `${image}` }}
-                    resizeMode={"stretch"}
-                    className='rounded-3xl w-7 h-7 mr-5'
-                />
+                <Ionicons size={28} name={image} color={'#001D35'} className='px-2' />
                 <Text
                     className={`${colorText} ${fontText} text-center`}
                 >

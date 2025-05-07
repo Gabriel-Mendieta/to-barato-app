@@ -8,7 +8,8 @@ import {
     TouchableOpacity,
     FlatList,
     StatusBar,
-    Platform
+    Platform,
+    useWindowDimensions
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -41,6 +42,13 @@ const ProductCard = ({ item }) => (
 );
 
 const HomeScreen = () => {
+
+    const { width: screenWidth } = useWindowDimensions();
+    const categoryWidth = 100; // Estimado del ancho de cada categoría
+    const totalCategoryWidth = categories.length * categoryWidth;
+
+    const shouldCenter = totalCategoryWidth < screenWidth;
+
     const [activeCategory, setActiveCategory] = useState('Ofertas');
     const [activeTab, setActiveTab] = useState('Inicio');
 
@@ -55,7 +63,7 @@ const HomeScreen = () => {
         <SafeAreaView className="flex-1 bg-gray-100">
             <StatusBar barStyle="light-content" className='bg-container' />
 
-            <View className={`flex-row justify-between items-center bg-container px-4 py-3 ${Platform.OS === 'android' ? 'pt-4' : 'pt-3'}`}>
+            <View className={`flex-row justify-between items-center bg-container px-4 py-3 ${Platform.OS === 'android' ? 'pt-11' : 'pt-3'}`}>
                 <View className="flex-row items-center">
 
                     <View
@@ -72,7 +80,7 @@ const HomeScreen = () => {
                             elevation: 5,
                         }}>
                         <Image
-                            source={{ uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/fccxqomw.png" }}
+                            source={require('../../../assets/icons/logo.png')}
                             resizeMode={"stretch"}
                             style={{
                                 width: 33,
@@ -111,6 +119,31 @@ const HomeScreen = () => {
             </View>
 
             <View className="bg-white py-1 border-b border-gray-200">
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{
+                        paddingHorizontal: shouldCenter ? (screenWidth - totalCategoryWidth) / 1 : 50,
+                    }}>
+                    {categories.map((category) => (
+                        <TouchableOpacity
+                            key={category}
+                            className={`py-2.5 px-4 mr-1.5 rounded-xl ${activeCategory === category ? `border-b-[3px] ${activeCategoryBorderColor}` : ''
+                                }`}
+                            onPress={() => setActiveCategory(category)}>
+                            <Text
+                                className={`text-sm font-medium ${activeCategory === category
+                                    ? `${activeCategoryColor} font-bold`
+                                    : inactiveCategoryColor
+                                    }`}>
+                                {category}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            </View>
+
+            {/* <View className="bg-white py-1 border-b border-gray-200">
                 <ScrollView horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 50 }}>
@@ -128,7 +161,7 @@ const HomeScreen = () => {
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
-            </View>
+            </View> */}
 
             <ScrollView className="flex-1">
                 <View className="mt-5 px-4">

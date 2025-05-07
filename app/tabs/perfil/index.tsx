@@ -93,7 +93,7 @@ const ProfileScreen: React.FC = () => {
             <StatusBar barStyle="light-content" className='bg-container' />
 
 
-            <View className={`flex-row justify-between items-center bg-container px-4 py-3 ${Platform.OS === 'android' ? 'pt-4' : 'pt-3'}`}>
+            <View className={`flex-row justify-between items-center bg-container px-4 py-3 ${Platform.OS === 'android' ? 'pt-11' : 'pt-3'}`}>
 
                 <View className="flex-row items-center">
 
