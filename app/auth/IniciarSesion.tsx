@@ -4,6 +4,7 @@ import peso from '../../assets/images/peso_dominicano.jpg';
 import { globalStyles } from "@/styles/global-styles";
 import { router } from "expo-router";
 import CustomButton from "@/components/shared/CustomButton";
+import { Ionicons } from "@expo/vector-icons";
 export default () => {
 
     const [passwordVisible, setPasswordVisible] = useState(false);
@@ -13,7 +14,7 @@ export default () => {
         <SafeAreaView
             style={{
                 flex: 1,
-                backgroundColor: "#FFFFFF",
+                backgroundColor: "#F8F9FF",
             }}>
             <ScrollView
                 style={{
@@ -49,7 +50,7 @@ export default () => {
                             elevation: 5,
                         }}>
                         <Image
-                            source={{ uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/fccxqomw.png" }}
+                            source={require('../../assets/icons/logo.png')}
                             resizeMode={"stretch"}
                             style={{
                                 width: 70,
@@ -154,13 +155,7 @@ export default () => {
                         onChangeText={setPassword}
                     />
                     <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)}>
-                        <Image
-                            source={{
-                                uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/itm6kgg5.png",
-                            }}
-                            resizeMode="contain"
-                            className="w-5 h-5 ml-2"
-                        />
+                        <Ionicons size={28} name={'eye-off'} color={'#001D35'} />
                     </TouchableOpacity>
                 </View>
                 <Text
@@ -243,9 +238,9 @@ export default () => {
                 </CustomButton>
 
                 <View
-                    className="flex flex-row items-center mb-10 px-6 py-2">
+                    className="flex flex-row items-center justify-center self-center mb-10 py-2">
                     <Text
-                        className="font-lexend-light text-center text-neutral ml-24"
+                        className="font-lexend-light text-center text-neutral"
                     >
                         No tienes una cuenta?
                     </Text>
