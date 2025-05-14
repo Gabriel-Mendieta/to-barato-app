@@ -225,13 +225,13 @@ export default () => {
                     </View>
                 </View>
 
-                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/2zz0srva.png"
+                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="logo-apple"
                     onPress={() => router.push('../tabs/home')}
                 >
                     Continuar con Google
                 </CustomButton>
 
-                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="https://img.icons8.com/?size=100&id=30840&format=png&color=000000"
+                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="logo-google"
                     onPress={() => router.push('../tabs/home')}
                 >
                     Continuar con Apple
