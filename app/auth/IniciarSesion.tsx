@@ -225,13 +225,13 @@ export default () => {
                     </View>
                 </View>
 
-                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="logo-apple"
+                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="logo-google"
                     onPress={() => router.push('../tabs/home')}
                 >
                     Continuar con Google
                 </CustomButton>
 
-                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="logo-google"
+                <CustomButton color="white" textFont="medium" textColor="neutral" variant="whithImage" image="logo-apple"
                     onPress={() => router.push('../tabs/home')}
                 >
                     Continuar con Apple

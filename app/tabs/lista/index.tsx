@@ -42,7 +42,7 @@ const ShoppingListScreen = () => {
     const inactiveTabColor = 'text-gray-500';
 
     return (
-        <SafeAreaView className="flex-1 bg-gray-100 pt-14">
+        <SafeAreaView className="flex-1 bg-gray-100">
             <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
             <View className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
