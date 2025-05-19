@@ -77,53 +77,44 @@ export default function IniciarSesion() {
                             </View>
                         </ImageBackground>
 
-                        <MotiView from={{ opacity: 0, translateY: 25 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: "timing", duration: 500 }}>
-                            <Text style={{ color: "#101418", fontSize: 30, textAlign: "center", marginBottom: 15, marginHorizontal: 43, fontFamily: "Lexend-Black" }}>
+                        <MotiView from={{ opacity: 0, translateY: 25 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: "timing", duration: 500 }} style={{ paddingHorizontal: 30, paddingTop: 20 }}>
+                            <Text style={{ color: "#101418", fontSize: 30, textAlign: "center", marginBottom: 15, marginHorizontal: 20, fontFamily: "Lexend-Black" }}>
                                 Ayuda a tu bolsillo con nosotros!
                             </Text>
 
                             {/* Email */}
-                            <Text style={{ color: "#001D35", fontSize: 12, fontWeight: "bold", marginBottom: 4, marginLeft: 30 }}>Correo electrónico o teléfono</Text>
+
+                            <Text style={{ color: "#001D35", fontSize: 12, marginBottom: 4 }}>Correo electrónico o teléfono</Text>
                             <TextInput
-                                placeholder="mario.luciano@gmail.com"
+                                placeholder="Ingresa tu nombre"
+                                placeholderTextColor="#999"
                                 value={email}
                                 onChangeText={setEmail}
                                 style={{
-                                    color: "#101418",
-                                    fontSize: 16,
-                                    marginBottom: 6,
-                                    marginHorizontal: 31,
-                                    backgroundColor: "#F8F9FF",
-                                    borderColor: "#DBE1E7",
-                                    borderRadius: 5,
                                     borderWidth: 1,
-                                    paddingVertical: 7,
-                                    paddingLeft: 9,
-                                    paddingRight: 18,
-                                    fontFamily: "Lexend-Light"
+                                    borderColor: '#DBE1E7',
+                                    borderRadius: 6,
+                                    padding: 10,
+                                    marginBottom: 10,
+                                    backgroundColor: '#fff',
                                 }}
                             />
-                            <Text style={{ color: "#7D747E", fontSize: 14, marginBottom: 23, marginLeft: 30, fontFamily: "Lexend-Medium" }}>
-                                Ingrese su correo o teléfono
-                            </Text>
 
                             {/* Contraseña */}
-                            <Text style={{ color: "#001D35", fontSize: 12, fontWeight: "bold", marginBottom: 4, marginLeft: 30 }}>Contraseña</Text>
-                            <View style={{ flexDirection: "row", alignItems: "center", marginHorizontal: 30, borderColor: "#DBE1E7", borderWidth: 1, borderRadius: 5, paddingHorizontal: 10, backgroundColor: "#F8F9FF" }}>
+                            <Text style={{ color: "#001D35", fontSize: 12, marginBottom: 4 }}>Contraseña</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#DBE1E7', borderRadius: 6, backgroundColor: '#fff', marginBottom: 20 }}>
                                 <TextInput
-                                    placeholder="************"
+                                    placeholder="Ingresa tu contraseña"
+                                    placeholderTextColor="#999"
                                     value={password}
                                     onChangeText={setPassword}
                                     secureTextEntry={!passwordVisible}
-                                    style={{ flex: 1, fontSize: 16, color: "#101418", paddingVertical: 8, fontFamily: "Lexend-Light" }}
+                                    style={{ flex: 1, padding: 10 }}
                                 />
-                                <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)}>
-                                    <Ionicons name={passwordVisible ? "eye" : "eye-off"} size={24} color="#001D35" />
+                                <TouchableOpacity onPress={() => setPasswordVisible(v => !v)} style={{ paddingHorizontal: 10 }}>
+                                    <Ionicons name={passwordVisible ? 'eye' : 'eye-off'} size={20} color="#001D35" />
                                 </TouchableOpacity>
                             </View>
-                            <Text style={{ color: "#7D747E", fontSize: 14, marginBottom: 20, marginLeft: 30, fontFamily: "Lexend-Medium" }}>
-                                Ingrese su contraseña
-                            </Text>
 
                             {/* Botón login */}
                             <CustomButton color="primary" textFont="medium" onPress={() => router.push('/tabs/home')}>
@@ -131,7 +122,7 @@ export default function IniciarSesion() {
                             </CustomButton>
 
                             {/* Línea divisoria */}
-                            <View style={{ alignItems: "center", marginBottom: 20, marginHorizontal: 31, position: "relative" }}>
+                            <View style={{ alignItems: "center", marginBottom: 20, position: "relative" }}>
                                 <View style={{ position: "absolute", height: 1, backgroundColor: "#B5C1CC", left: 0, right: 0, top: 12 }} />
                                 <Text style={{ backgroundColor: "#F8F9FF", paddingHorizontal: 10, color: "#33618D", fontWeight: "bold" }}>o</Text>
                             </View>

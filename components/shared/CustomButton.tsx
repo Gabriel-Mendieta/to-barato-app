@@ -5,7 +5,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 
 // 1) Wrapper del botón
 const wrapperStyles = cva(
-    'flex-row items-center justify-center rounded-md active:opacity-90 mb-4 mx-9',
+    'flex-row items-center justify-center rounded-md active:opacity-90 mb-4 py-3',
     {
         variants: {
             color: {

@@ -31,7 +31,7 @@ export default function RegisterScreen() {
 
     const handleRegister = () => {
         // TODO: llamar a la API de registro y navegar a OTP
-        router.push('/auth/otp');
+        router.push('/auth/Otp');
     };
 
     return (
@@ -121,6 +121,21 @@ export default function RegisterScreen() {
                                 {/* Botón Registrarse */}
                                 <CustomButton color="primary" textFont="medium" onPress={handleRegister}>
                                     Registrarse
+                                </CustomButton>
+
+                                {/* Línea divisoria */}
+                                <View style={{ alignItems: "center", marginBottom: 20, position: "relative" }}>
+                                    <View style={{ position: "absolute", height: 1, backgroundColor: "#B5C1CC", left: 0, right: 0, top: 12 }} />
+                                    <Text style={{ backgroundColor: "#F8F9FF", paddingHorizontal: 10, color: "#33618D", fontWeight: "bold" }}>o</Text>
+                                </View>
+
+                                {/* Google / Apple */}
+                                <CustomButton color="white" textFont="medium" textColor="neutral" variant="withIcon" icon="logo-google" onPress={() => router.push('../tabs/home')}>
+                                    Continuar con Google
+                                </CustomButton>
+
+                                <CustomButton color="white" textFont="medium" textColor="neutral" variant="withIcon" icon="logo-apple" onPress={() => router.push('../tabs/home')}>
+                                    Continuar con Apple
                                 </CustomButton>
 
                                 {/* Link a Login */}
