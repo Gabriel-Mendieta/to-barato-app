@@ -8,6 +8,8 @@ import {
     Image,
     Alert,
     ScrollView,
+    StatusBar,
+    Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
@@ -33,18 +35,35 @@ export default function ProfileSetupScreen() {
             return Alert.alert("Ingresa un teléfono válido");
         }
         // TODO: enviar photoUri y phone a tu API para completar perfil
-        router.replace("/tabs/home"); // o la ruta principal de tu app
+        router.replace("/tabs/home");
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, padding: 20 }}>
-            <ScrollView contentContainerStyle={{ alignItems: "center" }}>
-                <Text style={{ fontSize: 24, fontWeight: "bold", marginBottom: 20 }}>
+        <SafeAreaView
+            style={{
+                flex: 1,
+                backgroundColor: "#F8F9FF",
+                paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
+            }}
+        >
+            <ScrollView
+                contentContainerStyle={{ padding: 20, alignItems: "center" }}
+                keyboardShouldPersistTaps="handled"
+            >
+                <Text
+                    style={{
+                        fontSize: 24,
+                        fontWeight: "bold",
+                        marginBottom: 20,
+                        fontFamily: "Lexend-Medium",
+                        textAlign: "center",
+                    }}
+                >
                     Completa tu perfil
                 </Text>
 
                 {/* Foto */}
-                <TouchableOpacity onPress={pickImage} style={{ marginBottom: 20 }}>
+                <TouchableOpacity onPress={pickImage} style={{ marginBottom: 20, alignItems: "center" }}>
                     {photoUri ? (
                         <Image
                             source={{ uri: photoUri }}
@@ -67,25 +86,31 @@ export default function ProfileSetupScreen() {
                 </TouchableOpacity>
 
                 {/* Teléfono */}
-                <Text style={{ alignSelf: "flex-start", marginBottom: 5 }}>Teléfono</Text>
-                <TextInput
-                    placeholder="809-123-4567"
-                    keyboardType="phone-pad"
-                    value={phone}
-                    onChangeText={setPhone}
-                    style={{
-                        width: "100%",
-                        borderWidth: 1,
-                        borderColor: "#ccc",
-                        borderRadius: 8,
-                        padding: 10,
-                        marginBottom: 30,
-                    }}
-                />
+                <View style={{ width: "100%", marginBottom: 6 }}>
+                    <Text style={{ fontFamily: "Lexend-Medium", marginBottom: 6 }}>Teléfono</Text>
+                    <TextInput
+                        placeholder="809-123-4567"
+                        keyboardType="phone-pad"
+                        value={phone}
+                        onChangeText={setPhone}
+                        style={{
+                            width: "100%",
+                            borderWidth: 1,
+                            borderColor: "#DBE1E7",
+                            borderRadius: 8,
+                            padding: 10,
+                            marginBottom: 30,
+                            backgroundColor: "#fff",
+                            fontFamily: "Lexend-Light",
+                        }}
+                    />
+                </View>
 
-                <CustomButton color="primary" textFont="medium" onPress={handleFinish}>
-                    ¡Listo!
-                </CustomButton>
+                <View style={{ width: '100%' }}>
+                    <CustomButton color="primary" textFont="medium" onPress={handleFinish}>
+                        ¡Listo!
+                    </CustomButton>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );

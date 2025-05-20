@@ -34,7 +34,7 @@ const TabsLayout = () => {
             <Tabs.Screen
                 name="perfil/index"
                 options={{
-                    title: 'Settings',
+                    title: 'Perfil',
                     tabBarIcon: ({ color }) => <Ionicons size={28} name="person-outline" color={color} />,
                     animation: 'shift',
                 }}

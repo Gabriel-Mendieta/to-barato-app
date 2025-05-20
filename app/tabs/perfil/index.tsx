@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
     SafeAreaView,
@@ -9,179 +8,167 @@ import {
     TouchableOpacity,
     StatusBar,
     Platform,
+    StyleSheet,
+    Modal,
+    Pressable,
 } from 'react-native';
-
+import { router } from 'expo-router';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { MotiView } from 'moti';
 
-interface ProfileData {
-    name: string;
-    phone: string;
-    email: string;
-    imageUrl: string;
-}
-
-interface ProfileOption {
-    id: string;
-    text: string;
-    icon: string; // El nombre del icono como string
-    screen?: string; // Opcional: nombre de la pantalla a navegar
-    action?: 'logout' | string; // Opcional: acción específica a realizar
-}
-
-interface ProfileOptionItemProps {
-    item: ProfileOption;
-    onPress: (item: ProfileOption) => void;
-}
-
-type TabName = 'Inicio' | 'Listas' | 'Proveedores' | 'Perfil';
-
-const profileData: ProfileData = {
+// Datos de ejemplo
+const profileData = {
     name: 'Mario Luciano',
     phone: '809-123-4567',
     email: 'mario.luciano@gmail.com',
     imageUrl: 'https://picsum.photos/seed/MarioLuciano/200/200',
 };
 
-const profileOptions: ProfileOption[] = [ // Array de ProfileOption
+const profileOptions = [
     { id: '1', text: 'Editar perfil', icon: 'settings-outline', screen: 'EditProfile' },
     { id: '2', text: 'Preferencias', icon: 'star-outline', screen: 'Preferences' },
-    { id: '3', text: 'Cerrar Sesion', icon: 'log-out-outline', action: 'logout' },
+    { id: '3', text: 'Cerrar Sesión', icon: 'log-out-outline', action: 'logout' },
 ];
-// --- Fin Datos de ejemplo ---
 
+const notificationsData = [
+    { id: 'n1', title: 'Ofertas y Promociones', desc: 'El arroz que buscabas está a RD$50 menos en Supermercado X.', time: 'Hace 4 horas', icon: 'info-outline' },
+    { id: 'n2', title: 'Recordatorio de Lista de Compras', desc: 'No olvides tu lista de compras para hoy.', time: 'Hace 1 día', icon: 'shopping-cart' },
+    { id: 'n3', title: 'Actualización de Precios', desc: 'El precio de la leche en Farmacia Z ha bajado un 15%. ¡Consulta más ofertas similares en la app!', time: 'Hace 12 días', icon: 'attach-money' },
+];
 
-// --- Componente para cada opción del perfil (Tipado) ---
-const ProfileOptionItem: React.FC<ProfileOptionItemProps> = ({ item, onPress }) => (
-    <TouchableOpacity
-        className="flex-row items-center justify-between py-4 px-6 bg-white mt-2 rounded-lg mx-4 shadow-sm"
-        onPress={() => onPress(item)} // Llama a la función onPress pasando el item
-    >
-        <View className="flex-row items-center flex-1">
-            <Ionicons name={item.icon} size={22} color="#4B5563" />
-            <Text className="text-base text-gray-700 ml-4">{item.text}</Text>
-        </View>
-        <Ionicons name="chevron-forward-outline" size={20} color="#6B7280" />
-    </TouchableOpacity>
-);
-
-
-// --- Componente Principal de la Pantalla (Tipado) ---
 const ProfileScreen: React.FC = () => {
-    // Estado tipado para la pestaña activa
-    const [activeTab, setActiveTab] = useState<TabName>('Perfil');
+    const [showNotifications, setShowNotifications] = useState(false);
 
-    // Colores (se mantienen igual, solo como referencia)
-    const activeTabColor = '#001D35';
-    const inactiveTabColor = 'text-gray-500';
-    const headerBgColor = 'bg-[#2a3a75]';
-
-    // Función para manejar el press en las opciones (Tipada)
-    const handleOptionPress = (item: ProfileOption): void => {
+    const handleOptionPress = (item: any) => {
         if (item.action === 'logout') {
-            router.push('../../auth/IniciarSesion');
-            // Lógica real de logout
+            router.replace('/auth/IniciarSesion');
         } else if (item.screen) {
-            console.log("Navegando a:", item.screen);
-            // Lógica de navegación real (usando React Navigation, etc.)
+            router.push(`/settings/${item.screen}`);
         }
     };
 
     return (
-        <SafeAreaView className="flex-1 bg-gray-100">
-            <StatusBar barStyle="light-content" className='bg-container' />
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
 
-
-            <View className={`flex-row justify-between items-center bg-container px-4 py-3 ${Platform.OS === 'android' ? 'pt-11' : 'pt-3'}`}>
-
-                <View className="flex-row items-center">
-
-                    <View
-                        style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            shadowColor: "#0C294557",
-                            shadowOpacity: 0.3,
-                            shadowOffset: {
-                                width: 0,
-                                height: 5.25
-                            },
-                            shadowRadius: 5,
-                            elevation: 5,
-                        }}>
-                        <Image
-                            source={{ uri: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/vvIy7dtdIT/fccxqomw.png" }}
-                            resizeMode={"stretch"}
-                            style={{
-                                width: 33,
-                                height: 48,
-                                marginRight: 5,
-                            }}
-                        />
-                        <View
-                            style={{
-                                // alignItems: "center",
-                            }}>
-                            <Text
-                                className="font-lexend-medium flex-initial color-white"
-                                style={{
-                                    fontSize: 20,
-                                    marginBottom: -5,
-                                }}>
-                                {"To'"}
-                            </Text>
-                            <Text
-                                className="font-lexend-medium"
-                                style={{
-                                    color: "#FFFFFF",
-                                    fontSize: 20,
-                                    fontWeight: "bold",
-                                }}>
-                                {"Barato"}
-                            </Text>
-                        </View>
-                    </View>
+            {/* Header */}
+            <View style={styles.header}>
+                <View style={styles.headerLeft}>
+                    <Image source={require('../../../assets/icons/logo.png')} style={styles.logo} />
+                    <Text style={styles.headerText}>To' Barato</Text>
                 </View>
-                <View className="flex-row items-center">
-                    <TouchableOpacity>
-                        <Ionicons name="notifications-outline" size={26} color="#FFFFFF" />
-                    </TouchableOpacity>
-
-                </View>
+                <TouchableOpacity onPress={() => setShowNotifications(true)}>
+                    <Ionicons name="notifications-outline" size={26} color="#FFF" />
+                </TouchableOpacity>
             </View>
 
-
-            <ScrollView className="flex-1">
-
-
-                <View className="items-center pt-8 pb-6">
-                    <Text className="text-2xl font-bold text-gray-800 mb-6">Perfil</Text>
-                    <Image
-                        source={{ uri: profileData.imageUrl }} // `uri` espera un string
-                        className="w-28 h-28 rounded-full border-4 border-white shadow-lg"
-                        resizeMode="cover"
-                    />
-                    <Text className="text-xl font-semibold text-gray-900 mt-4">{profileData.name}</Text>
-                    <Text className="text-sm text-gray-600 mt-1">{profileData.phone}</Text>
-                    <Text className="text-sm text-gray-600">{profileData.email}</Text>
+            {/* Notifications Modal */}
+            <Modal
+                visible={showNotifications}
+                animationType="slide"
+                transparent
+                onRequestClose={() => setShowNotifications(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Notificaciones</Text>
+                            <Pressable onPress={() => setShowNotifications(false)}>
+                                <Ionicons name="close" size={24} color="#555" />
+                            </Pressable>
+                        </View>
+                        <ScrollView>
+                            {notificationsData.map(notif => (
+                                <View key={notif.id} style={styles.notifCard}>
+                                    <View style={styles.notifLeft}>
+                                        <MaterialIcons name={notif.icon} size={24} color="#EDCA04" />
+                                        <View style={styles.notifTextContainer}>
+                                            <Text style={styles.notifTitle}>{notif.title}</Text>
+                                            <Text style={styles.notifDesc}>{notif.desc}</Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.notifTime}>{notif.time}</Text>
+                                </View>
+                            ))}
+                        </ScrollView>
+                        <TouchableOpacity style={styles.closeButton} onPress={() => setShowNotifications(false)}>
+                            <Text style={styles.closeButtonText}>Cerrar</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
+            </Modal>
 
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                {/* Profile Info */}
+                <MotiView
+                    from={{ opacity: 0, translateY: 20 }}
+                    animate={{ opacity: 1, translateY: 0 }}
+                    transition={{ type: 'timing', duration: 400 }}
+                    style={styles.profileHeader}
+                >
+                    <Text style={styles.title}>Perfil</Text>
+                    <Image source={{ uri: profileData.imageUrl }} style={styles.avatar} />
+                    <Text style={styles.name}>{profileData.name}</Text>
+                    <Text style={styles.contact}>{profileData.phone}</Text>
+                    <Text style={styles.contact}>{profileData.email}</Text>
+                </MotiView>
 
-                <View className="pb-6">
-
-                    {profileOptions.map((item) => (
-                        <ProfileOptionItem
-                            key={item.id}
-                            item={item}
-                            onPress={handleOptionPress} // Pasamos la función onPress definida
-                        />
+                {/* Options List */}
+                <View style={styles.optionsContainer}>
+                    {profileOptions.map(item => (
+                        <TouchableOpacity key={item.id} style={styles.optionItem} onPress={() => handleOptionPress(item)}>
+                            <View style={styles.optionLeft}>
+                                <Ionicons name={item.icon} size={22} color="#4B5563" />
+                                <Text style={styles.optionText}>{item.text}</Text>
+                            </View>
+                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#6B7280" />
+                        </TouchableOpacity>
                     ))}
                 </View>
-
             </ScrollView>
         </SafeAreaView>
     );
 };
 
 export default ProfileScreen;
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: '#F8F9FF' },
+    header: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        backgroundColor: '#001D35', paddingHorizontal: 16,
+        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
+        paddingBottom: 12,
+    },
+    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    logo: { width: 32, height: 48, marginRight: 8 },
+    headerText: { color: '#FFF', fontSize: 20, fontWeight: '700' },
+    scrollContent: { paddingBottom: 20 },
+    profileHeader: { alignItems: 'center', paddingVertical: 24 },
+    title: { fontSize: 24, fontWeight: 'bold', color: '#101418', marginBottom: 12 },
+    avatar: { width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: '#FFF', marginBottom: 16, backgroundColor: '#eee' },
+    name: { fontSize: 20, fontWeight: '600', color: '#101418' },
+    contact: { fontSize: 14, color: '#6B7280', marginTop: 4 },
+    optionsContainer: { paddingHorizontal: 16, marginTop: 16 },
+    optionItem: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 16,
+        borderRadius: 8, marginBottom: 12, elevation: 2,
+    },
+    optionLeft: { flexDirection: 'row', alignItems: 'center' },
+    optionText: { fontSize: 16, color: '#101418', marginLeft: 12 },
+    // Modal styles
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    modalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 12, padding: 20, maxHeight: '70%' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    modalTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
+    notifCard: { backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 12, elevation: 2 },
+    notifLeft: { flexDirection: 'row', alignItems: 'flex-start' },
+    notifTextContainer: { flex: 1, marginLeft: 8 },
+    notifTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
+    notifDesc: { fontSize: 14, color: '#555' },
+    notifTime: { fontSize: 12, color: '#999', marginTop: 8, textAlign: 'right' },
+    closeButton: { marginTop: 16, alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#001D35', borderRadius: 8 },
+    closeButtonText: { color: '#FFF', fontWeight: '600' },
+});
