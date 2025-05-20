@@ -63,7 +63,7 @@ export default function ShoppingListScreen() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: '#001D35',
-                paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
+                paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 38,
                 paddingBottom: 12,
                 paddingHorizontal: 16,
             }}>
@@ -71,6 +71,7 @@ export default function ShoppingListScreen() {
                     color: '#FFFFFF',
                     fontSize: 20,
                     fontWeight: '500',
+                    bottom: 12,
                 }}>
                     Lista de Compras
                 </Text>
@@ -82,7 +83,7 @@ export default function ShoppingListScreen() {
                         position: 'absolute',
                         right: 16,
                         padding: 4,
-                        marginTop: 45,
+                        marginTop: 4,
                     }}
                 >
                     <Ionicons name="add-circle-outline" size={34} color="#FFFFFF" />
@@ -100,7 +101,7 @@ export default function ShoppingListScreen() {
 
             {/* Botón flotante permanente */}
             <TouchableOpacity
-                onPress={() => {/* nueva lista */ }}
+                onPress={() => router.push('../../tabs/list/add')}
                 className="absolute bottom-8 right-6 bg-secondary rounded-full p-4 shadow-2xl"
                 activeOpacity={0.8}
             >

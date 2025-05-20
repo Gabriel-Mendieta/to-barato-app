@@ -39,6 +39,12 @@ const TabsLayout = () => {
                     animation: 'shift',
                 }}
             />
+            <Tabs.Screen
+                name="list/add"
+                options={{
+                    href: null,
+                }}
+            />
         </Tabs>
     )
 }

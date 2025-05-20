@@ -78,7 +78,7 @@ export default function IniciarSesion() {
                         </ImageBackground>
 
                         <MotiView from={{ opacity: 0, translateY: 25 }} animate={{ opacity: 1, translateY: 0 }} transition={{ type: "timing", duration: 500 }} style={{ paddingHorizontal: 30, paddingTop: 20 }}>
-                            <Text style={{ color: "#101418", fontSize: 30, textAlign: "center", marginBottom: 15, marginHorizontal: 20, fontFamily: "Lexend-Black" }}>
+                            <Text style={{ color: "#101418", fontSize: 30, textAlign: "center", marginBottom: 15, marginHorizontal: 10, fontFamily: "Lexend-Black" }}>
                                 Ayuda a tu bolsillo con nosotros!
                             </Text>
 

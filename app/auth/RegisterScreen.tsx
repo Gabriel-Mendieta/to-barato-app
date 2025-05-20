@@ -62,7 +62,7 @@ export default function RegisterScreen() {
                                 transition={{ type: 'timing', duration: 400 }}
                                 style={{ paddingHorizontal: 30, paddingTop: 20 }}
                             >
-                                <Text style={{ color: "#101418", fontSize: 30, textAlign: "center", marginBottom: 15, marginHorizontal: 43, fontFamily: "Lexend-Black" }}>
+                                <Text style={{ color: "#101418", fontSize: 30, textAlign: "center", marginBottom: 15, marginHorizontal: 10, fontFamily: "Lexend-Black" }}>
                                     Ayuda a tu bolsillo con nosotros!
                                 </Text>
 
