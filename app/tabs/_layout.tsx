@@ -45,6 +45,12 @@ const TabsLayout = () => {
                     href: null,
                 }}
             />
+            <Tabs.Screen
+                name="list/providers"
+                options={{
+                    href: null,
+                }}
+            />
         </Tabs>
     )
 }
