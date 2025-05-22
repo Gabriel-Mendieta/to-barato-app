@@ -111,7 +111,7 @@ export default function AddToListScreen() {
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
             {/* Header */}
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.push('../tabs/lista')}>
+                <TouchableOpacity onPress={() => router.push('../lista')}>
                     <Icon name="chevron-back" size={28} color="#fff" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Buscar Productos</Text>
