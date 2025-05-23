@@ -1,3 +1,4 @@
+// app/auth/OtpVerificationScreen.tsx
 import React, { useRef, useState, useEffect } from "react";
 import {
     SafeAreaView,
@@ -11,9 +12,10 @@ import {
     Keyboard,
     TouchableWithoutFeedback,
     useColorScheme,
+    StyleSheet,
 } from "react-native";
 import { MotiView } from "moti";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import CustomButton from "@/components/shared/CustomButton";
 
 export default function OtpVerificationScreen() {
@@ -22,7 +24,19 @@ export default function OtpVerificationScreen() {
     const inputsRef = useRef<TextInput[]>([]);
     const [timer, setTimer] = useState(60);
 
-    // Cuenta regresiva
+    // 1️⃣ Recupera los datos pasados desde RegisterScreen
+    const params = useLocalSearchParams<{ data?: string }>();
+    const raw = params.data ?? "";
+    const formData = raw
+        ? JSON.parse(decodeURIComponent(raw))
+        : {};
+
+    // 2️⃣ Loggea los datos al montar la pantalla
+    useEffect(() => {
+        console.log("Registro paso1:", formData);
+    }, []);
+
+    // cuenta atrás
     useEffect(() => {
         if (timer > 0) {
             const id = setTimeout(() => setTimer(timer - 1), 1000);
@@ -41,78 +55,78 @@ export default function OtpVerificationScreen() {
 
     const handleVerify = () => {
         const code = otp.join("");
-        // TODO: validar OTP con API
         if (code.length === 6) {
-            router.replace('/auth/Profile-setup');
+            // 3️⃣ Envía formData + OTP a Profile-setup
+            router.replace({
+                pathname: "/auth/Profile-setup",
+                params: {
+                    data: encodeURIComponent(JSON.stringify(formData)),
+                    otp: code,
+                },
+            });
         }
     };
 
     const handleResend = () => {
-        // TODO: llamar API para reenviar OTP
+        // TODO: reenvío real
         setTimer(60);
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colorScheme === 'dark' ? '#0a0a0a' : '#F8F9FF' }}>
+        <SafeAreaView
+            style={[
+                styles.container,
+                { backgroundColor: colorScheme === "dark" ? "#0a0a0a" : "#F8F9FF" },
+            ]}
+        >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    behavior={Platform.OS === "ios" ? "padding" : "height"}
                     style={{ flex: 1 }}
                     keyboardVerticalOffset={80}
                 >
                     <ScrollView
-                        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 30 }}
+                        contentContainerStyle={{
+                            flexGrow: 1,
+                            justifyContent: "center",
+                            paddingHorizontal: 30,
+                        }}
                         keyboardShouldPersistTaps="handled"
                     >
                         <MotiView
                             from={{ opacity: 0, translateY: 20 }}
                             animate={{ opacity: 1, translateY: 0 }}
-                            transition={{ type: 'timing', duration: 400 }}
+                            transition={{ type: "timing", duration: 400 }}
                         >
                             <Text
-                                style={{
-                                    fontSize: 24,
-                                    fontWeight: 'bold',
-                                    color: colorScheme === 'dark' ? '#fff' : '#101418',
-                                    textAlign: 'center',
-                                    marginBottom: 20,
-                                    fontFamily: 'Lexend-Medium',
-                                }}
+                                style={[
+                                    styles.title,
+                                    { color: colorScheme === "dark" ? "#fff" : "#101418" },
+                                ]}
                             >
                                 Verifica tu cuenta
                             </Text>
                             <Text
-                                style={{
-                                    fontSize: 16,
-                                    color: colorScheme === 'dark' ? '#ccc' : '#7D747E',
-                                    textAlign: 'center',
-                                    marginBottom: 30,
-                                    fontFamily: 'Lexend-Light',
-                                }}
+                                style={[
+                                    styles.subtitle,
+                                    { color: colorScheme === "dark" ? "#ccc" : "#7D747E" },
+                                ]}
                             >
                                 Ingresa el código de 6 dígitos que te enviamos a tu correo.
                             </Text>
 
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 }}>
+                            <View style={styles.otpContainer}>
                                 {otp.map((digit, idx) => (
                                     <TextInput
                                         key={idx}
                                         ref={(el) => (inputsRef.current[idx] = el!)}
                                         value={digit}
-                                        onChangeText={(v) => focusNext(idx, v.replace(/[^0-9]/g, ''))}
+                                        onChangeText={(v) =>
+                                            focusNext(idx, v.replace(/[^0-9]/g, ""))
+                                        }
                                         keyboardType="number-pad"
                                         maxLength={1}
-                                        style={{
-                                            width: 45,
-                                            height: 55,
-                                            borderWidth: 1,
-                                            borderColor: '#DBE1E7',
-                                            borderRadius: 6,
-                                            textAlign: 'center',
-                                            fontSize: 24,
-                                            backgroundColor: '#fff',
-                                            fontFamily: 'Lexend-Medium',
-                                        }}
+                                        style={styles.otpInput}
                                     />
                                 ))}
                             </View>
@@ -121,18 +135,21 @@ export default function OtpVerificationScreen() {
                                 color="primary"
                                 textFont="medium"
                                 onPress={handleVerify}
-                                disabled={otp.some((d) => d === '')}
+                                disabled={otp.some((d) => d === "")}
                             >
                                 Verificar
                             </CustomButton>
 
-                            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 15 }}>
-                                <Text style={{ color: '#7D747E' }}>Reenviar código en </Text>
-                                <Text style={{ color: '#33618D', fontWeight: 'bold' }}>{timer}s</Text>
+                            <View style={styles.resendRow}>
+                                <Text style={styles.resendText}>Reenviar código en </Text>
+                                <Text style={styles.resendTimer}>{timer}s</Text>
                             </View>
                             {timer === 0 && (
-                                <TouchableOpacity onPress={handleResend} style={{ marginTop: 10, alignItems: 'center' }}>
-                                    <Text style={{ color: '#33618D', fontWeight: 'bold' }}>Reenviar código</Text>
+                                <TouchableOpacity
+                                    onPress={handleResend}
+                                    style={styles.resendBtn}
+                                >
+                                    <Text style={styles.resendBtnText}>Reenviar código</Text>
                                 </TouchableOpacity>
                             )}
                         </MotiView>
@@ -142,3 +159,45 @@ export default function OtpVerificationScreen() {
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: { flex: 1 },
+    title: {
+        fontSize: 24,
+        fontWeight: "bold",
+        textAlign: "center",
+        marginBottom: 20,
+        fontFamily: "Lexend-Medium",
+    },
+    subtitle: {
+        fontSize: 16,
+        textAlign: "center",
+        marginBottom: 30,
+        fontFamily: "Lexend-Light",
+    },
+    otpContainer: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        marginBottom: 25,
+    },
+    otpInput: {
+        width: 45,
+        height: 55,
+        borderWidth: 1,
+        borderColor: "#DBE1E7",
+        borderRadius: 6,
+        textAlign: "center",
+        fontSize: 24,
+        backgroundColor: "#fff",
+        fontFamily: "Lexend-Medium",
+    },
+    resendRow: {
+        flexDirection: "row",
+        justifyContent: "center",
+        marginTop: 15,
+    },
+    resendText: { color: "#7D747E" },
+    resendTimer: { color: "#33618D", fontWeight: "bold" },
+    resendBtn: { marginTop: 10, alignItems: "center" },
+    resendBtnText: { color: "#33618D", fontWeight: "bold" },
+});
