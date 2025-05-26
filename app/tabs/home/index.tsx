@@ -1,6 +1,6 @@
 // app/home/index.tsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     SafeAreaView,
     View,
@@ -51,14 +51,7 @@ type Producto = {
     PrecioOferta?: string;
 };
 
-// --- CACHÉ EN MEMORIA ---
-const CACHE_TTL = 60_000; // 1 minuto
-
-type CacheEntry<T> = {
-    ts: number;
-    data: T;
-};
-
+// --- COMPONENTE PRINCIPAL ---
 export default function HomeScreenDynamic() {
     const { width: screenWidth } = useWindowDimensions();
     const CARD_WIDTH = Math.round(screenWidth * 0.6);
@@ -82,85 +75,78 @@ export default function HomeScreenDynamic() {
         { id: 'n3', title: 'Actualización', desc: 'Leche bajó 15%.', time: 'Hace 12d', icon: 'pricetag-outline' },
     ];
 
-    // Refs para caché
-    const tiposCache = useRef<CacheEntry<TipoProveedor[]> | null>(null);
-    const provCache = useRef<Map<number, CacheEntry<Proveedor[]>>>(new Map());
-    const prodCache = useRef<Map<number, CacheEntry<Producto[]>>>(new Map());
-
     // --- 1) Cargo TiposProveedor al montar ---
     useEffect(() => {
-        const now = Date.now();
-        if (
-            tiposCache.current &&
-            now - tiposCache.current.ts < CACHE_TTL
-        ) {
-            const data = tiposCache.current.data;
-            setTipos(data);
-            if (!activeTipo && data.length) setActiveTipo(data[0].IdTipoProveedor);
-            return;
-        }
-
+        const start = Date.now();
         axios
             .get<TipoProveedor[]>('https://tobarato-api.alirizvi.dev/api/tipoproveedor')
             .then(({ data }) => {
-                tiposCache.current = { ts: now, data };
+                console.log('[timing] tipoproveedor:', Date.now() - start, 'ms');
                 setTipos(data);
-                if (!activeTipo && data.length) setActiveTipo(data[0].IdTipoProveedor);
+                if (data.length) setActiveTipo(data[0].IdTipoProveedor);
             })
-            .catch(console.error);
+            .catch(err => {
+                console.error(err);
+                console.log('[timing] tipoproveedor ERROR after', Date.now() - start, 'ms');
+            });
     }, []);
 
     // --- 2) Cuando cambia el tipo, cargo Proveedores relativos ---
     useEffect(() => {
         if (activeTipo == null) return;
-        const now = Date.now();
-        const cached = provCache.current.get(activeTipo);
-        if (cached && now - cached.ts < CACHE_TTL) {
-            const data = cached.data;
-            setProveedores(data);
-            if (!activeProveedor && data.length) setActiveProveedor(data[0].IdProveedor);
-            return;
-        }
-
+        const start = Date.now();
         axios
             .get<Proveedor[]>('https://tobarato-api.alirizvi.dev/api/proveedor')
             .then(({ data }) => {
+                console.log('[timing] proveedor list:', Date.now() - start, 'ms');
                 const filtrados = data.filter(p => p.IdTipoProveedor === activeTipo);
-                provCache.current.set(activeTipo, { ts: now, data: filtrados });
                 setProveedores(filtrados);
-                if (!activeProveedor && filtrados.length) setActiveProveedor(filtrados[0].IdProveedor);
+                if (filtrados.length) setActiveProveedor(filtrados[0].IdProveedor);
             })
-            .catch(console.error);
+            .catch(err => {
+                console.error(err);
+                console.log('[timing] proveedor list ERROR after', Date.now() - start, 'ms');
+            });
     }, [activeTipo]);
 
     // --- 3) Cuando cambia el proveedor, cargo Productos de ese proveedor ---
     useEffect(() => {
         if (activeProveedor == null) return;
-        const now = Date.now();
-        const cached = prodCache.current.get(activeProveedor);
-        if (cached && now - cached.ts < CACHE_TTL) {
-            setProductos(cached.data);
-            return;
-        }
-
+        const startRels = Date.now();
         axios
             .get<RelProductoProveedor[]>('https://tobarato-api.alirizvi.dev/api/productoproveedor')
             .then(({ data }) => {
+                console.log('[timing] productoproveedor:', Date.now() - startRels, 'ms');
                 const rels = data.filter(r => r.IdProveedor === activeProveedor);
-                return Promise.all(
-                    rels.map(r =>
-                        axios
-                            .get<Producto>(`https://tobarato-api.alirizvi.dev/api/producto/${r.IdProducto}`)
-                            .then(res => ({
+                const fetches = rels.map(r => {
+                    const startProd = Date.now();
+                    return axios
+                        .get<Producto>(`https://tobarato-api.alirizvi.dev/api/producto/${r.IdProducto}`)
+                        .then(res => {
+                            console.log(
+                                `[timing] producto/${r.IdProducto}:`,
+                                Date.now() - startProd,
+                                'ms'
+                            );
+                            return {
                                 ...res.data,
                                 Precio: r.Precio,
                                 PrecioOferta: r.PrecioOferta,
-                            }))
-                    )
-                );
+                            } as Producto;
+                        })
+                        .catch(err => {
+                            console.error(err);
+                            console.log(
+                                `[timing] producto/${r.IdProducto} ERROR after`,
+                                Date.now() - startProd,
+                                'ms'
+                            );
+                            throw err;
+                        });
+                });
+                return Promise.all(fetches);
             })
             .then(fulls => {
-                prodCache.current.set(activeProveedor, { ts: now, data: fulls });
                 setProductos(fulls);
             })
             .catch(console.error);
@@ -185,9 +171,14 @@ export default function HomeScreenDynamic() {
                 </Pressable>
             </View>
 
-            {/* NOTIFICACIONES */}
+            {/* OVERLAY DE NOTIFICACIONES */}
             {showNotifications && (
-                <MotiView from={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={styles.overlay}>
+                <MotiView
+                    from={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    style={styles.overlay}
+                >
                     <MotiView
                         from={{ translateY: -400 }}
                         animate={{ translateY: 0 }}
@@ -224,6 +215,7 @@ export default function HomeScreenDynamic() {
                             onPress={() => setActiveTipo(t.IdTipoProveedor)}
                             style={[
                                 styles.tabItem,
+                                { width: screenWidth / (tipos.length || 1) },
                                 activeTipo === t.IdTipoProveedor && styles.tabActive,
                             ]}
                         >
@@ -240,7 +232,7 @@ export default function HomeScreenDynamic() {
                 </ScrollView>
             </View>
 
-            {/* BOTONES DE PROVEEDORES */}
+            {/* BOTONES DE PROVEEDORES (solo logo) */}
             <View style={styles.providerRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {proveedores.map(p => (
@@ -252,15 +244,7 @@ export default function HomeScreenDynamic() {
                                 activeProveedor === p.IdProveedor && styles.providerBtnActive,
                             ]}
                         >
-                            <Image source={{ uri: p.UrlLogo }} style={styles.providerLogoSmall} />
-                            <Text
-                                style={[
-                                    styles.providerText,
-                                    activeProveedor === p.IdProveedor && styles.providerTextActive,
-                                ]}
-                            >
-                                {p.Nombre}
-                            </Text>
+                            <Image source={{ uri: p.UrlLogo }} style={styles.providerLogo} />
                         </Pressable>
                     ))}
                 </ScrollView>
@@ -281,7 +265,7 @@ export default function HomeScreenDynamic() {
     );
 }
 
-// --- PRODUCT CARD Y ESTILOS (sin cambios) ---
+// --- CARD DE PRODUCTO ---
 function ProductCard({
     item,
     width,
@@ -312,6 +296,7 @@ function ProductCard({
     );
 }
 
+// --- ESTILOS ---
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FF' },
     header: {
@@ -387,36 +372,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         paddingVertical: 8,
-        paddingHorizontal: 16,
     },
     tabActive: { borderBottomWidth: 3, borderBottomColor: '#F3732A' },
     tabText: { fontSize: 14, color: '#555' },
-    tabTextActive: {
-        color: '#F3732A',
-        fontWeight: '700',
-    },
+    tabTextActive: { color: '#F3732A', fontWeight: '700' },
 
     providerRow: { paddingVertical: 12, paddingLeft: 16 },
     providerBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
-        paddingVertical: 6,
-        paddingHorizontal: 14,
-        borderRadius: 20,
         marginRight: 12,
-        elevation: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    providerBtnActive: { backgroundColor: '#F3732A', elevation: 4 },
-    providerLogoSmall: {
-        width: 20,
-        height: 20,
-        marginRight: 6,
+    providerBtnActive: {
+        borderWidth: 2,
+        borderColor: '#F3732A',
+        borderRadius: 50,
     },
-    providerText: { fontSize: 14, color: '#555' },
-    providerTextActive: {
-        color: '#FFF',
-        fontWeight: '700',
+    providerLogo: {
+        width: 40,
+        height: 40,
+        resizeMode: 'contain',
     },
 
     card: {
