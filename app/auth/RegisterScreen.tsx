@@ -1,5 +1,5 @@
 // app/auth/RegisterScreen.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
     SafeAreaView,
     View,
@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { MotiView } from "moti";
+import axios from "axios";
 import CustomButton from "@/components/shared/CustomButton";
 import peso from '../../assets/images/peso_dominicano.jpg';
 import { Ionicons } from '@expo/vector-icons';
@@ -34,6 +35,10 @@ export default function RegisterScreen() {
     const [password, setPassword] = useState("");
     const [passwordVisible, setPasswordVisible] = useState(false);
 
+    // loading + error OTP
+    const [sendingOtp, setSendingOtp] = useState(false);
+    const [otpError, setOtpError] = useState("");
+
     // validaciones
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const isEmailValid = emailRegex.test(email);
@@ -44,38 +49,62 @@ export default function RegisterScreen() {
         isEmailValid &&
         password.length >= 6;
 
-    const handleRegister = () => {
-        // aquí podrías guardar en estado global o params para luego OTP
-        router.push({
-            pathname: "/auth/Otp",
-            params: {
-                data: encodeURIComponent(
-                    JSON.stringify({ firstName, lastName, username, email, password })
-                ),
-            },
-        });
+    const handleRegister = async () => {
+        if (!canSubmit) return;
+        setOtpError("");
+        setSendingOtp(true);
+
+        try {
+            // 1) Solicitar OTP
+            await axios.post(
+                `https://tobarato-api.alirizvi.dev/api/solicitar-otp?email=${encodeURIComponent(
+                    email
+                )}`
+            );
+            // 2) Navegar a pantalla de OTP, pasando los datos del usuario
+            router.push({
+                pathname: "/auth/Otp",
+                params: {
+                    data: encodeURIComponent(
+                        JSON.stringify({ firstName, lastName, username, email, password })
+                    ),
+                },
+            });
+        } catch (err) {
+            console.error(err);
+            setOtpError("No se pudo enviar el OTP. Por favor, inténtalo de nuevo.");
+        } finally {
+            setSendingOtp(false);
+        }
     };
 
     return (
-        <SafeAreaView style={[
-            styles.container,
-            { backgroundColor: colorScheme === 'dark' ? '#0a0a0a' : '#F8F9FF' }
-        ]}>
+        <SafeAreaView
+            style={[
+                styles.container,
+                { backgroundColor: colorScheme === 'dark' ? '#0a0a0a' : '#F8F9FF' }
+            ]}
+        >
             <ScrollView keyboardShouldPersistTaps="handled">
                 <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <View style={{ flex: 1 }}>
                         {/* Fondo con logo */}
-                        <ImageBackground source={peso} resizeMode="stretch" style={globalStyles.pesosBacground}>
-                            <View style={{
-                                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                                backgroundColor: 'rgba(16, 55, 92, 0.61)'
-                            }} />
+                        <ImageBackground
+                            source={peso}
+                            resizeMode="stretch"
+                            style={globalStyles.pesosBacground}
+                        >
+                            <View style={styles.overlay} />
 
-                            <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 20, paddingTop: 40 }}>
-                                <Image source={require('../../assets/icons/logo.png')} resizeMode="contain" style={{ width: 70, height: 105, marginRight: 10 }} />
+                            <View style={styles.logoRow}>
+                                <Image
+                                    source={require('../../assets/icons/logo.png')}
+                                    resizeMode="contain"
+                                    style={styles.logo}
+                                />
                                 <View>
-                                    <Text style={{ marginBottom: -10, fontSize: 47, color: "#fff", fontFamily: "Lexend-Medium" }}>To'</Text>
-                                    <Text style={{ fontSize: 47, color: "#fff", fontWeight: "bold", fontFamily: "Lexend-Medium" }}>Barato</Text>
+                                    <Text style={styles.logoText}>To'</Text>
+                                    <Text style={styles.logoTextBold}>Barato</Text>
                                 </View>
                             </View>
                         </ImageBackground>
@@ -90,9 +119,7 @@ export default function RegisterScreen() {
                                 transition={{ type: 'timing', duration: 400 }}
                                 style={styles.form}
                             >
-                                <Text style={styles.title}>
-                                    Completa tus datos
-                                </Text>
+                                <Text style={styles.title}>Completa tus datos</Text>
 
                                 {/* Nombre */}
                                 <Text style={styles.label}>Nombre</Text>
@@ -140,9 +167,7 @@ export default function RegisterScreen() {
                                     autoCapitalize="none"
                                 />
                                 {(!isEmailValid && email.length > 0) && (
-                                    <Text style={styles.errorText}>
-                                        Formato de correo inválido
-                                    </Text>
+                                    <Text style={styles.errorText}>Formato de correo inválido</Text>
                                 )}
 
                                 {/* Contraseña */}
@@ -168,35 +193,57 @@ export default function RegisterScreen() {
                                     </TouchableOpacity>
                                 </View>
 
+                                {/* Error OTP */}
+                                {otpError.length > 0 && (
+                                    <Text style={styles.errorText}>{otpError}</Text>
+                                )}
+
                                 {/* Botón Registrarse */}
                                 <CustomButton
                                     color="primary"
                                     textFont="medium"
                                     onPress={handleRegister}
-                                    disabled={!canSubmit}
+                                    disabled={!canSubmit || sendingOtp}
                                 >
-                                    Registrarse
+                                    {sendingOtp ? 'Enviando OTP...' : 'Registrarse'}
                                 </CustomButton>
+
                                 {/* Línea divisoria */}
-                                <View style={{ alignItems: "center", marginBottom: 20, position: "relative" }}>
-                                    <View style={{ position: "absolute", height: 1, backgroundColor: "#B5C1CC", left: 0, right: 0, top: 12 }} />
-                                    <Text style={{ backgroundColor: "#F8F9FF", paddingHorizontal: 10, color: "#33618D", fontWeight: "bold" }}>o</Text>
+                                <View style={styles.orLine}>
+                                    <View style={styles.orSeparator} />
+                                    <Text style={styles.orText}>o</Text>
                                 </View>
 
                                 {/* Google / Apple */}
-                                <CustomButton color="white" textFont="medium" textColor="neutral" variant="withIcon" icon="logo-google" onPress={() => router.push('../tabs/home')}>
+                                <CustomButton
+                                    color="white"
+                                    textFont="medium"
+                                    textColor="neutral"
+                                    variant="withIcon"
+                                    icon="logo-google"
+                                    onPress={() => router.push('../tabs/home')}
+                                >
                                     Continuar con Google
                                 </CustomButton>
 
-                                <CustomButton color="white" textFont="medium" textColor="neutral" variant="withIcon" icon="logo-apple" onPress={() => router.push('../tabs/home')}>
+                                <CustomButton
+                                    color="white"
+                                    textFont="medium"
+                                    textColor="neutral"
+                                    variant="withIcon"
+                                    icon="logo-apple"
+                                    onPress={() => router.push('../tabs/home')}
+                                >
                                     Continuar con Apple
                                 </CustomButton>
 
                                 {/* Link a Login */}
-                                <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 10, marginBottom: 40 }}>
+                                <View style={styles.loginLink}>
                                     <Text style={{ color: '#001D35' }}>Ya tengo una cuenta. </Text>
                                     <TouchableOpacity onPress={() => router.push('/auth/IniciarSesion')}>
-                                        <Text style={{ color: '#7F5610', fontWeight: 'bold' }}>Iniciar Sesión</Text>
+                                        <Text style={{ color: '#7F5610', fontWeight: 'bold' }}>
+                                            Iniciar Sesión
+                                        </Text>
                                     </TouchableOpacity>
                                 </View>
                             </MotiView>
@@ -210,10 +257,9 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    background: { height: 240, justifyContent: 'flex-end' },
     overlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(16,55,92,0.61)'
+        backgroundColor: 'rgba(16,55,92,0.61)',
     },
     logoRow: {
         flexDirection: 'row',
@@ -223,10 +269,26 @@ const styles = StyleSheet.create({
         paddingBottom: 16,
     },
     logo: { width: 70, height: 105, marginRight: 10 },
-    logoText: { fontSize: 47, color: '#fff', fontFamily: 'Lexend-Medium', marginBottom: -10 },
-    logoTextBold: { fontSize: 47, color: '#fff', fontWeight: 'bold', fontFamily: 'Lexend-Medium' },
+    logoText: {
+        fontSize: 47,
+        color: '#fff',
+        fontFamily: 'Lexend-Medium',
+        marginBottom: -10,
+    },
+    logoTextBold: {
+        fontSize: 47,
+        color: '#fff',
+        fontWeight: 'bold',
+        fontFamily: 'Lexend-Medium',
+    },
     form: { paddingHorizontal: 24, paddingTop: 16 },
-    title: { fontSize: 30, textAlign: 'center', marginBottom: 24, color: '#101418', fontFamily: 'Lexend-Black' },
+    title: {
+        fontSize: 30,
+        textAlign: 'center',
+        marginBottom: 24,
+        color: '#101418',
+        fontFamily: 'Lexend-Black',
+    },
     label: { fontSize: 12, color: '#001D35', marginBottom: 6 },
     input: {
         backgroundColor: '#fff',
@@ -238,7 +300,12 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     inputError: { borderColor: '#D1170F' },
-    errorText: { color: '#D1170F', marginTop: -12, marginBottom: 12, fontSize: 12 },
+    errorText: {
+        color: '#D1170F',
+        marginTop: -12,
+        marginBottom: 12,
+        fontSize: 12,
+    },
     passwordWrap: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -250,6 +317,29 @@ const styles = StyleSheet.create({
     },
     passwordInput: { flex: 1, paddingHorizontal: 12, paddingVertical: 10 },
     eyeBtn: { paddingHorizontal: 12 },
+    orLine: {
+        alignItems: "center",
+        marginBottom: 20,
+        position: "relative"
+    },
+    orSeparator: {
+        position: "absolute",
+        height: 1,
+        backgroundColor: "#B5C1CC",
+        left: 0,
+        right: 0,
+        top: 12
+    },
+    orText: {
+        backgroundColor: "#F8F9FF",
+        paddingHorizontal: 10,
+        color: "#33618D",
+        fontWeight: "bold"
+    },
+    loginLink: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        marginTop: 10,
+        marginBottom: 40
+    },
 });
-
-

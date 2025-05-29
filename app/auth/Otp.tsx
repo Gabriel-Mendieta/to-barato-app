@@ -16,27 +16,41 @@ import {
 } from "react-native";
 import { MotiView } from "moti";
 import { router, useLocalSearchParams } from "expo-router";
+import axios from "axios";
 import CustomButton from "@/components/shared/CustomButton";
 
 export default function OtpVerificationScreen() {
     const colorScheme = useColorScheme();
+
+    // OTP inputs
     const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""]);
     const inputsRef = useRef<TextInput[]>([]);
-    const [timer, setTimer] = useState(60);
 
-    // 1️⃣ Recupera los datos pasados desde RegisterScreen
+    // timers + loaders + errores
+    const [timer, setTimer] = useState(60);
+    const [verifying, setVerifying] = useState(false);
+    const [verifyError, setVerifyError] = useState("");
+    const [resending, setResending] = useState(false);
+    const [resendError, setResendError] = useState("");
+
+    // 1️⃣ Recupera datos de registro
     const params = useLocalSearchParams<{ data?: string }>();
     const raw = params.data ?? "";
-    const formData = raw
-        ? JSON.parse(decodeURIComponent(raw))
-        : {};
+    const formData: {
+        firstName: string;
+        lastName: string;
+        username: string;
+        email: string;
+        password: string;
+    } = raw ? JSON.parse(decodeURIComponent(raw)) : {
+        firstName: "",
+        lastName: "",
+        username: "",
+        email: "",
+        password: ""
+    };
 
-    // 2️⃣ Loggea los datos al montar la pantalla
-    useEffect(() => {
-        console.log("Registro paso1:", formData);
-    }, []);
-
-    // cuenta atrás
+    // inicia cuenta atrás
     useEffect(() => {
         if (timer > 0) {
             const id = setTimeout(() => setTimer(timer - 1), 1000);
@@ -44,32 +58,62 @@ export default function OtpVerificationScreen() {
         }
     }, [timer]);
 
-    const focusNext = (index: number, value: string) => {
+    // al cambiar un dígito, enfoca el siguiente
+    const focusNext = (index: number, val: string) => {
+        const digit = val.replace(/[^0-9]/g, "").slice(-1);
         const newOtp = [...otp];
-        newOtp[index] = value;
+        newOtp[index] = digit;
         setOtp(newOtp);
-        if (value && index < inputsRef.current.length - 1) {
+        if (digit && index < inputsRef.current.length - 1) {
             inputsRef.current[index + 1].focus();
         }
     };
 
-    const handleVerify = () => {
+    // 2️⃣ Verificar OTP
+    const handleVerify = async () => {
         const code = otp.join("");
-        if (code.length === 6) {
-            // 3️⃣ Envía formData + OTP a Profile-setup
+        if (code.length !== 6) return;
+
+        setVerifyError("");
+        setVerifying(true);
+        try {
+            await axios.post(
+                `https://tobarato-api.alirizvi.dev/api/solicitar-otp?email=${encodeURIComponent(
+                    formData.email
+                )}&codigo=${encodeURIComponent(code)}`
+            );
+            // si OK, vamos a Profile-setup
             router.replace({
                 pathname: "/auth/Profile-setup",
                 params: {
                     data: encodeURIComponent(JSON.stringify(formData)),
-                    otp: code,
                 },
             });
+        } catch (err) {
+            console.error(err);
+            setVerifyError("Código incorrecto o expirado. Intenta de nuevo.");
+        } finally {
+            setVerifying(false);
         }
     };
 
-    const handleResend = () => {
-        // TODO: reenvío real
-        setTimer(60);
+    // 3️⃣ Reenviar OTP
+    const handleResend = async () => {
+        setResendError("");
+        setResending(true);
+        try {
+            await axios.post(
+                `https://tobarato-api.alirizvi.dev/api/solicitar-otp?email=${encodeURIComponent(
+                    formData.email
+                )}`
+            );
+            setTimer(60);
+        } catch (err) {
+            console.error(err);
+            setResendError("No se pudo reenviar. Intenta más tarde.");
+        } finally {
+            setResending(false);
+        }
     };
 
     return (
@@ -112,18 +156,16 @@ export default function OtpVerificationScreen() {
                                     { color: colorScheme === "dark" ? "#ccc" : "#7D747E" },
                                 ]}
                             >
-                                Ingresa el código de 6 dígitos que te enviamos a tu correo.
+                                Ingresa el código de 6 dígitos que te enviamos a {formData.email}
                             </Text>
 
                             <View style={styles.otpContainer}>
-                                {otp.map((digit, idx) => (
+                                {otp.map((d, i) => (
                                     <TextInput
-                                        key={idx}
-                                        ref={(el) => (inputsRef.current[idx] = el!)}
-                                        value={digit}
-                                        onChangeText={(v) =>
-                                            focusNext(idx, v.replace(/[^0-9]/g, ""))
-                                        }
+                                        key={i}
+                                        ref={(el) => (inputsRef.current[i] = el!)}
+                                        value={d}
+                                        onChangeText={(v) => focusNext(i, v)}
                                         keyboardType="number-pad"
                                         maxLength={1}
                                         style={styles.otpInput}
@@ -131,26 +173,42 @@ export default function OtpVerificationScreen() {
                                 ))}
                             </View>
 
+                            {verifyError.length > 0 && (
+                                <Text style={styles.errorText}>{verifyError}</Text>
+                            )}
+
                             <CustomButton
                                 color="primary"
                                 textFont="medium"
                                 onPress={handleVerify}
-                                disabled={otp.some((d) => d === "")}
+                                disabled={otp.some((d) => d === "") || verifying}
                             >
-                                Verificar
+                                {verifying ? "Verificando..." : "Verificar"}
                             </CustomButton>
 
                             <View style={styles.resendRow}>
-                                <Text style={styles.resendText}>Reenviar código en </Text>
-                                <Text style={styles.resendTimer}>{timer}s</Text>
+                                <Text style={styles.resendText}>
+                                    {timer > 0
+                                        ? `Reenviar código en ${timer}s`
+                                        : ""}
+                                </Text>
                             </View>
+
                             {timer === 0 && (
-                                <TouchableOpacity
-                                    onPress={handleResend}
-                                    style={styles.resendBtn}
-                                >
-                                    <Text style={styles.resendBtnText}>Reenviar código</Text>
-                                </TouchableOpacity>
+                                <>
+                                    {resendError.length > 0 && (
+                                        <Text style={styles.errorText}>{resendError}</Text>
+                                    )}
+                                    <TouchableOpacity
+                                        onPress={handleResend}
+                                        disabled={resending}
+                                        style={styles.resendBtn}
+                                    >
+                                        <Text style={styles.resendBtnText}>
+                                            {resending ? "Reenviando..." : "Reenviar código"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </>
                             )}
                         </MotiView>
                     </ScrollView>
@@ -178,7 +236,7 @@ const styles = StyleSheet.create({
     otpContainer: {
         flexDirection: "row",
         justifyContent: "space-between",
-        marginBottom: 25,
+        marginBottom: 15,
     },
     otpInput: {
         width: 45,
@@ -191,13 +249,19 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         fontFamily: "Lexend-Medium",
     },
+    errorText: {
+        color: "#D1170F",
+        textAlign: "center",
+        marginBottom: 12,
+        fontSize: 12,
+    },
     resendRow: {
         flexDirection: "row",
         justifyContent: "center",
-        marginTop: 15,
+        marginTop: 10,
+        marginBottom: 12,
     },
     resendText: { color: "#7D747E" },
-    resendTimer: { color: "#33618D", fontWeight: "bold" },
-    resendBtn: { marginTop: 10, alignItems: "center" },
+    resendBtn: { alignItems: "center" },
     resendBtnText: { color: "#33618D", fontWeight: "bold" },
 });

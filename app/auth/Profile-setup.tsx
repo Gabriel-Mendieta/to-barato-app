@@ -20,6 +20,7 @@ import CustomButton from "@/components/shared/CustomButton";
 import { useSignUp } from "../../src/presentation/hooks/useSignUp";
 import { SignUpRequestDTO } from "../../src/data/dtos/SignUpRequestDTO";
 
+
 export default function ProfileSetupScreen() {
     // Recupera datos del paso anterior
     const params = useLocalSearchParams<{ data?: string; otp?: string }>();
@@ -69,7 +70,7 @@ export default function ProfileSetupScreen() {
             Apellidos: formData.lastName,
             Estado: true,
             UrlPerfil: photoUri,
-            FechaNacimiento: dob.toISOString(),
+            FechaNacimiento: dob.toISOString().split("T")[0], // formato YYYY-MM-DD
         };
         const res = await signUp(payload);
         if (res) {
