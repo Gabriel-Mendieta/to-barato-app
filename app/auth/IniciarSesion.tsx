@@ -33,9 +33,9 @@ export default function IniciarSesion() {
     const [email, setEmail] = useState("");
     const colorScheme = useColorScheme();
 
-    useEffect(() => {
-        verificarBiometria();
-    }, []);
+    // useEffect(() => {
+    //     verificarBiometria();
+    // }, []);
 
     // Si ya existe token, salta login
     useEffect(() => {
