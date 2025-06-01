@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
     SafeAreaView,
     View,
@@ -11,51 +11,180 @@ import {
     StyleSheet,
     Modal,
     Pressable,
-} from 'react-native';
-import { router } from 'expo-router';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import { MotiView } from 'moti';
+    ActivityIndicator,
+    Alert,
+} from "react-native";
+import { router } from "expo-router";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import MaterialIcons from "react-native-vector-icons/MaterialIcons";
+import { MotiView } from "moti";
+import axios from "axios";
+import * as SecureStore from "expo-secure-store";
 
-// Datos de ejemplo
-const profileData = {
-    name: 'Mario Luciano',
-    phone: '809-123-4567',
-    email: 'mario.luciano@gmail.com',
-    imageUrl: 'https://picsum.photos/seed/MarioLuciano/200/200',
+// Opciones del menú de perfil
+const profileOptions = [
+    {
+        id: "1",
+        text: "Editar perfil",
+        icon: "settings-outline",
+        screen: "EditProfile",
+    },
+    {
+        id: "2",
+        text: "Preferencias",
+        icon: "star-outline",
+        screen: "Preferences",
+    },
+    {
+        id: "3",
+        text: "Cerrar Sesión",
+        icon: "log-out-outline",
+        action: "logout",
+    },
+];
+
+// Datos de ejemplo para notificaciones
+const notificationsData = [
+    {
+        id: "n1",
+        title: "Ofertas y Promociones",
+        desc: "El arroz que buscabas está a RD$50 menos en Supermercado X.",
+        time: "Hace 4 horas",
+        icon: "info-outline",
+    },
+    {
+        id: "n2",
+        title: "Recordatorio de Lista de Compras",
+        desc: "No olvides tu lista de compras para hoy.",
+        time: "Hace 1 día",
+        icon: "shopping-cart",
+    },
+    {
+        id: "n3",
+        title: "Actualización de Precios",
+        desc: "El precio de la leche en Farmacia Z ha bajado un 15%. ¡Consulta más ofertas similares en la app!",
+        time: "Hace 12 días",
+        icon: "attach-money",
+    },
+];
+
+// Tipado de la respuesta GET /usuario/{id}
+type UsuarioResponse = {
+    IdTipoUsuario: number;
+    NombreUsuario: string;
+    Correo: string;
+    Telefono: string;
+    Clave: string;
+    Nombres: string;
+    Apellidos: string;
+    Estado: boolean;
+    UrlPerfil: string; // URL de la imagen de perfil
+    FechaNacimiento: string;
+    IdUsuario: number;
+    FechaCreacion: string;
 };
 
-const profileOptions = [
-    { id: '1', text: 'Editar perfil', icon: 'settings-outline', screen: 'EditProfile' },
-    { id: '2', text: 'Preferencias', icon: 'star-outline', screen: 'Preferences' },
-    { id: '3', text: 'Cerrar Sesión', icon: 'log-out-outline', action: 'logout' },
-];
-
-const notificationsData = [
-    { id: 'n1', title: 'Ofertas y Promociones', desc: 'El arroz que buscabas está a RD$50 menos en Supermercado X.', time: 'Hace 4 horas', icon: 'info-outline' },
-    { id: 'n2', title: 'Recordatorio de Lista de Compras', desc: 'No olvides tu lista de compras para hoy.', time: 'Hace 1 día', icon: 'shopping-cart' },
-    { id: 'n3', title: 'Actualización de Precios', desc: 'El precio de la leche en Farmacia Z ha bajado un 15%. ¡Consulta más ofertas similares en la app!', time: 'Hace 12 días', icon: 'attach-money' },
-];
-
-const ProfileScreen: React.FC = () => {
+export default function ProfileScreen() {
     const [showNotifications, setShowNotifications] = useState(false);
 
-    const handleOptionPress = (item: any) => {
-        if (item.action === 'logout') {
-            router.replace('/auth/IniciarSesion');
+    // Estado para los datos del usuario
+    const [userData, setUserData] = useState<UsuarioResponse | null>(null);
+    const [loading, setLoading] = useState<boolean>(true);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                // 1) Leer token y user_id desde SecureStore
+                const token = await SecureStore.getItemAsync("access_token");
+                const userId = await SecureStore.getItemAsync("user_id");
+
+                if (!token || !userId) {
+                    // Si alguno falta, borramos todo y redirigimos a Login
+                    await SecureStore.deleteItemAsync("access_token");
+                    await SecureStore.deleteItemAsync("refresh_token");
+                    await SecureStore.deleteItemAsync("user_id");
+                    delete axios.defaults.headers.common["Authorization"];
+                    router.replace("/auth/IniciarSesion");
+                    return;
+                }
+
+                // 2) Asignar header para llamar al backend
+                axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+                // 3) Hacer GET /usuario/{userId}
+                const res = await axios.get<UsuarioResponse>(
+                    `https://tobarato-api.alirizvi.dev/api/usuario/${userId}`
+                );
+                setUserData(res.data);
+            } catch (err: any) {
+                console.error("[Profile] Error al obtener datos de usuario", err);
+
+                // Si el backend devuelve 401/403, el token ya no es válido → borramos todo y mandamos a Login
+                await SecureStore.deleteItemAsync("access_token");
+                await SecureStore.deleteItemAsync("refresh_token");
+                await SecureStore.deleteItemAsync("user_id");
+                delete axios.defaults.headers.common["Authorization"];
+
+                Alert.alert(
+                    "Sesión expirada",
+                    "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.",
+                    [
+                        {
+                            text: "Ok",
+                            onPress: () => {
+                                router.replace("/auth/IniciarSesion");
+                            },
+                        },
+                    ]
+                );
+                return;
+            } finally {
+                setLoading(false);
+            }
+        })();
+    }, []);
+
+    const handleOptionPress = async (item: any) => {
+        if (item.action === "logout") {
+            // Al cerrar sesión: borramos todo del SecureStore
+            await SecureStore.deleteItemAsync("access_token");
+            await SecureStore.deleteItemAsync("refresh_token");
+            await SecureStore.deleteItemAsync("user_id");
+            delete axios.defaults.headers.common["Authorization"];
+            router.replace("/auth/IniciarSesion");
         } else if (item.screen) {
             router.push(`/settings/${item.screen}`);
         }
     };
 
+    if (loading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <ActivityIndicator size="large" color="#33618D" />
+            </SafeAreaView>
+        );
+    }
+
+    if (!userData) {
+        // Si por alguna razón no se cargó userData (por ejemplo, redirigimos al login),
+        // simplemente retornamos un contenedor vacío.
+        return null;
+    }
+
+    // Nombre completo del usuario
+    const fullName = `${userData.Nombres} ${userData.Apellidos}`;
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
 
-            {/* Header */}
+            {/* HEADER */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
-                    <Image source={require('../../../assets/icons/logo.png')} style={styles.logo} />
+                    <Image
+                        source={require("../../../assets/icons/logo.png")}
+                        style={styles.logo}
+                    />
                     <Text style={styles.headerText}>To' Barato</Text>
                 </View>
                 <TouchableOpacity onPress={() => setShowNotifications(true)}>
@@ -63,7 +192,7 @@ const ProfileScreen: React.FC = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Notifications Modal */}
+            {/* MODAL DE NOTIFICACIONES */}
             <Modal
                 visible={showNotifications}
                 animationType="slide"
@@ -79,10 +208,14 @@ const ProfileScreen: React.FC = () => {
                             </Pressable>
                         </View>
                         <ScrollView>
-                            {notificationsData.map(notif => (
+                            {notificationsData.map((notif) => (
                                 <View key={notif.id} style={styles.notifCard}>
                                     <View style={styles.notifLeft}>
-                                        <MaterialIcons name={notif.icon} size={24} color="#EDCA04" />
+                                        <MaterialIcons
+                                            name={notif.icon as any}
+                                            size={24}
+                                            color="#EDCA04"
+                                        />
                                         <View style={styles.notifTextContainer}>
                                             <Text style={styles.notifTitle}>{notif.title}</Text>
                                             <Text style={styles.notifDesc}>{notif.desc}</Text>
@@ -92,7 +225,10 @@ const ProfileScreen: React.FC = () => {
                                 </View>
                             ))}
                         </ScrollView>
-                        <TouchableOpacity style={styles.closeButton} onPress={() => setShowNotifications(false)}>
+                        <TouchableOpacity
+                            style={styles.closeButton}
+                            onPress={() => setShowNotifications(false)}
+                        >
                             <Text style={styles.closeButtonText}>Cerrar</Text>
                         </TouchableOpacity>
                     </View>
@@ -100,75 +236,162 @@ const ProfileScreen: React.FC = () => {
             </Modal>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Profile Info */}
+                {/* CABECERA CON DATOS DEL PERFIL */}
                 <MotiView
                     from={{ opacity: 0, translateY: 20 }}
                     animate={{ opacity: 1, translateY: 0 }}
-                    transition={{ type: 'timing', duration: 400 }}
+                    transition={{ type: "timing", duration: 400 }}
                     style={styles.profileHeader}
                 >
                     <Text style={styles.title}>Perfil</Text>
-                    <Image source={{ uri: profileData.imageUrl }} style={styles.avatar} />
-                    <Text style={styles.name}>{profileData.name}</Text>
-                    <Text style={styles.contact}>{profileData.phone}</Text>
-                    <Text style={styles.contact}>{profileData.email}</Text>
+
+                    {userData.UrlPerfil ? (
+                        <Image
+                            source={{ uri: userData.UrlPerfil }}
+                            style={styles.avatar}
+                        />
+                    ) : (
+                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                            <Ionicons name="person" size={48} color="#AAA" />
+                        </View>
+                    )}
+
+                    <Text style={styles.name}>{fullName}</Text>
+                    {userData.Telefono ? (
+                        <Text style={styles.contact}>{userData.Telefono}</Text>
+                    ) : null}
+                    <Text style={styles.contact}>{userData.Correo}</Text>
                 </MotiView>
 
-                {/* Options List */}
+                {/* LISTA DE OPCIONES */}
                 <View style={styles.optionsContainer}>
-                    {profileOptions.map(item => (
-                        <TouchableOpacity key={item.id} style={styles.optionItem} onPress={() => handleOptionPress(item)}>
+                    {profileOptions.map((item) => (
+                        <TouchableOpacity
+                            key={item.id}
+                            style={styles.optionItem}
+                            onPress={() => handleOptionPress(item)}
+                        >
                             <View style={styles.optionLeft}>
-                                <Ionicons name={item.icon} size={22} color="#4B5563" />
+                                <Ionicons name={item.icon as any} size={22} color="#4B5563" />
                                 <Text style={styles.optionText}>{item.text}</Text>
                             </View>
-                            <MaterialIcons name="keyboard-arrow-right" size={24} color="#6B7280" />
+                            <MaterialIcons
+                                name="keyboard-arrow-right"
+                                size={24}
+                                color="#6B7280"
+                            />
                         </TouchableOpacity>
                     ))}
                 </View>
             </ScrollView>
         </SafeAreaView>
     );
-};
-
-export default ProfileScreen;
+}
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FF' },
+    container: { flex: 1, backgroundColor: "#F8F9FF" },
+
     header: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        backgroundColor: '#001D35', paddingHorizontal: 16,
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        backgroundColor: "#001D35",
+        paddingHorizontal: 16,
+        paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 16,
         paddingBottom: 12,
     },
-    headerLeft: { flexDirection: 'row', alignItems: 'center' },
+    headerLeft: { flexDirection: "row", alignItems: "center" },
     logo: { width: 32, height: 48, marginRight: 8 },
-    headerText: { color: '#FFF', fontSize: 20, fontWeight: '700' },
+    headerText: { color: "#FFF", fontSize: 20, fontWeight: "700" },
+
     scrollContent: { paddingBottom: 20 },
-    profileHeader: { alignItems: 'center', paddingVertical: 24 },
-    title: { fontSize: 24, fontWeight: 'bold', color: '#101418', marginBottom: 12 },
-    avatar: { width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: '#FFF', marginBottom: 16, backgroundColor: '#eee' },
-    name: { fontSize: 20, fontWeight: '600', color: '#101418' },
-    contact: { fontSize: 14, color: '#6B7280', marginTop: 4 },
+
+    profileHeader: { alignItems: "center", paddingVertical: 24 },
+    title: {
+        fontSize: 24,
+        fontWeight: "bold",
+        color: "#101418",
+        marginBottom: 12,
+    },
+    avatar: {
+        width: 112,
+        height: 112,
+        borderRadius: 56,
+        borderWidth: 4,
+        borderColor: "#FFF",
+        marginBottom: 16,
+        backgroundColor: "#eee",
+    },
+    avatarPlaceholder: {
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    name: { fontSize: 20, fontWeight: "600", color: "#101418" },
+    contact: { fontSize: 14, color: "#6B7280", marginTop: 4 },
+
     optionsContainer: { paddingHorizontal: 16, marginTop: 16 },
     optionItem: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-        backgroundColor: '#FFF', paddingVertical: 14, paddingHorizontal: 16,
-        borderRadius: 8, marginBottom: 12, elevation: 2,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        backgroundColor: "#FFF",
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        marginBottom: 12,
+        elevation: 2,
     },
-    optionLeft: { flexDirection: 'row', alignItems: 'center' },
-    optionText: { fontSize: 16, color: '#101418', marginLeft: 12 },
-    // Modal styles
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { width: '85%', backgroundColor: '#FFF', borderRadius: 12, padding: 20, maxHeight: '70%' },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-    modalTitle: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
-    notifCard: { backgroundColor: '#FFF', borderRadius: 8, padding: 12, marginBottom: 12, elevation: 2 },
-    notifLeft: { flexDirection: 'row', alignItems: 'flex-start' },
+    optionLeft: { flexDirection: "row", alignItems: "center" },
+    optionText: { fontSize: 16, color: "#101418", marginLeft: 12 },
+
+    // Modal notificaciones
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    modalContent: {
+        width: "85%",
+        backgroundColor: "#FFF",
+        borderRadius: 12,
+        padding: 20,
+        maxHeight: "70%",
+    },
+    modalHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 12,
+    },
+    modalTitle: { fontSize: 18, fontWeight: "700", textAlign: "center" },
+    notifCard: {
+        backgroundColor: "#FFF",
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 12,
+        elevation: 2,
+    },
+    notifLeft: { flexDirection: "row", alignItems: "flex-start" },
     notifTextContainer: { flex: 1, marginLeft: 8 },
-    notifTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-    notifDesc: { fontSize: 14, color: '#555' },
-    notifTime: { fontSize: 12, color: '#999', marginTop: 8, textAlign: 'right' },
-    closeButton: { marginTop: 16, alignSelf: 'center', paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#001D35', borderRadius: 8 },
-    closeButtonText: { color: '#FFF', fontWeight: '600' },
+    notifTitle: { fontSize: 16, fontWeight: "600", marginBottom: 4 },
+    notifDesc: { fontSize: 14, color: "#555" },
+    notifTime: { fontSize: 12, color: "#999", marginTop: 8, textAlign: "right" },
+    closeButton: {
+        marginTop: 16,
+        alignSelf: "center",
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        backgroundColor: "#001D35",
+        borderRadius: 8,
+    },
+    closeButtonText: { color: "#FFF", fontWeight: "600" },
+
+    // Contenedor de error (no debería mostrarse porque redirigimos a login)
+    errorContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    errorText: { color: "#D1170F", fontSize: 16 },
 });

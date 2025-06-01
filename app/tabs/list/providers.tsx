@@ -1,5 +1,6 @@
 // app/tabs/list/providers.tsx
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import {
     SafeAreaView,
     View,
@@ -11,132 +12,463 @@ import {
     Platform,
     StyleSheet,
     Linking,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    TextInput,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
+import * as Location from 'expo-location';
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
 
-// Logos estáticos por proveedor
-const PROVIDER_LOGOS: Record<string, any> = {
-    Aprecio: require('../../../assets/icons/providers/aprecio.jpg'),
-    Jumbo: require('../../../assets/icons/providers/jumbo.jpg'),
-    Bravo: require('../../../assets/icons/providers/bravo.png'),
+/**
+ * Ahora `IncomingProduct` refleja exactamente lo que devuelve tu GET /producto.
+ */
+type IncomingProduct = {
+    IdProducto: number;
+    Nombre: string;
+    UrlImagen: string;
+    // (puedes agregar aquí otras propiedades que devuelva /producto, si las necesitas)
 };
 
-type IncomingProduct = {
-    id: string;
-    name: string;
-    imageUrl: string;
-    prices: Record<string, number>;
+type SucursalCercana = {
+    NombreSucursal: string;
+    Latitud: number | string;
+    Longitud: number | string;
+    IdProveedor: number;
+    Precio: number;
+    Distancia: number;
+};
+
+type ProveedorInfo = {
+    IdProveedor: number;
+    Nombre: string;
+    UrlLogo: string;
+};
+
+/**
+ * Tipo para deserializar la respuesta de:
+ *    GET /productos/{idProducto}/proveedores/{idProveedor}
+ */
+type ProductoProveedorResponse = {
+    IdProducto: number;
+    IdProveedor: number;
+    Precio: string; // viene como cadena en el ejemplo
+    PrecioOferta?: string; // (opcional)
+    // ... otros campos que devuelva ese endpoint si los necesitas
 };
 
 export default function SelectProviderScreen() {
-    // 1) Recupera y decodifica el array de productos
+    // 1) Recuperamos los productos seleccionados (JSON) desde params
     const params = useLocalSearchParams<{ items?: string }>();
     const raw = params.items ?? '[]';
-    const products: IncomingProduct[] = JSON.parse(decodeURIComponent(raw));
+    let products: IncomingProduct[] = [];
+    try {
+        // Antes venían objetos con IdProducto, Nombre, UrlImagen, etc.
+        products = JSON.parse(decodeURIComponent(raw));
+    } catch {
+        products = [];
+    }
 
-    // 2) Suma total de precios por proveedor
-    const sums = useMemo(() => {
-        const acc: Record<string, number> = {};
-        products.forEach((p) =>
-            Object.entries(p.prices).forEach(([prov, price]) => {
-                acc[prov] = (acc[prov] || 0) + price;
-            })
-        );
-        return acc;
-    }, [products]);
+    // 2) Estado para ubicación
+    const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+    const [loadingLocation, setLoadingLocation] = useState<boolean>(true);
 
-    // 3) Ordena de más barato a más caro y toma top-3
-    const topProviders = useMemo(() => {
-        return Object.entries(sums)
-            .map(([provider, total]) => ({ provider, total }))
-            .sort((a, b) => a.total - b.total)
-            .slice(0, 3);
-    }, [sums]);
+    // 3) Estado para sucursales cercanas
+    const [sucursalesCercanas, setSucursalesCercanas] = useState<SucursalCercana[]>([]);
+    const [loadingSucursales, setLoadingSucursales] = useState<boolean>(false);
 
-    const [selectedProv, setSelectedProv] = useState<string | null>(null);
+    // 4) Estado para almacenar información de cada proveedor
+    const [proveedoresMap, setProveedoresMap] = useState<Record<number, ProveedorInfo>>({});
 
-    // 4) Abrir mapa según proveedor
-    const openNavigation = (prov: string) => {
-        const coords: Record<string, [number, number]> = {
-            Aprecio: [18.4861, -69.9312],
-            Jumbo: [18.5000, -69.9500],
-            Bravo: [18.4750, -69.8900],
-        };
-        const [lat, lng] = coords[prov];
-        const label = prov;
+    // 5) Estado local para saber qué sucursal (y proveedor) está seleccionado
+    const [selectedSucursal, setSelectedSucursal] = useState<SucursalCercana | null>(null);
+
+    // 6) Estado para mostrar el Modal de ingreso de nombre de lista
+    const [showNameModal, setShowNameModal] = useState<boolean>(false);
+    const [listaName, setListaName] = useState<string>('');
+
+    // 7) Pedir permiso de ubicación y obtener coords
+    useEffect(() => {
+        (async () => {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status === 'granted') {
+                const loc = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.Highest,
+                });
+                setLocation({
+                    latitude: loc.coords.latitude,
+                    longitude: loc.coords.longitude,
+                });
+            } else {
+                Alert.alert('Sin permiso', 'La ubicación es necesaria para buscar sucursales.');
+            }
+            setLoadingLocation(false);
+        })();
+    }, []);
+
+    // 8) Cuando ya tenemos `location`, invocamos POST /sucursal-cercana
+    useEffect(() => {
+        (async () => {
+            if (!location) return;
+            setLoadingSucursales(true);
+
+            try {
+                console.log(
+                    '[Providers] Productos recibidos en params:',
+                    JSON.stringify(products, null, 2)
+                );
+
+                // Aquí tomamos los IdProducto de cada objeto `products`:
+                const ids_arr = products
+                    .map((p) => {
+                        const n = Number(p.IdProducto);
+                        return isNaN(n) ? null : n;
+                    })
+                    .filter((x): x is number => x !== null);
+
+                const body = {
+                    lat: location.latitude,
+                    lng: location.longitude,
+                    ids_productos: ids_arr,
+                };
+
+                console.log(
+                    '[Providers] Request a /sucursal-cercana → body =',
+                    JSON.stringify(body, null, 2)
+                );
+
+                const resp = await axios.post<SucursalCercana[]>(
+                    'https://tobarato-api.alirizvi.dev/api/sucursal-cercana',
+                    body
+                );
+                setSucursalesCercanas(resp.data);
+            } catch (error: any) {
+                console.error('[Providers] Error al cargar sucursales cercanas:', error);
+                if (error.response && error.response.data) {
+                    console.log(
+                        '[Providers] Detalle del 422:',
+                        JSON.stringify(error.response.data, null, 2)
+                    );
+                }
+                Alert.alert('Error', 'No se pudieron obtener las sucursales cercanas.');
+            } finally {
+                setLoadingSucursales(false);
+            }
+        })();
+    }, [location]);
+
+    // 9) Cuando `sucursalesCercanas` cambie, pedimos GET /proveedor/{IdProveedor} para cada uno
+    useEffect(() => {
+        sucursalesCercanas.forEach(async (suc) => {
+            const idP = suc.IdProveedor;
+            if (!proveedoresMap[idP]) {
+                try {
+                    const respProv = await axios.get<ProveedorInfo>(
+                        `https://tobarato-api.alirizvi.dev/api/proveedor/${idP}`
+                    );
+                    setProveedoresMap((prev) => ({
+                        ...prev,
+                        [idP]: respProv.data,
+                    }));
+                } catch (err) {
+                    console.warn(`[Providers] No se pudo cargar proveedor ${idP}:`, err);
+                }
+            }
+        });
+    }, [sucursalesCercanas]);
+
+    // 10) Función para abrir la ruta en mapas nativo
+    const openNavigation = (lat: number, lng: number, label: string) => {
         const url = Platform.select({
-            ios: `maps:0,0?q=${label}@${lat},${lng}`,
+            ios: `maps:0,0?q=${encodeURIComponent(label)}@${lat},${lng}`,
             android: `google.navigation:q=${lat},${lng}`,
         });
-        Linking.openURL(url!);
+        if (url) {
+            Linking.openURL(url);
+        }
     };
+
+    // 11) Guardar lista + listaproducto en el backend
+    const handleGuardarLista = async () => {
+        if (!selectedSucursal) return;
+
+        // 11.1) Verificamos que el proveedor esté cargado
+        const provInfo = proveedoresMap[selectedSucursal.IdProveedor];
+        if (!provInfo) {
+            Alert.alert('Error', 'Aún no se cargó la información del proveedor.');
+            return;
+        }
+
+        // 11.2) Leemos el userId desde SecureStore
+        let userId: number | null = null;
+        try {
+            const storedId = await SecureStore.getItemAsync('user_id');
+            if (storedId) {
+                userId = Number(storedId);
+            }
+        } catch (e) {
+            console.warn('[Providers] No se pudo leer user_id de SecureStore', e);
+        }
+        if (!userId) {
+            Alert.alert('Error', 'No se encontró tu Id de usuario. Vuelve a iniciar sesión.');
+            return;
+        }
+
+        try {
+            // 11.3) POST /lista
+            const payloadLista = {
+                IdUsuario: userId,
+                IdProveedor: selectedSucursal.IdProveedor,
+                Nombre: listaName.trim(),
+                PrecioTotal: selectedSucursal.Precio,
+            };
+
+            console.log(
+                '[Providers] POST /lista → payload =',
+                JSON.stringify(payloadLista, null, 2)
+            );
+            const respLista = await axios.post(
+                'https://tobarato-api.alirizvi.dev/api/lista',
+                payloadLista
+            );
+
+            // Espero que el backend responda con { IdLista: X, ... }
+            const nuevaListaId = respLista.data.IdLista;
+            console.log('[Providers] POST /lista respuesta → IdLista =', nuevaListaId);
+            if (!nuevaListaId) {
+                throw new Error('El servidor no devolvió IdLista');
+            }
+
+            // 11.4) POST /listaproducto por cada producto
+            console.log(
+                '[Providers] Voy a crear listaproducto para estos productos:',
+                JSON.stringify(products, null, 2)
+            );
+
+            for (const prod of products) {
+                console.log('Procesando producto:', prod);
+
+                // ---> Nuevo paso: obtenemos el precio real del producto para este proveedor
+                let precioActual: number = 0;
+                try {
+                    const respPrecio = await axios.get<ProductoProveedorResponse>(
+                        `https://tobarato-api.alirizvi.dev/api/productos/${prod.IdProducto}/proveedores/${selectedSucursal.IdProveedor}`
+                    );
+                    // La respuesta trae `Precio` como string; convertimos a número
+                    precioActual = Number(respPrecio.data.Precio);
+                } catch (errPrecio: any) {
+                    console.warn(
+                        `[Providers] No se pudo obtener precio para producto ${prod.IdProducto} en proveedor ${selectedSucursal.IdProveedor}:`,
+                        errPrecio
+                    );
+                    // Si falla el GET de precio, dejamos precioActual = 0
+                }
+
+                console.log('Precio obtenido:', precioActual);
+
+                if (precioActual <= 0) {
+                    // El backend exige precio > 0, así que si no encontramos un precio válido:
+                    Alert.alert(
+                        'Error',
+                        `No se encontró un precio válido para "${prod.Nombre}" en este proveedor.`
+                    );
+                    // Puedes optar por cancelar todo o saltar este producto; en este ejemplo, cancelamos:
+                    throw new Error(`Precio inválido para producto ${prod.IdProducto}`);
+                }
+
+                const payloadLP = {
+                    IdLista: nuevaListaId,
+                    IdProducto: prod.IdProducto,
+                    PrecioActual: precioActual,
+                    Cantidad: 1,
+                };
+                console.log(
+                    '[Providers] POST /listaproducto → payload =',
+                    JSON.stringify(payloadLP, null, 2)
+                );
+
+                await axios.post(
+                    'https://tobarato-api.alirizvi.dev/api/listaproducto',
+                    payloadLP
+                );
+            }
+
+            // 11.5) Al terminar, regresamos a “Mis Listas”
+            router.replace('../../tabs/lista');
+        } catch (error: any) {
+            console.error('[Providers] Error guardando lista:', error);
+            if (error.response && error.response.data) {
+                console.log(
+                    '[Providers] Detalle del error en guardar lista:',
+                    JSON.stringify(error.response.data, null, 2)
+                );
+            }
+            // Si lanzamos nuestro propio Error con precio inválido, evitamos el Alert genérico
+            if (!(error instanceof Error && error.message.startsWith('Precio inválido'))) {
+                Alert.alert('Error', 'No se pudo guardar la lista. Intenta nuevamente.');
+            }
+        }
+    };
+
+    // 12) Render
+    if (loadingLocation || loadingSucursales) {
+        return (
+            <SafeAreaView style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#33618D" />
+                <Text style={{ marginTop: 8 }}>Buscando sucursales…</Text>
+            </SafeAreaView>
+        );
+    }
+
+    if (sucursalesCercanas.length === 0) {
+        return (
+            <SafeAreaView style={styles.loadingContainer}>
+                <Text>No se encontraron sucursales cercanas.</Text>
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
+
+            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.push('../../tabs/list/add')}>
                     <Icon name="chevron-back" size={28} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Elige Proveedor</Text>
+                <Text style={styles.headerTitle}>Elige Proveedor / Sucursal</Text>
                 <View style={{ width: 28 }} />
             </View>
 
+            {/* Listado de sucursales recibidas */}
             <FlatList
-                data={topProviders}
-                keyExtractor={(item) => item.provider}
+                data={sucursalesCercanas}
+                keyExtractor={(item) => item.IdProveedor.toString()}
                 contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
                 renderItem={({ item }) => {
-                    const isActive = item.provider === selectedProv;
+                    const provInfo = proveedoresMap[item.IdProveedor];
+                    const isActive = selectedSucursal?.IdProveedor === item.IdProveedor;
                     return (
                         <TouchableOpacity
                             style={[styles.card, isActive && styles.cardActive]}
-                            onPress={() => setSelectedProv(item.provider)}
+                            onPress={() => setSelectedSucursal(item)}
                         >
-                            <Image
-                                source={PROVIDER_LOGOS[item.provider]}
-                                style={styles.logo}
-                            />
+                            {provInfo ? (
+                                // Aplicamos resizeMode="contain" para que la imagen respete su proporción
+                                <Image
+                                    source={{ uri: provInfo.UrlLogo }}
+                                    style={styles.logo}
+                                    resizeMode="contain"
+                                />
+                            ) : (
+                                <View style={[styles.logo, { backgroundColor: '#eee' }]} />
+                            )}
                             <View style={{ flex: 1, marginLeft: 12 }}>
-                                <Text style={styles.provName}>{item.provider}</Text>
-                                <Text style={styles.provTotal}>
-                                    Total: RD${item.total.toFixed(2)}
-                                </Text>
+                                <Text style={styles.provName}>{provInfo?.Nombre || 'Cargando…'}</Text>
+                                <Text style={styles.sucursalName}>{item.NombreSucursal}</Text>
+                                <Text style={styles.provTotal}>Total: RD${item.Precio.toFixed(2)}</Text>
+                                <Text style={styles.distancia}>{item.Distancia.toFixed(2)} km</Text>
                             </View>
                         </TouchableOpacity>
                     );
                 }}
             />
 
+            {/* Footer con botones */}
             <View style={styles.footer}>
+                {/* “Ir al más cercano” */}
                 <TouchableOpacity
-                    style={[styles.btn, !selectedProv && styles.btnDisabled]}
-                    onPress={() => selectedProv && openNavigation(selectedProv)}
-                    disabled={!selectedProv}
+                    style={[styles.btn, !selectedSucursal && styles.btnDisabled]}
+                    onPress={() => {
+                        if (!selectedSucursal) return;
+                        const lat = Number(selectedSucursal.Latitud);
+                        const lng = Number(selectedSucursal.Longitud);
+                        const label = proveedoresMap[selectedSucursal.IdProveedor]?.Nombre || '';
+                        openNavigation(lat, lng, label);
+                    }}
+                    disabled={!selectedSucursal}
                 >
                     <Text style={styles.btnText}>Ir al más cercano</Text>
                 </TouchableOpacity>
+
+                {/* “Guardar Lista” */}
                 <TouchableOpacity
-                    style={[styles.btnRecipe, !selectedProv && styles.btnDisabled]}
-                    onPress={() => {/* TODO: guardar lista en backend */ }}
-                    disabled={!selectedProv}
+                    style={[styles.btnRecipe, !selectedSucursal && styles.btnDisabled]}
+                    onPress={() => {
+                        if (!selectedSucursal) return;
+                        setListaName(''); // Limpiamos el campo por si quedó algo
+                        setShowNameModal(true); // Mostramos el modal para pedir el nombre
+                    }}
+                    disabled={!selectedSucursal}
                 >
                     <Text style={styles.btnTextDark}>Guardar Lista</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.btnRecipe, !selectedProv && styles.btnDisabled]}
-                    onPress={() => {/* TODO: generar receta */ }}
-                    disabled={!selectedProv}
-                >
-                    <Text style={styles.btnTextDark}>Generar Receta</Text>
-                </TouchableOpacity>
             </View>
+
+            {/* —— Modal para ingresar el nombre de la lista —— */}
+            <Modal
+                visible={showNameModal}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowNameModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContainer}>
+                        <Text style={styles.modalTitle}>Nombre de tu lista</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Escribe un nombre para esta lista de compras:
+                        </Text>
+                        <TextInput
+                            value={listaName}
+                            onChangeText={setListaName}
+                            placeholder="Ej. 'Compras semanales'"
+                            style={styles.modalInput}
+                            autoFocus
+                        />
+                        <View style={styles.modalButtonsRow}>
+                            <TouchableOpacity
+                                style={[styles.modalButton, { backgroundColor: '#DDD' }]}
+                                onPress={() => setShowNameModal(false)}
+                            >
+                                <Text style={[styles.modalButtonText, { color: '#333' }]}>Cancelar</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.modalButton,
+                                    { backgroundColor: '#33618D' },
+                                    listaName.trim().length === 0 && styles.btnDisabled,
+                                ]}
+                                onPress={() => {
+                                    if (listaName.trim().length === 0) {
+                                        Alert.alert('Error', 'El nombre no puede estar vacío.');
+                                        return;
+                                    }
+                                    setShowNameModal(false);
+                                    handleGuardarLista();
+                                }}
+                                disabled={listaName.trim().length === 0}
+                            >
+                                <Text style={[styles.modalButtonText, { color: '#FFF' }]}>Guardar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FF',
+    },
     container: { flex: 1, backgroundColor: '#F8F9FF' },
     header: {
         flexDirection: 'row',
@@ -160,9 +492,19 @@ const styles = StyleSheet.create({
     },
     cardActive: { borderColor: '#F3732A', borderWidth: 2 },
 
-    logo: { width: 48, height: 48, borderRadius: 8 },
+    /**
+     * Ajustamos el contenedor del logo a 100×50
+     * y en la etiqueta <Image /> ponemos resizeMode="contain"
+     * para que se muestre completo, respetando proporciones.
+     */
+    logo: {
+        width: 100,
+        height: 50,
+    },
     provName: { fontSize: 18, fontWeight: '600' },
+    sucursalName: { fontSize: 14, color: '#555', marginTop: 2 },
     provTotal: { fontSize: 16, color: '#555', marginTop: 4 },
+    distancia: { fontSize: 12, color: '#999', marginTop: 2 },
 
     footer: {
         position: 'absolute',
@@ -197,4 +539,52 @@ const styles = StyleSheet.create({
 
     btnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
     btnTextDark: { color: '#001D35', fontSize: 16, fontWeight: '600' },
+
+    /* ——— Estilos del Modal ——— */
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalContainer: {
+        width: '85%',
+        backgroundColor: '#FFF',
+        borderRadius: 12,
+        padding: 20,
+        elevation: 5,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 6,
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        color: '#555',
+        marginBottom: 12,
+    },
+    modalInput: {
+        borderWidth: 1,
+        borderColor: '#CCC',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        fontSize: 16,
+        marginBottom: 16,
+    },
+    modalButtonsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+    },
+    modalButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 6,
+        marginLeft: 12,
+    },
+    modalButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+    },
 });

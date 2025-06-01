@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+// app/tabs/list/index.tsx
+
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     SafeAreaView,
     View,
@@ -8,101 +10,257 @@ import {
     StatusBar,
     Platform,
     useWindowDimensions,
+    ActivityIndicator,
+    StyleSheet,
+    RefreshControl,
+    ScrollView,
+    Alert,
 } from 'react-native';
 import { MotiView } from 'moti';
 import { router } from 'expo-router';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
 
-const shoppingListsData = [
-    { id: '1', name: 'Frutas y vegetales', itemCount: 2, icon: 'food-apple-outline' },
-    { id: '2', name: 'Artículos del hogar', itemCount: 7, icon: 'hammer-screwdriver' },
-    { id: '3', name: 'Comida para perro', itemCount: 3, icon: 'dog' },
-];
-
-function ListItem({ item, index }: { item: typeof shoppingListsData[0]; index: number }) {
-    return (
-        <MotiView
-            from={{ opacity: 0, translateY: 20 }}
-            animate={{ opacity: 1, translateY: 0 }}
-            transition={{ delay: index * 100, type: 'timing', duration: 400 }}
-            className="mx-4 mb-4"
-        >
-            <TouchableOpacity
-                onPress={() => {/* navegar a detalle de lista */ }}
-                className="flex-row items-center bg-white rounded-2xl p-4 shadow-lg"
-                activeOpacity={0.8}
-            >
-                <MaterialCommunityIcons name={item.icon} size={28} color="#33618D" />
-                <View className="flex-1 ml-4">
-                    <Text className="text-lg font-lexend-medium text-gray-800">{item.name}</Text>
-                    <Text className="text-sm text-gray-500">{item.itemCount} artículos</Text>
-                </View>
-                <TouchableOpacity onPress={() => {/* opciones: compartir, duplicar, eliminar */ }}
-                    className="p-2 rounded-full active:bg-gray-100">
-                    <MaterialCommunityIcons name="dots-horizontal" size={24} color="#6B7280" />
-                </TouchableOpacity>
-            </TouchableOpacity>
-        </MotiView>
-    );
-}
+type Lista = {
+    IdUsuario: number;
+    IdProveedor: number;
+    Nombre: string;
+    PrecioTotal: string;
+    IdLista: number;
+    FechaCreacion: string;
+};
 
 export default function ShoppingListScreen() {
     const { height } = useWindowDimensions();
+    const [listas, setListas] = useState<Lista[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [refreshing, setRefreshing] = useState<boolean>(false);
 
-    return (
-        <SafeAreaView className="flex-1 bg-gray-100">
-            <StatusBar
-                barStyle="light-content"
-                backgroundColor="#001D35"
-            />
+    // itemCounts[IdLista] = número de productos que tiene esa lista
+    const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
 
-            {/* Header igual al Home */}
-            <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#001D35',
-                paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 38,
-                paddingBottom: 12,
-                paddingHorizontal: 16,
-            }}>
-                <Text style={{
-                    color: '#FFFFFF',
-                    fontSize: 20,
-                    fontWeight: '500',
-                    bottom: 12,
-                }}>
-                    Lista de Compras
-                </Text>
+    /**
+     * fetchUserLists:
+     *   1) Lee token y user_id desde SecureStore
+     *   2) Pide GET /lista
+     *   3) Filtra solo las listas del usuario actual
+     *   4) Para cada lista obtenida, llama a /Productosdelista/{IdLista} y guarda la cantidad
+     */
+    const fetchUserLists = useCallback(async () => {
+        try {
+            const token = await SecureStore.getItemAsync('access_token');
+            const userIdStr = await SecureStore.getItemAsync('user_id');
 
-                {/* Botón “+” fijo a la derecha */}
+            if (!token || !userIdStr) {
+                // Si falta token o user_id, redirigimos a login
+                router.replace('/auth/IniciarSesion');
+                return;
+            }
+
+            // Fijamos el header de autorización para todas las peticiones axios
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+            // 1) GET /lista
+            const resp = await axios.get<Lista[]>('https://tobarato-api.alirizvi.dev/api/lista');
+            const todasLasListas = resp.data;
+
+            // 2) Filtrar solo las listas que pertenecen a este usuario
+            const userIdNum = parseInt(userIdStr, 10);
+            const propias = todasLasListas.filter((l) => l.IdUsuario === userIdNum);
+            setListas(propias);
+
+            // 3) Para cada lista, obtener la cantidad de productos con /Productosdelista/{IdLista}
+            const counts: Record<number, number> = {};
+            await Promise.all(
+                propias.map(async (lista) => {
+                    try {
+                        const respProd = await axios.get<Array<{ IdLista: number; IdProducto: number }>>(
+                            `https://tobarato-api.alirizvi.dev/api/productosdelista/${lista.IdLista}`
+                        );
+                        counts[lista.IdLista] = respProd.data.length;
+                    } catch (err) {
+                        console.warn(
+                            `[ShoppingList] No se pudo obtener productos de lista ${lista.IdLista}:`,
+                            err
+                        );
+                        counts[lista.IdLista] = 0;
+                    }
+                })
+            );
+            setItemCounts(counts);
+        } catch (error) {
+            console.error('[ShoppingList] Error al obtener listas:', error);
+            // En caso de error (token expirado, etc.) borramos credenciales y llevamos a login
+            await SecureStore.deleteItemAsync('access_token');
+            await SecureStore.deleteItemAsync('refresh_token');
+            await SecureStore.deleteItemAsync('user_id');
+            delete axios.defaults.headers.common['Authorization'];
+            router.replace('/auth/IniciarSesion');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    // 1) Al montar, ejecuta fetchUserLists
+    useEffect(() => {
+        fetchUserLists();
+    }, [fetchUserLists]);
+
+    // 2) Pull‐to‐refresh
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchUserLists();
+    }, [fetchUserLists]);
+
+    // 3) Handler para eliminar una lista dada su id
+    const handleDeleteList = async (listaId: number) => {
+        Alert.alert(
+            'Eliminar lista',
+            '¿Estás seguro de que deseas eliminar esta lista?',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Eliminar',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            // DELETE /lista/{id}
+                            await axios.delete(`https://tobarato-api.alirizvi.dev/api/lista/${listaId}`);
+                            // Una vez eliminado, volvemos a recargar las listas
+                            fetchUserLists();
+                        } catch (error) {
+                            console.error('[ShoppingList] Error al eliminar lista:', error);
+                            Alert.alert('Error', 'No se pudo eliminar la lista. Intenta nuevamente.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    // 4) Componente para cada fila de FlatList
+    function ListItem({
+        lista,
+        index,
+        count,
+    }: {
+        lista: Lista;
+        index: number;
+        count: number;
+    }) {
+        return (
+            <MotiView
+                from={{ opacity: 0, translateY: 20 }}
+                animate={{ opacity: 1, translateY: 0 }}
+                transition={{ delay: index * 100, type: 'timing', duration: 400 }}
+                style={styles.listItemContainer}
+            >
                 <TouchableOpacity
-                    onPress={() => router.push('../list/add')}
-                    style={{
-                        position: 'absolute',
-                        right: 16,
-                        padding: 4,
-                        marginTop: 4,
+                    onPress={() => {
+                        // Navegar al detalle de la lista
+                        router.push(`../../tabs/list/${lista.IdLista}`);
                     }}
+                    activeOpacity={0.8}
+                    style={styles.listItemButton}
+                >
+                    <MaterialCommunityIcons name="clipboard-list-outline" size={28} color="#33618D" />
+                    <View style={styles.listItemTextContainer}>
+                        <Text style={styles.listItemTitle}>{lista.Nombre}</Text>
+                        <Text style={styles.listItemSubtitle}>
+                            {count} artículo{count === 1 ? '' : 's'}
+                        </Text>
+                        <Text style={styles.listItemPrice}>RD${parseFloat(lista.PrecioTotal).toFixed(2)}</Text>
+                    </View>
+
+                    {/* Botón de “tres puntos” que despliega la opción Eliminar */}
+                    <TouchableOpacity
+                        onPress={() => handleDeleteList(lista.IdLista)}
+                        style={styles.listItemDotButton}
+                    >
+                        <MaterialCommunityIcons name="dots-horizontal" size={24} color="#6B7280" />
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </MotiView>
+        );
+    }
+
+    // 5) Mostrar spinner inicial mientras loading = true y no estamos refrescando
+    if (loading && !refreshing) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <ActivityIndicator size="large" color="#33618D" />
+            </SafeAreaView>
+        );
+    }
+
+    // 6) Si no hay listas, mostrar mensaje con pull‐to‐refresh
+    if (!listas.length) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="light-content" backgroundColor="#001D35" />
+
+                {/* Header */}
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>Lista de Compras</Text>
+                </View>
+
+                <ScrollView
+                    style={{ flex: 1, backgroundColor: '#F8F9FF' }}
+                    contentContainerStyle={[styles.noListsContainer, { minHeight: height }]}
+                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                >
+                    <Text style={styles.noListsText}>Aún no ha creado una lista.</Text>
+                </ScrollView>
+
+                {/* Botón flotante para crear nueva lista */}
+                <TouchableOpacity
+                    onPress={() => router.push('../../tabs/list/add')}
+                    style={[styles.floatingButton, styles.floatingButtonShadow]}
+                    activeOpacity={0.8}
+                >
+                    <Ionicons name="add" size={28} color="#fff" />
+                </TouchableOpacity>
+            </SafeAreaView>
+        );
+    }
+
+    // 7) Si hay listas, renderizamos el FlatList con pull‐to‐refresh habilitado
+    return (
+        <SafeAreaView style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
+
+            {/* Header */}
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>Lista de Compras</Text>
+                <TouchableOpacity
+                    onPress={() => router.push('../../tabs/list/add')}
+                    style={styles.addButtonHeader}
                 >
                     <Ionicons name="add-circle-outline" size={34} color="#FFFFFF" />
                 </TouchableOpacity>
             </View>
 
-            {/* Lista animada */}
             <FlatList
-                data={shoppingListsData}
-                renderItem={({ item, index }) => <ListItem item={item} index={index} />}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingTop: 16, paddingBottom: height * 0.15 }}
+                data={listas}
+                renderItem={({ item, index }) => (
+                    <ListItem lista={item} index={index} count={itemCounts[item.IdLista] || 0} />
+                )}
+                keyExtractor={(item) => item.IdLista.toString()}
+                contentContainerStyle={{
+                    paddingTop: 16,
+                    paddingBottom: height * 0.15,
+                }}
                 showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             />
 
-            {/* Botón flotante permanente */}
+            {/* Botón flotante para crear nueva lista */}
             <TouchableOpacity
                 onPress={() => router.push('../../tabs/list/add')}
-                className="absolute bottom-8 right-6 bg-secondary rounded-full p-4 shadow-2xl"
+                style={[styles.floatingButton, styles.floatingButtonShadow]}
                 activeOpacity={0.8}
             >
                 <Ionicons name="add" size={28} color="#fff" />
@@ -110,3 +268,90 @@ export default function ShoppingListScreen() {
         </SafeAreaView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#F8F9FF',
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#001D35',
+        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 38,
+        paddingBottom: 12,
+        paddingHorizontal: 16,
+    },
+    headerTitle: {
+        color: '#FFFFFF',
+        fontSize: 20,
+        fontWeight: '500',
+        bottom: 12,
+    },
+    addButtonHeader: {
+        position: 'absolute',
+        right: 16,
+        padding: 4,
+        marginTop: 4,
+    },
+    noListsContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    noListsText: {
+        fontSize: 16,
+        color: '#555',
+    },
+    listItemContainer: {
+        marginHorizontal: 16,
+        marginBottom: 16,
+    },
+    listItemButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        padding: 16,
+        elevation: 4,
+    },
+    listItemTextContainer: {
+        flex: 1,
+        marginLeft: 16,
+    },
+    listItemTitle: {
+        fontSize: 18,
+        fontWeight: '500',
+        color: '#101418',
+    },
+    listItemSubtitle: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginTop: 4,
+    },
+    listItemPrice: {
+        fontSize: 14,
+        color: '#333',
+        marginTop: 2,
+        fontWeight: '500',
+    },
+    listItemDotButton: {
+        padding: 8,
+        borderRadius: 20,
+    },
+    floatingButton: {
+        position: 'absolute',
+        bottom: 24,
+        right: 24,
+        backgroundColor: '#F3732A',
+        borderRadius: 28,
+        padding: 16,
+    },
+    floatingButtonShadow: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4.65,
+        elevation: 8,
+    },
+});

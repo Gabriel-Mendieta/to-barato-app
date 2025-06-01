@@ -1,4 +1,3 @@
-// app/auth/IniciarSesion.tsx
 import React, { useState, useEffect } from "react";
 import {
     SafeAreaView,
@@ -32,21 +31,49 @@ export default function IniciarSesion() {
     const [password, setPassword] = useState("");
     const [email, setEmail] = useState("");
     const colorScheme = useColorScheme();
+    const [checkingToken, setCheckingToken] = useState(true);
 
-    // useEffect(() => {
-    //     verificarBiometria();
-    // }, []);
-
-    // Si ya existe token, salta login
+    //
+    // 1) AL MONTAR, MIRAMOS SI HAY TOKEN EN SECURESTORE. 
+    //    Si lo hay, hacemos un “ping” rápido al backend para validar
+    //    que siga siendo válido. Si es válido, redirigimos a Home. 
+    //    Si no es válido (401/403), lo borramos y mostramos el formulario normalmente.
+    //
     useEffect(() => {
         (async () => {
-            const token = await SecureStore.getItemAsync("access_token");
-            if (token) {
-                axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+            const storedToken = await SecureStore.getItemAsync("access_token");
+            const storedUserId = await SecureStore.getItemAsync("user_id");
+
+            if (!storedToken || !storedUserId) {
+                // No hay token ni user_id → mostrar formulario de Login
+                setCheckingToken(false);
+                return;
+            }
+
+            // Fijamos header temporalmente para validar token
+            axios.defaults.headers.common["Authorization"] = `Bearer ${storedToken}`;
+
+            try {
+                // LLAMADA “PING” PARA VALIDAR TOKEN. Asumimos que GET /usuario/{id}
+                // devolverá 200 si el token es correcto, o 401/403 si expiró/invalidó.
+                await axios.get(`https://tobarato-api.alirizvi.dev/api/usuario/${storedUserId}`);
+                // Si llegamos aquí, el token es VÁLIDO: redirigimos a Home.
                 router.replace("/tabs/home");
+            } catch (e) {
+                // Si da error (401, 403, cualquier otro), borramos todo y mostramos el formulario
+                await SecureStore.deleteItemAsync("access_token");
+                await SecureStore.deleteItemAsync("refresh_token");
+                await SecureStore.deleteItemAsync("user_id");
+                delete axios.defaults.headers.common["Authorization"];
+                setCheckingToken(false);
             }
         })();
     }, []);
+
+    // La pantalla no se mostrará hasta que termine de “chequear” el token
+    if (checkingToken) {
+        return null; // O un spinner si lo prefieres
+    }
 
     const verificarBiometria = async () => {
         const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -59,7 +86,7 @@ export default function IniciarSesion() {
             });
 
             if (resultado.success) {
-                router.push("/tabs/home");
+                router.replace("/tabs/home");
             } else {
                 Alert.alert("Autenticación fallida", "Puedes usar tu contraseña.");
             }
@@ -72,26 +99,37 @@ export default function IniciarSesion() {
         }
 
         try {
-            const resp = await axios.post(
-                "https://tobarato-api.alirizvi.dev/api/login",
-                {
-                    Correo: email,
-                    Clave: password,
-                }
-            );
+            const resp = await axios.post<{
+                message: string;
+                tokens: {
+                    access_token: string;
+                    refresh_token: string;
+                    token_type: string;
+                };
+                usuario: {
+                    id: number;
+                    email: string;
+                    nombre: string;
+                };
+            }>("https://tobarato-api.alirizvi.dev/api/login", {
+                Correo: email,
+                Clave: password,
+            });
 
             const {
                 tokens: { access_token, refresh_token, token_type },
+                usuario,
             } = resp.data;
 
-            // Guardar tokens de forma segura
+            // 1) Guardar tokens y user_id de forma segura
             await SecureStore.setItemAsync("access_token", access_token);
             await SecureStore.setItemAsync("refresh_token", refresh_token);
+            await SecureStore.setItemAsync("user_id", usuario.id.toString());
 
-            // Fijar header para futuras peticiones
+            // 2) Fijar header global de axios para futuras peticiones
             axios.defaults.headers.common["Authorization"] = `${token_type} ${access_token}`;
 
-            // Navegar a Home
+            // 3) Redirigir a Home
             router.replace("/tabs/home");
         } catch (err: any) {
             console.error(err);
