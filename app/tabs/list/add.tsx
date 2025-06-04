@@ -1,6 +1,6 @@
 // app/tabs/list/add.tsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     SafeAreaView,
     View,
@@ -14,12 +14,14 @@ import {
     StyleSheet,
     ActivityIndicator,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { MotiView } from 'moti';
 import axios from 'axios';
 
+////////////////////////////////////////////////////////////////////////////////
 // Este tipo coincide con lo que devuelve GET /producto
+////////////////////////////////////////////////////////////////////////////////
 type ProductoAPI = {
     IdProducto: number;
     Nombre: string;
@@ -27,8 +29,10 @@ type ProductoAPI = {
     // …otras propiedades que devuelva /producto, si existen
 };
 
-// Este será el formato que “providers.tsx” espera recibir: 
+////////////////////////////////////////////////////////////////////////////////
+// Este será el formato que “providers.tsx” espera recibir:
 // { IdProducto, Nombre, UrlImagen }
+////////////////////////////////////////////////////////////////////////////////
 type OutgoingProduct = {
     IdProducto: number;
     Nombre: string;
@@ -36,15 +40,22 @@ type OutgoingProduct = {
 };
 
 export default function AddToListScreen() {
-    // 1) Obtenemos todos los productos desde GET /producto
+    ////////////////////////////////////////////////////////////////////////////
+    // 1) Estado para la lista completa de productos (GET /producto)
+    ////////////////////////////////////////////////////////////////////////////
     const [allProducts, setAllProducts] = useState<ProductoAPI[]>([]);
     const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
     const [errorProducts, setErrorProducts] = useState<string | null>(null);
 
-    // 2) Estados de búsqueda y de selección
+    ////////////////////////////////////////////////////////////////////////////
+    // 2) Estados de búsqueda + selección
+    ////////////////////////////////////////////////////////////////////////////
     const [query, setQuery] = useState<string>('');
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
+    ////////////////////////////////////////////////////////////////////////////
+    // 3) useEffect para cargar todos los productos al montar
+    ////////////////////////////////////////////////////////////////////////////
     useEffect(() => {
         (async () => {
             try {
@@ -61,6 +72,24 @@ export default function AddToListScreen() {
         })();
     }, []);
 
+    ////////////////////////////////////////////////////////////////////////////
+    // 4) useFocusEffect: cada vez que esta pantalla reciba foco, reiniciamos
+    //    el query y la selección para que empiece “en blanco”.
+    ////////////////////////////////////////////////////////////////////////////
+    useFocusEffect(
+        useCallback(() => {
+            // Limpiar búsqueda y selección
+            setQuery('');
+            setSelectedIds(new Set());
+            // (Opcional) Si quieres desplazar la FlatList al tope, podrías usar un ref aquí.
+            // Al devolver null, no hacemos limpieza al perder foco.
+            return () => { };
+        }, [])
+    );
+
+    ////////////////////////////////////////////////////////////////////////////
+    // 5) Función toggle para agregar/quitar Id de producto
+    ////////////////////////////////////////////////////////////////////////////
     const toggle = (id: number) => {
         setSelectedIds((prev) => {
             const copy = new Set(prev);
@@ -70,7 +99,9 @@ export default function AddToListScreen() {
         });
     };
 
-    // 3) Filtrado en tiempo real: solo filtramos cuando el usuario escribe algo
+    ////////////////////////////////////////////////////////////////////////////
+    // 6) Filtrado en tiempo real: solo mostramos productos si el query no está vacío
+    ////////////////////////////////////////////////////////////////////////////
     const filtered = useMemo(() => {
         if (query.trim().length === 0) {
             return [];
@@ -80,13 +111,18 @@ export default function AddToListScreen() {
         );
     }, [query, allProducts]);
 
-    // 4) Arreglo de productos completos que fueron seleccionados
+    ////////////////////////////////////////////////////////////////////////////
+    // 7) Array de productos completos que fueron seleccionados
+    ////////////////////////////////////////////////////////////////////////////
     const selectedProducts = useMemo(
         () => allProducts.filter((p) => selectedIds.has(p.IdProducto)),
         [selectedIds, allProducts]
     );
     const count = selectedProducts.length;
 
+    ////////////////////////////////////////////////////////////////////////////
+    // 8) Si estamos cargando productos, mostramos spinner
+    ////////////////////////////////////////////////////////////////////////////
     if (loadingProducts) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
@@ -96,6 +132,9 @@ export default function AddToListScreen() {
         );
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    // 9) Si hubo error al cargar productos, mostrar mensaje de error
+    ////////////////////////////////////////////////////////////////////////////
     if (errorProducts) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
@@ -104,6 +143,9 @@ export default function AddToListScreen() {
         );
     }
 
+    ////////////////////////////////////////////////////////////////////////////
+    // 10) Render de la pantalla
+    ////////////////////////////////////////////////////////////////////////////
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
@@ -174,7 +216,7 @@ export default function AddToListScreen() {
                 style={[styles.continueBtn, !count && styles.btnDisabled]}
                 disabled={!count}
                 onPress={() => {
-                    // 5) Convertimos cada ProductoAPI a la forma que espera providers.tsx
+                    // Convertimos cada ProductoAPI a la forma que espera providers.tsx
                     const outgoing: OutgoingProduct[] = selectedProducts.map((p) => ({
                         IdProducto: p.IdProducto,
                         Nombre: p.Nombre,
@@ -197,6 +239,9 @@ export default function AddToListScreen() {
     );
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// ESTILOS
+////////////////////////////////////////////////////////////////////////////////
 const styles = StyleSheet.create({
     loadingContainer: {
         flex: 1,

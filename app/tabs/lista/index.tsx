@@ -15,13 +15,14 @@ import {
     RefreshControl,
     ScrollView,
     Alert,
+    Image,
 } from 'react-native';
 import { MotiView } from 'moti';
 import { router } from 'expo-router';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 type Lista = {
     IdUsuario: number;
@@ -29,6 +30,16 @@ type Lista = {
     Nombre: string;
     PrecioTotal: string;
     IdLista: number;
+    FechaCreacion: string;
+};
+
+type ProveedorInfo = {
+    IdTipoProveedor: number;
+    Nombre: string;
+    UrlLogo: string;
+    UrlPaginaWeb: string;
+    EnvioDomicilio: boolean;
+    IdProveedor: number;
     FechaCreacion: string;
 };
 
@@ -41,12 +52,16 @@ export default function ShoppingListScreen() {
     // itemCounts[IdLista] = número de productos que tiene esa lista
     const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
 
+    // proveedoresMap[IdProveedor] = datos completos del proveedor (logo, nombre, etc.)
+    const [proveedoresMap, setProveedoresMap] = useState<Record<number, ProveedorInfo>>({});
+
     /**
      * fetchUserLists:
      *   1) Lee token y user_id desde SecureStore
      *   2) Pide GET /lista
      *   3) Filtra solo las listas del usuario actual
      *   4) Para cada lista obtenida, llama a /Productosdelista/{IdLista} y guarda la cantidad
+     *   5) Lee los proveedores de cada lista: GET /proveedor/{IdProveedor}, los guarda en proveedoresMap
      */
     const fetchUserLists = useCallback(async () => {
         try {
@@ -62,7 +77,9 @@ export default function ShoppingListScreen() {
             // Fijamos el header de autorización para todas las peticiones axios
             axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
+            // ==============================
             // 1) GET /lista
+            // ==============================
             const resp = await axios.get<Lista[]>('https://tobarato-api.alirizvi.dev/api/lista');
             const todasLasListas = resp.data;
 
@@ -71,14 +88,17 @@ export default function ShoppingListScreen() {
             const propias = todasLasListas.filter((l) => l.IdUsuario === userIdNum);
             setListas(propias);
 
-            // 3) Para cada lista, obtener la cantidad de productos con /Productosdelista/{IdLista}
+            // ==============================
+            // 3) Para cada lista, obtener la cantidad de productos
+            //    vía GET /productosdelista/{IdLista}
+            // ==============================
             const counts: Record<number, number> = {};
             await Promise.all(
                 propias.map(async (lista) => {
                     try {
-                        const respProd = await axios.get<Array<{ IdLista: number; IdProducto: number }>>(
-                            `https://tobarato-api.alirizvi.dev/api/productosdelista/${lista.IdLista}`
-                        );
+                        const respProd = await axios.get<
+                            Array<{ IdLista: number; IdProducto: number }>
+                        >(`https://tobarato-api.alirizvi.dev/api/productosdelista/${lista.IdLista}`);
                         counts[lista.IdLista] = respProd.data.length;
                     } catch (err) {
                         console.warn(
@@ -90,6 +110,29 @@ export default function ShoppingListScreen() {
                 })
             );
             setItemCounts(counts);
+
+            // ==============================
+            // 4) Para cada lista, obtener datos del proveedor:
+            //    GET /proveedor/{IdProveedor}
+            // ==============================
+            // Construimos un array de IdProveedor únicos (para no pedir dos veces el mismo)
+            const uniqueProveedorIds = Array.from(new Set(propias.map((l) => l.IdProveedor)));
+
+            // Para cada proveedor pendiente en uniqueProveedorIds, solicitamos su info
+            const provMapCopy: Record<number, ProveedorInfo> = {};
+            await Promise.all(
+                uniqueProveedorIds.map(async (provId) => {
+                    try {
+                        const respProv = await axios.get<ProveedorInfo>(
+                            `https://tobarato-api.alirizvi.dev/api/proveedor/${provId}`
+                        );
+                        provMapCopy[provId] = respProv.data;
+                    } catch (err) {
+                        console.warn(`[ShoppingList] No se pudo obtener proveedor ${provId}:`, err);
+                    }
+                })
+            );
+            setProveedoresMap(provMapCopy);
         } catch (error) {
             console.error('[ShoppingList] Error al obtener listas:', error);
             // En caso de error (token expirado, etc.) borramos credenciales y llevamos a login
@@ -117,28 +160,24 @@ export default function ShoppingListScreen() {
 
     // 3) Handler para eliminar una lista dada su id
     const handleDeleteList = async (listaId: number) => {
-        Alert.alert(
-            'Eliminar lista',
-            '¿Estás seguro de que deseas eliminar esta lista?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                    text: 'Eliminar',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            // DELETE /lista/{id}
-                            await axios.delete(`https://tobarato-api.alirizvi.dev/api/lista/${listaId}`);
-                            // Una vez eliminado, volvemos a recargar las listas
-                            fetchUserLists();
-                        } catch (error) {
-                            console.error('[ShoppingList] Error al eliminar lista:', error);
-                            Alert.alert('Error', 'No se pudo eliminar la lista. Intenta nuevamente.');
-                        }
-                    },
+        Alert.alert('Eliminar lista', '¿Estás seguro de que deseas eliminar esta lista?', [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+                text: 'Eliminar',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        // DELETE /lista/{id}
+                        await axios.delete(`https://tobarato-api.alirizvi.dev/api/lista/${listaId}`);
+                        // Una vez eliminado, volvemos a recargar las listas
+                        fetchUserLists();
+                    } catch (error) {
+                        console.error('[ShoppingList] Error al eliminar lista:', error);
+                        Alert.alert('Error', 'No se pudo eliminar la lista. Intenta nuevamente.');
+                    }
                 },
-            ]
-        );
+            },
+        ]);
     };
 
     // 4) Componente para cada fila de FlatList
@@ -151,6 +190,9 @@ export default function ShoppingListScreen() {
         index: number;
         count: number;
     }) {
+        // Obtenemos datos del proveedor para esta lista (puede ser undefined si aún no llegó)
+        const provInfo = proveedoresMap[lista.IdProveedor];
+
         return (
             <MotiView
                 from={{ opacity: 0, translateY: 20 }}
@@ -161,18 +203,30 @@ export default function ShoppingListScreen() {
                 <TouchableOpacity
                     onPress={() => {
                         // Navegar al detalle de la lista
-                        router.push(`../../tabs/list/${lista.IdLista}`);
+                        router.push(`/tabs/list/${lista.IdLista}`);
                     }}
                     activeOpacity={0.8}
                     style={styles.listItemButton}
                 >
-                    <MaterialCommunityIcons name="clipboard-list-outline" size={28} color="#33618D" />
+                    {/* Si tenemos provInfo, mostramos su logo; si no, mostramos el ícono genérico */}
+                    {provInfo ? (
+                        <Image
+                            source={{ uri: provInfo.UrlLogo }}
+                            style={styles.proveedorLogo}
+                            resizeMode="contain"
+                        />
+                    ) : (
+                        <Ionicons name="storefront-outline" size={28} color="#33618D" style={{ marginRight: 12 }} />
+                    )}
+
                     <View style={styles.listItemTextContainer}>
                         <Text style={styles.listItemTitle}>{lista.Nombre}</Text>
                         <Text style={styles.listItemSubtitle}>
                             {count} artículo{count === 1 ? '' : 's'}
                         </Text>
-                        <Text style={styles.listItemPrice}>RD${parseFloat(lista.PrecioTotal).toFixed(2)}</Text>
+                        <Text style={styles.listItemPrice}>
+                            RD${parseFloat(lista.PrecioTotal).toFixed(2)}
+                        </Text>
                     </View>
 
                     {/* Botón de “tres puntos” que despliega la opción Eliminar */}
@@ -246,7 +300,11 @@ export default function ShoppingListScreen() {
             <FlatList
                 data={listas}
                 renderItem={({ item, index }) => (
-                    <ListItem lista={item} index={index} count={itemCounts[item.IdLista] || 0} />
+                    <ListItem
+                        lista={item}
+                        index={index}
+                        count={itemCounts[item.IdLista] || 0}
+                    />
                 )}
                 keyExtractor={(item) => item.IdLista.toString()}
                 contentContainerStyle={{
@@ -338,6 +396,12 @@ const styles = StyleSheet.create({
     listItemDotButton: {
         padding: 8,
         borderRadius: 20,
+    },
+    proveedorLogo: {
+        width: 50,
+        height: 50,
+        borderRadius: 8,
+        marginRight: 12,
     },
     floatingButton: {
         position: 'absolute',
