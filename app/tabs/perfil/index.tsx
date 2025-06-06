@@ -1,3 +1,5 @@
+// Archivo: app/settings/Profile.tsx
+
 import React, { useEffect, useState } from "react";
 import {
     SafeAreaView,
@@ -21,54 +23,9 @@ import { MotiView } from "moti";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
-// Opciones del menú de perfil
-const profileOptions = [
-    {
-        id: "1",
-        text: "Editar perfil",
-        icon: "settings-outline",
-        screen: "EditProfile",
-    },
-    {
-        id: "2",
-        text: "Preferencias",
-        icon: "star-outline",
-        screen: "Preferences",
-    },
-    {
-        id: "3",
-        text: "Cerrar Sesión",
-        icon: "log-out-outline",
-        action: "logout",
-    },
-];
-
-// Datos de ejemplo para notificaciones
-const notificationsData = [
-    {
-        id: "n1",
-        title: "Ofertas y Promociones",
-        desc: "El arroz que buscabas está a RD$50 menos en Supermercado X.",
-        time: "Hace 4 horas",
-        icon: "info-outline",
-    },
-    {
-        id: "n2",
-        title: "Recordatorio de Lista de Compras",
-        desc: "No olvides tu lista de compras para hoy.",
-        time: "Hace 1 día",
-        icon: "shopping-cart",
-    },
-    {
-        id: "n3",
-        title: "Actualización de Precios",
-        desc: "El precio de la leche en Farmacia Z ha bajado un 15%. ¡Consulta más ofertas similares en la app!",
-        time: "Hace 12 días",
-        icon: "attach-money",
-    },
-];
-
-// Tipado de la respuesta GET /usuario/{id}
+// --------------------------------------------------------------------
+// TIPADO de la respuesta GET /usuario/{id}
+// --------------------------------------------------------------------
 type UsuarioResponse = {
     IdTipoUsuario: number;
     NombreUsuario: string;
@@ -108,7 +65,7 @@ export default function ProfileScreen() {
                     return;
                 }
 
-                // 2) Asignar header para llamar al backend
+                // 2) Fijamos el header para llamar al backend
                 axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
                 // 3) Hacer GET /usuario/{userId}
@@ -144,17 +101,12 @@ export default function ProfileScreen() {
         })();
     }, []);
 
-    const handleOptionPress = async (item: any) => {
-        if (item.action === "logout") {
-            // Al cerrar sesión: borramos todo del SecureStore
-            await SecureStore.deleteItemAsync("access_token");
-            await SecureStore.deleteItemAsync("refresh_token");
-            await SecureStore.deleteItemAsync("user_id");
-            delete axios.defaults.headers.common["Authorization"];
-            router.replace("/auth/IniciarSesion");
-        } else if (item.screen) {
-            router.push(`/settings/${item.screen}`);
-        }
+    const handleLogout = async () => {
+        await SecureStore.deleteItemAsync("access_token");
+        await SecureStore.deleteItemAsync("refresh_token");
+        await SecureStore.deleteItemAsync("user_id");
+        delete axios.defaults.headers.common["Authorization"];
+        router.replace("/auth/IniciarSesion");
     };
 
     if (loading) {
@@ -167,7 +119,7 @@ export default function ProfileScreen() {
 
     if (!userData) {
         // Si por alguna razón no se cargó userData (por ejemplo, redirigimos al login),
-        // simplemente retornamos un contenedor vacío.
+        // simplemente retornamos null.
         return null;
     }
 
@@ -208,7 +160,29 @@ export default function ProfileScreen() {
                             </Pressable>
                         </View>
                         <ScrollView>
-                            {notificationsData.map((notif) => (
+                            {[
+                                {
+                                    id: "n1",
+                                    title: "Ofertas y Promociones",
+                                    desc: "El arroz que buscabas está a RD$50 menos en Supermercado X.",
+                                    time: "Hace 4 horas",
+                                    icon: "info-outline",
+                                },
+                                {
+                                    id: "n2",
+                                    title: "Recordatorio de Lista de Compras",
+                                    desc: "No olvides tu lista de compras para hoy.",
+                                    time: "Hace 1 día",
+                                    icon: "shopping-cart",
+                                },
+                                {
+                                    id: "n3",
+                                    title: "Actualización de Precios",
+                                    desc: "El precio de la leche en Farmacia Z ha bajado un 15%. ¡Consulta más ofertas similares en la app!",
+                                    time: "Hace 12 días",
+                                    icon: "attach-money",
+                                },
+                            ].map((notif) => (
                                 <View key={notif.id} style={styles.notifCard}>
                                     <View style={styles.notifLeft}>
                                         <MaterialIcons
@@ -265,24 +239,62 @@ export default function ProfileScreen() {
 
                 {/* LISTA DE OPCIONES */}
                 <View style={styles.optionsContainer}>
-                    {profileOptions.map((item) => (
-                        <TouchableOpacity
-                            key={item.id}
-                            style={styles.optionItem}
-                            onPress={() => handleOptionPress(item)}
-                        >
-                            <View style={styles.optionLeft}>
-                                <Ionicons name={item.icon as any} size={22} color="#4B5563" />
-                                <Text style={styles.optionText}>{item.text}</Text>
-                            </View>
-                            <MaterialIcons
-                                name="keyboard-arrow-right"
-                                size={24}
-                                color="#6B7280"
-                            />
-                        </TouchableOpacity>
-                    ))}
+                    {/* 1) EDITAR PERFIL */}
+                    <TouchableOpacity
+                        style={styles.optionItem}
+                        onPress={() => router.push("/settings/EditProfile")}
+                    >
+                        <View style={styles.optionLeft}>
+                            <Ionicons name="settings-outline" size={22} color="#4B5563" />
+                            <Text style={styles.optionText}>Editar perfil</Text>
+                        </View>
+                        <MaterialIcons
+                            name="keyboard-arrow-right"
+                            size={24}
+                            color="#6B7280"
+                        />
+                    </TouchableOpacity>
+
+                    {/* 2) CAMBIAR CONTRASEÑA */}
+                    <TouchableOpacity
+                        style={styles.optionItem}
+                        onPress={() => router.push("/settings/ChangePassword")}
+                    >
+                        <View style={styles.optionLeft}>
+                            <Ionicons name="lock-closed-outline" size={22} color="#4B5563" />
+                            <Text style={styles.optionText}>Cambiar contraseña</Text>
+                        </View>
+                        <MaterialIcons
+                            name="keyboard-arrow-right"
+                            size={24}
+                            color="#6B7280"
+                        />
+                    </TouchableOpacity>
+
+                    {/* 3) PREFERENCIAS */}
+                    <TouchableOpacity
+                        style={styles.optionItem}
+                        onPress={() => router.push("/settings/Preferences")}
+                    >
+                        <View style={styles.optionLeft}>
+                            <Ionicons name="star-outline" size={22} color="#4B5563" />
+                            <Text style={styles.optionText}>Preferencias</Text>
+                        </View>
+                        <MaterialIcons
+                            name="keyboard-arrow-right"
+                            size={24}
+                            color="#6B7280"
+                        />
+                    </TouchableOpacity>
                 </View>
+
+                {/* BOTÓN “CERRAR SESIÓN” AL FINAL */}
+                <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+                    <View style={styles.optionLeft}>
+                        <Ionicons name="log-out-outline" size={22} color="#D1170F" />
+                        <Text style={styles.logoutText}>Cerrar Sesión</Text>
+                    </View>
+                </TouchableOpacity>
             </ScrollView>
         </SafeAreaView>
     );
@@ -301,12 +313,15 @@ const styles = StyleSheet.create({
         paddingBottom: 12,
     },
     headerLeft: { flexDirection: "row", alignItems: "center" },
-    logo: { width: 32, height: 48, marginRight: 8 },
+    logo: { width: 32, height: 48, marginRight: 8, resizeMode: "contain" },
     headerText: { color: "#FFF", fontSize: 20, fontWeight: "700" },
 
     scrollContent: { paddingBottom: 20 },
 
-    profileHeader: { alignItems: "center", paddingVertical: 24 },
+    profileHeader: {
+        alignItems: "center",
+        paddingVertical: 24,
+    },
     title: {
         fontSize: 24,
         fontWeight: "bold",
@@ -329,7 +344,10 @@ const styles = StyleSheet.create({
     name: { fontSize: 20, fontWeight: "600", color: "#101418" },
     contact: { fontSize: 14, color: "#6B7280", marginTop: 4 },
 
-    optionsContainer: { paddingHorizontal: 16, marginTop: 16 },
+    optionsContainer: {
+        paddingHorizontal: 16,
+        marginTop: 16,
+    },
     optionItem: {
         flexDirection: "row",
         alignItems: "center",
@@ -341,8 +359,35 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         elevation: 2,
     },
-    optionLeft: { flexDirection: "row", alignItems: "center" },
-    optionText: { fontSize: 16, color: "#101418", marginLeft: 12 },
+    optionLeft: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    optionText: {
+        fontSize: 16,
+        color: "#101418",
+        marginLeft: 12,
+    },
+
+    // Botón “Cerrar Sesión” con contorno rojo
+    logoutButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        marginHorizontal: 16,
+        marginTop: 24,
+        paddingVertical: 14,
+        borderRadius: 8,
+        borderWidth: 1.5,
+        borderColor: "#D1170F",
+        backgroundColor: "#FFF",
+        elevation: 2,
+    },
+    logoutText: {
+        fontSize: 16,
+        color: "#D1170F",
+        marginLeft: 8,
+    },
 
     // Modal notificaciones
     modalOverlay: {

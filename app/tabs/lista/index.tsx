@@ -203,7 +203,11 @@ export default function ShoppingListScreen() {
                 <TouchableOpacity
                     onPress={() => {
                         // Navegar al detalle de la lista
-                        router.push(`/tabs/list/${lista.IdLista}`);
+                        router.push({
+                            pathname: `../tabs/list/${lista.IdLista}`,
+                            params: { idProveedor: String(lista.IdProveedor) },
+                        });
+
                     }}
                     activeOpacity={0.8}
                     style={styles.listItemButton}
@@ -234,7 +238,7 @@ export default function ShoppingListScreen() {
                         onPress={() => handleDeleteList(lista.IdLista)}
                         style={styles.listItemDotButton}
                     >
-                        <MaterialCommunityIcons name="dots-horizontal" size={24} color="#6B7280" />
+                        <MaterialCommunityIcons name="delete" size={24} color="red" />
                     </TouchableOpacity>
                 </TouchableOpacity>
             </MotiView>
@@ -289,12 +293,12 @@ export default function ShoppingListScreen() {
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Lista de Compras</Text>
-                <TouchableOpacity
+                {/* <TouchableOpacity
                     onPress={() => router.push('../../tabs/list/add')}
                     style={styles.addButtonHeader}
                 >
                     <Ionicons name="add-circle-outline" size={34} color="#FFFFFF" />
-                </TouchableOpacity>
+                </TouchableOpacity> */}
             </View>
 
             <FlatList

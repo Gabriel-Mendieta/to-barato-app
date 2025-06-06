@@ -21,7 +21,10 @@ import { router } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { Ionicons } from '@expo/vector-icons';
 
+////////////////////////////////////////////////////////////////////////////////
 // --- TIPOS DE DATOS ---
+////////////////////////////////////////////////////////////////////////////////
+
 type TipoProveedor = {
     IdTipoProveedor: number;
     NombreTipoProveedor: string;
@@ -34,17 +37,58 @@ type Proveedor = {
     IdTipoProveedor: number;
 };
 
-type RelProductoProveedor = {
+////////////////////////////////////////////////////////////////////////////////
+// Tipo que describes la forma que devuelve el nuevo endpoint:
+//   GET /precios-productos/proveedor/{idProveedor}
+// Ejemplo de respuesta:
+/*
+[
+  {
+    "IdProducto": 85,
+    "IdProveedor": 3,
+    "Precio": "49.00",
+    "PrecioOferta": null,
+    "DescripcionOferta": null,
+    "FechaOferta": "2025-05-31T00:00:00",
+    "FechaPrecio": "2025-05-31T00:00:00",
+    "Producto": {
+      "IdCategoria": 3,
+      "IdUnidadMedida": 39,
+      "Nombre": "SOPITA DOÑA GALLINA",
+      "UrlImagen": null,
+      "Descripcion": ""
+    }
+  },
+  ...
+]
+*/
+type ProductoProveedorResponse = {
     IdProducto: number;
     IdProveedor: number;
     Precio: string;
-    PrecioOferta?: string;
+    PrecioOferta?: string | null;
+    DescripcionOferta?: string | null;
+    FechaOferta?: string;
+    FechaPrecio?: string;
+    Producto: {
+        IdCategoria: number;
+        IdUnidadMedida: number;
+        Nombre: string;
+        UrlImagen: string | null;
+        Descripcion: string;
+    };
 };
 
+////////////////////////////////////////////////////////////////////////////////
+// A partir de la estructura anterior, definimos el tipo final de "Producto"
+// que usaremos en el estado:
+//   - Incluimos Precio y PrecioOferta (string)
+//   - Anidamos los datos ya “sueltos” del objeto `Producto` interno
+////////////////////////////////////////////////////////////////////////////////
 type Producto = {
     IdProducto: number;
     Nombre: string;
-    UrlImagen: string;
+    UrlImagen: string | null;
     IdCategoria: number;
     IdUnidadMedida: number;
     Descripcion?: string;
@@ -62,7 +106,10 @@ type UnidadMedida = {
     NombreUnidadMedida: string;
 };
 
+////////////////////////////////////////////////////////////////////////////////
 // --- COMPONENTE PRINCIPAL ---
+////////////////////////////////////////////////////////////////////////////////
+
 export default function HomeScreenDynamic() {
     const { width: screenWidth } = useWindowDimensions();
     // Cada tarjeta ocupará aproximadamente el 60% del ancho de pantalla:
@@ -76,17 +123,14 @@ export default function HomeScreenDynamic() {
     const [proveedores, setProveedores] = useState<Proveedor[]>([]);
     const [activeProveedor, setActiveProveedor] = useState<number | null>(null);
 
-    // 3) RELACIÓN PRODUCTO-PROVEEDOR
-    const [rels, setRels] = useState<RelProductoProveedor[]>([]);
-
-    // 4) PRODUCTOS “COMPLETOS” (incluye Precio y PrecioOferta ya mezclados)
+    // 3) PRODUCTOS “COMPLETOS” (incluye Precio y PrecioOferta)
     const [productos, setProductos] = useState<Producto[]>([]);
     const [loadingProductos, setLoadingProductos] = useState<boolean>(true);
 
-    // 5) CATEGORÍAS
+    // 4) CATEGORÍAS
     const [categorias, setCategorias] = useState<Categoria[]>([]);
 
-    // 6) UNIDADES DE MEDIDA
+    // 5) UNIDADES DE MEDIDA (mapa IdUnidadMedida → NombreUnidadMedida)
     const [unidadesMap, setUnidadesMap] = useState<Record<number, string>>({});
 
     // Estado local para notificaciones (estático)
@@ -115,7 +159,9 @@ export default function HomeScreenDynamic() {
         },
     ];
 
-    // --- 1) Cargo TIPOS DE PROVEEDOR al montar ---
+    // --------------------------------------------------------------------------------
+    // 1) Cargo TIPOS DE PROVEEDOR al montar
+    // --------------------------------------------------------------------------------
     useEffect(() => {
         axios
             .get<TipoProveedor[]>('https://tobarato-api.alirizvi.dev/api/tipoproveedor')
@@ -128,15 +174,20 @@ export default function HomeScreenDynamic() {
             });
     }, []);
 
-    // --- 2) Cuando cambia activeTipo, cargo PROVEEDORES correspondientes ---
+    // --------------------------------------------------------------------------------
+    // 2) Cuando cambia activeTipo, cargo PROVEEDORES correspondientes
+    // --------------------------------------------------------------------------------
     useEffect(() => {
         if (activeTipo == null) return;
 
         axios
             .get<Proveedor[]>('https://tobarato-api.alirizvi.dev/api/proveedor')
             .then(({ data }) => {
+                // Filtramos solo aquellos proveedores cuyo IdTipoProveedor coincida
                 const filtrados = data.filter((p) => p.IdTipoProveedor === activeTipo);
                 setProveedores(filtrados);
+
+                // Si hay al menos uno, lo marcamos como activo
                 if (filtrados.length) setActiveProveedor(filtrados[0].IdProveedor);
             })
             .catch((err) => {
@@ -144,56 +195,56 @@ export default function HomeScreenDynamic() {
             });
     }, [activeTipo]);
 
-    // --- 3) Cargo todas las RELACIONES producto-proveedor ---
-    //     (servirá para filtrar por proveedor activo y luego traer cada producto)
-    useEffect(() => {
-        axios
-            .get<RelProductoProveedor[]>('https://tobarato-api.alirizvi.dev/api/productoproveedor')
-            .then(({ data }) => {
-                setRels(data);
-            })
-            .catch((err) => {
-                console.error('Error cargando relaciones producto-proveedor:', err);
-            });
-    }, []);
-
-    // --- 4) Cuando cambia activeProveedor O rels, recargo PRODUCTOS “completos” ---
+    // --------------------------------------------------------------------------------
+    // 3) Cuando cambia activeProveedor, llamamos al nuevo endpoint que ya viene
+    //    con todos los productos + precios de ese proveedor.
+    //    GET /precios-productos/proveedor/{activeProveedor}
+    // --------------------------------------------------------------------------------
     useEffect(() => {
         if (activeProveedor == null) {
             setProductos([]);
             setLoadingProductos(false);
             return;
         }
+
         setLoadingProductos(true);
 
-        // Filtramos solo las relaciones de este proveedor:
-        const relsDelProveedor = rels.filter((r) => r.IdProveedor === activeProveedor);
-
-        // Para cada relación, hacemos un GET de producto/{id} y luego inyectamos Precio/PrecioOferta:
-        const fetches = relsDelProveedor.map((r) => {
-            return axios
-                .get<Producto>(`https://tobarato-api.alirizvi.dev/api/producto/${r.IdProducto}`)
-                .then((res) => {
-                    const prod = res.data;
-                    prod.Precio = r.Precio;
-                    prod.PrecioOferta = r.PrecioOferta;
-                    return prod;
+        axios
+            .get<ProductoProveedorResponse[]>(
+                `https://tobarato-api.alirizvi.dev/api/precios-productos/proveedor/${activeProveedor}`
+            )
+            .then(({ data }) => {
+                // Transformamos la respuesta en el arreglo final de Producto[]
+                const productosMapeados: Producto[] = data.map((item) => {
+                    const nested = item.Producto;
+                    return {
+                        IdProducto: item.IdProducto,
+                        Nombre: nested.Nombre,
+                        UrlImagen: nested.UrlImagen, // puede ser null; manejar arriba si es necesario
+                        IdCategoria: nested.IdCategoria,
+                        IdUnidadMedida: nested.IdUnidadMedida,
+                        Descripcion: nested.Descripcion,
+                        Precio: item.Precio,
+                        PrecioOferta: item.PrecioOferta ?? undefined,
+                    };
                 });
-        });
-
-        Promise.all(fetches)
-            .then((fullProducts) => {
-                setProductos(fullProducts);
+                setProductos(productosMapeados);
             })
             .catch((err) => {
-                console.error('Error cargando detalles de productos:', err);
+                console.error(
+                    'Error cargando productos desde precios-productos/proveedor:',
+                    err
+                );
+                setProductos([]);
             })
             .finally(() => {
                 setLoadingProductos(false);
             });
-    }, [activeProveedor, rels]);
+    }, [activeProveedor]);
 
-    // --- 5) Cargo CATEGORÍAS (para agrupar en carruseles) ---
+    // --------------------------------------------------------------------------------
+    // 4) Cargo CATEGORÍAS (para agrupar en carruseles)
+    // --------------------------------------------------------------------------------
     useEffect(() => {
         axios
             .get<Categoria[]>('https://tobarato-api.alirizvi.dev/api/categoria')
@@ -205,7 +256,9 @@ export default function HomeScreenDynamic() {
             });
     }, []);
 
-    // --- 6) Cargo UNIDADES DE MEDIDA (para mostrar abreviación o nombre) ---
+    // --------------------------------------------------------------------------------
+    // 5) Cargo UNIDADES DE MEDIDA (para mostrar la abreviación o nombre)
+    // --------------------------------------------------------------------------------
     useEffect(() => {
         axios
             .get<UnidadMedida[]>('https://tobarato-api.alirizvi.dev/api/unidadmedida')
@@ -222,17 +275,21 @@ export default function HomeScreenDynamic() {
             });
     }, []);
 
-    // --- 7) Para obtener rápidamente el logo del proveedor activo ---
+    // --------------------------------------------------------------------------------
+    // 6) Para obtener rápidamente el logo del proveedor activo
+    // --------------------------------------------------------------------------------
     const proveedorActivoObj = useMemo(() => {
         return proveedores.find((p) => p.IdProveedor === activeProveedor) || null;
     }, [activeProveedor, proveedores]);
 
-    // --- RENDER ---
+    // --------------------------------------------------------------------------------
+    // --- RENDER PRINCIPAL ---
+    // --------------------------------------------------------------------------------
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
 
-            {/* HEADER */}
+            {/* ====== HEADER ====== */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <Image
@@ -246,7 +303,7 @@ export default function HomeScreenDynamic() {
                 </Pressable>
             </View>
 
-            {/* OVERLAY DE NOTIFICACIONES */}
+            {/* ====== OVERLAY DE NOTIFICACIONES ====== */}
             {showNotifications && (
                 <MotiView
                     from={{ opacity: 0 }}
@@ -284,7 +341,7 @@ export default function HomeScreenDynamic() {
                 </MotiView>
             )}
 
-            {/* PESTAÑAS DE TIPOS DE PROVEEDOR */}
+            {/* ====== PESTAÑAS DE TIPOS DE PROVEEDOR ====== */}
             <View style={styles.tabRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {tipos.map((t) => (
@@ -310,7 +367,7 @@ export default function HomeScreenDynamic() {
                 </ScrollView>
             </View>
 
-            {/* BOTONES DE PROVEEDORES (solo logo) */}
+            {/* ====== BOTONES DE PROVEEDORES (solo logo) ====== */}
             <View style={styles.providerRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {proveedores.map((p) => (
@@ -331,13 +388,13 @@ export default function HomeScreenDynamic() {
                 </ScrollView>
             </View>
 
-            {/* SI AÚN ESTAMOS CARGANDO PRODUCTOS, MOSTRAMOS SPINNER */}
+            {/* ====== SI AÚN ESTAMOS CARGANDO PRODUCTOS, MOSTRAMOS SPINNER ====== */}
             {loadingProductos ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color="#33618D" />
                 </View>
             ) : (
-                /* SCROLL PRINCIPAL: Distintos carruseles por categoría */
+                /* ====== SCROLL PRINCIPAL: Distintos carruseles por categoría ====== */
                 <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
                     {categorias.map((cat) => {
                         // Filtramos los productos que pertenezcan a esta categoría:
@@ -380,7 +437,10 @@ export default function HomeScreenDynamic() {
     );
 }
 
+////////////////////////////////////////////////////////////////////////////////
 // --- CARD DE PRODUCTO (con moneda, unidad y logo proveedor) ---
+////////////////////////////////////////////////////////////////////////////////
+
 function ProductCard({
     item,
     width,
@@ -404,7 +464,7 @@ function ProductCard({
                 style={styles.card}
             >
                 {/* IMAGEN PRINCIPAL */}
-                <Image source={{ uri: item.UrlImagen }} style={styles.cardImage} />
+                <Image source={{ uri: item.UrlImagen ?? '' }} style={styles.cardImage} />
 
                 {/* CUERPO: Nombre, Precio y Unidad */}
                 <View style={styles.cardBody}>
@@ -431,9 +491,13 @@ function ProductCard({
     );
 }
 
+////////////////////////////////////////////////////////////////////////////////
 // --- ESTILOS ---
+////////////////////////////////////////////////////////////////////////////////
+
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FF' },
+
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
