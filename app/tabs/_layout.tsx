@@ -57,6 +57,24 @@ const TabsLayout = () => {
                     href: null,
                 }}
             />
+            <Tabs.Screen
+                name="product/[id]"
+                options={{
+                    href: null,
+                }}
+            />
+            <Tabs.Screen
+                name="settings/ChangePassword"
+                options={{
+                    href: null,
+                }}
+            />
+            <Tabs.Screen
+                name="settings/EditProfile"
+                options={{
+                    href: null,
+                }}
+            />
         </Tabs>
     )
 }

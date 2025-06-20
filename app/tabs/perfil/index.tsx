@@ -109,6 +109,44 @@ export default function ProfileScreen() {
         router.replace("/auth/IniciarSesion");
     };
 
+    const handleDeleteAccount = () => {
+        if (!userData) return;
+        Alert.alert(
+            "Eliminar cuenta",
+            "¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer.",
+            [
+                { text: "Cancelar", style: "cancel" },
+                {
+                    text: "Eliminar",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await axios.delete(
+                                `https://tobarato-api.alirizvi.dev/api/usuario/${userData.IdUsuario}`
+                            );
+                            // Después de eliminar, limpiamos credenciales y llevamos al login
+                            await SecureStore.deleteItemAsync("access_token");
+                            await SecureStore.deleteItemAsync("refresh_token");
+                            await SecureStore.deleteItemAsync("user_id");
+                            delete axios.defaults.headers.common["Authorization"];
+                            Alert.alert(
+                                "Cuenta eliminada",
+                                "Tu cuenta ha sido eliminada correctamente."
+                            );
+                            router.replace("/auth/IniciarSesion");
+                        } catch (err) {
+                            console.error("[Profile] Error eliminando usuario", err);
+                            Alert.alert(
+                                "Error",
+                                "No se pudo eliminar la cuenta. Intenta nuevamente."
+                            );
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
@@ -242,7 +280,7 @@ export default function ProfileScreen() {
                     {/* 1) EDITAR PERFIL */}
                     <TouchableOpacity
                         style={styles.optionItem}
-                        onPress={() => router.push("/settings/EditProfile")}
+                        onPress={() => router.push("../tabs/settings/EditProfile")}
                     >
                         <View style={styles.optionLeft}>
                             <Ionicons name="settings-outline" size={22} color="#4B5563" />
@@ -258,7 +296,7 @@ export default function ProfileScreen() {
                     {/* 2) CAMBIAR CONTRASEÑA */}
                     <TouchableOpacity
                         style={styles.optionItem}
-                        onPress={() => router.push("/settings/ChangePassword")}
+                        onPress={() => router.push("../tabs/settings/ChangePassword")}
                     >
                         <View style={styles.optionLeft}>
                             <Ionicons name="lock-closed-outline" size={22} color="#4B5563" />
@@ -285,6 +323,17 @@ export default function ProfileScreen() {
                             size={24}
                             color="#6B7280"
                         />
+                    </TouchableOpacity>
+
+                    {/* 4) ELIMINAR CUENTA */}
+                    <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={handleDeleteAccount}
+                    >
+                        <View style={styles.optionLeft}>
+                            <Ionicons name="trash-outline" size={22} color="#D1170F" />
+                            <Text style={styles.deleteText}>Eliminar cuenta</Text>
+                        </View>
                     </TouchableOpacity>
                 </View>
 
@@ -366,6 +415,25 @@ const styles = StyleSheet.create({
     optionText: {
         fontSize: 16,
         color: "#101418",
+        marginLeft: 12,
+    },
+
+    // Botón “Eliminar cuenta”
+    deleteButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#FFF",
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        marginBottom: 12,
+        borderWidth: 1.5,
+        borderColor: "#D1170F",
+        elevation: 2,
+    },
+    deleteText: {
+        fontSize: 16,
+        color: "#D1170F",
         marginLeft: 12,
     },
 

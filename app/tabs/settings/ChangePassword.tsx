@@ -129,7 +129,7 @@ export default function ChangePasswordScreen() {
             >
                 {/* HEADER */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.push('../tabs/perfil')} style={styles.backButton}>
+                    <TouchableOpacity onPress={() => router.push('../../tabs/perfil')} style={styles.backButton}>
                         <Ionicons name="chevron-back" size={28} color="#fff" />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Cambiar Contraseña</Text>

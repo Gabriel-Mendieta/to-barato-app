@@ -161,6 +161,14 @@ export default function EditProfileScreen() {
     return (
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
+            {/* HEADER */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => router.push('../../tabs/perfil')} style={styles.backButton}>
+                    <Ionicons name="chevron-back" size={28} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Editar Perfil</Text>
+                <View style={{ width: 28 }} />
+            </View>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <MotiView
                     from={{ opacity: 0, translateY: 20 }}
@@ -168,7 +176,6 @@ export default function EditProfileScreen() {
                     transition={{ type: 'timing', duration: 400 }}
                     style={styles.profileHeader}
                 >
-                    <Text style={styles.title}>Editar Perfil</Text>
                     <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
                         <Image
                             source={{
@@ -232,6 +239,23 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#001D35",
+        paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 16,
+        paddingBottom: 12,
+        paddingHorizontal: 16,
+        justifyContent: "space-between",
+    },
+    headerTitle: {
+        color: "#FFF",
+        fontSize: 20,
+        fontWeight: "500",
+    },
+    backButton: {
+        width: 28,
+    },
     safeArea: {
         flex: 1,
         backgroundColor: '#F8F9FF',
