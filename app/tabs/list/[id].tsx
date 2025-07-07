@@ -30,7 +30,7 @@ type ProductoAPI = {
     IdProducto: number;
     Nombre: string;
     UrlImagen: string;
-    // …otras propiedades que entrega GET /producto/{id}
+    // …otras propiedades de GET /producto/{id}
 };
 
 type SucursalCercana = {
@@ -43,32 +43,24 @@ type SucursalCercana = {
 };
 
 export default function ListDetailScreen() {
-    // 1) Leemos los parámetros:
-    //    - "id" desde la URL dinámica → IdLista
-    //    - "idProveedor" porque lo enviamos al navegar desde index.tsx
+    // Parámetros de navegación
     const params = useLocalSearchParams<{ id: string; idProveedor: string }>();
     const idLista = Number(params.id);
     const idProveedor = Number(params.idProveedor);
 
-    // --- ESTADOS ---
-    const [loading, setLoading] = useState<boolean>(true);
-    const [productos, setProductos] = useState<
-        Array<ProductoAPI & { PrecioActual: string; Cantidad: number }>
-    >([]);
-    const [loadingBranch, setLoadingBranch] = useState<boolean>(false);
+    // Estados
+    const [loading, setLoading] = useState(true);
+    const [productos, setProductos] = useState<Array<ProductoAPI & { PrecioActual: string; Cantidad: number }>>([]);
+    const [loadingBranch, setLoadingBranch] = useState(false);
     const [branch, setBranch] = useState<SucursalCercana | null>(null);
 
-    // --- 2) Función para obtener productos de la lista ---
-    //     GET /productosdelista/{idLista} → [ { IdProducto, PrecioActual, Cantidad }, … ]
-    //     Luego, para cada IdProducto hacemos GET /producto/{IdProducto} para traer nombre e imagen.
+    // 1) Carga los productos de la lista
     const fetchProductsInList = useCallback(async () => {
         try {
             const resp = await axios.get<ProductoEnLista[]>(
                 `https://tobarato-api.alirizvi.dev/api/productosdelista/${idLista}`
             );
-            const arr: ProductoEnLista[] = resp.data;
-
-            // Para cada entrada, solicitamos GET /producto/{IdProducto}
+            const arr = resp.data;
             const detalles = await Promise.all(
                 arr.map(async (pl) => {
                     const r2 = await axios.get<ProductoAPI>(
@@ -81,7 +73,6 @@ export default function ListDetailScreen() {
                     };
                 })
             );
-
             setProductos(detalles);
         } catch (err) {
             console.error('[ListDetail] Error al obtener productos de la lista:', err);
@@ -92,13 +83,10 @@ export default function ListDetailScreen() {
         }
     }, [idLista]);
 
-    // --- 3) Función para pedir ubicación y buscar la sucursal del proveedor ---
-    //     POST /sucursal-cercana { lat, lng, ids_productos: [...] }
-    //     Luego filtramos por IdProveedor.
+    // 2) Consulta la sucursal más cercana incluyendo cantidades
     const fetchLocationAndBranch = useCallback(async () => {
         setLoadingBranch(true);
         try {
-            // 3.1) Pedir permiso y coords
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 Alert.alert(
@@ -108,30 +96,29 @@ export default function ListDetailScreen() {
                 setLoadingBranch(false);
                 return;
             }
-            const loc = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Highest,
-            });
+            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
             const lat = loc.coords.latitude;
             const lng = loc.coords.longitude;
 
-            // 3.2) Construir array de IdProducto
-            const idsArr = productos.map((p) => p.IdProducto);
+            // Preparamos los arrays de IDs y cantidades
+            const ids_productos = productos.map((p) => p.IdProducto);
+            const lista_cantidad = productos.map((p) => p.Cantidad);
 
-            // 3.3) POST /sucursal-cercana
-            const body = { lat, lng, ids_productos: idsArr };
+            const body = {
+                lat,
+                lng,
+                ids_productos,
+                lista_cantidad,
+            };
+
             const respSuc = await axios.post<SucursalCercana[]>(
                 'https://tobarato-api.alirizvi.dev/api/sucursal-cercana',
                 body
             );
             const allBranches = respSuc.data;
 
-            // 3.4) Filtrar la sucursal cuyo IdProveedor coincida
             const matched = allBranches.find((b) => b.IdProveedor === idProveedor);
-            if (matched) {
-                setBranch(matched);
-            } else {
-                setBranch(null);
-            }
+            setBranch(matched || null);
         } catch (err) {
             console.error('[ListDetail] Error al buscar sucursal cercana:', err);
         } finally {
@@ -139,36 +126,30 @@ export default function ListDetailScreen() {
         }
     }, [productos, idProveedor]);
 
-    // --- 4) Efecto: cuando cambie `idLista`, recargamos TODO (productos + sucursal) ---
+    // 3) Cuando cambia la lista, recarga productos (y limpia datos viejos)
     useEffect(() => {
-        // Antes de cargar, despejamos estados para no mostrar datos viejos:
         setProductos([]);
         setBranch(null);
         setLoading(true);
-
         (async () => {
-            // 4.1) Cargar productos de esta lista:
             await fetchProductsInList();
             setLoading(false);
         })();
-        // NOTA: No llamamos a fetchLocationAndBranch inmediatamente aquí, porque primero
-        //       queremos asegurarnos de que `productos` ya esté poblado.
     }, [idLista, fetchProductsInList]);
 
-    // --- 5) Efecto: cuando termine de cargar productos (loading===false y hay productos),
-    //           pedimos ubicación y buscamos sucursal.
+    // 4) Cuando ya tenga productos, pide la sucursal
     useEffect(() => {
-        if (!loading && productos.length > 0) {
-            fetchLocationAndBranch();
-        }
-        // Si la lista quedó vacía (no productos), también hacemos fetchLocationAndBranch
-        if (!loading && productos.length === 0) {
-            setBranch(null);
-            setLoadingBranch(false);
+        if (!loading) {
+            if (productos.length > 0) {
+                fetchLocationAndBranch();
+            } else {
+                setBranch(null);
+                setLoadingBranch(false);
+            }
         }
     }, [loading, productos, fetchLocationAndBranch]);
 
-    // --- 6) Abrir la app de mapas apuntando a la sucursal encontrada ---
+    // 5) Abre la app de mapas a la sucursal hallada
     const openMap = () => {
         if (!branch) {
             Alert.alert('No disponible', 'No se encontró sucursal para este proveedor.');
@@ -181,12 +162,10 @@ export default function ListDetailScreen() {
             ios: `maps:0,0?q=${encodeURIComponent(label)}@${lat},${lng}`,
             android: `google.navigation:q=${lat},${lng}`,
         });
-        if (url) {
-            Linking.openURL(url);
-        }
+        url && Linking.openURL(url);
     };
 
-    // --- 7) Renderizado ---
+    // Render
     if (loading) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
@@ -201,10 +180,7 @@ export default function ListDetailScreen() {
 
             {/* HEADER */}
             <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => router.replace('../../tabs/lista')}
-                    style={{ padding: 8 }}
-                >
+                <TouchableOpacity onPress={() => router.replace('../../tabs/lista')} style={{ padding: 8 }}>
                     <Ionicons name="chevron-back" size={28} color="#fff" />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Detalle de Lista</Text>
@@ -212,7 +188,6 @@ export default function ListDetailScreen() {
             </View>
 
             <View style={styles.content}>
-                {/* FlatList de productos */}
                 <FlatList
                     data={productos}
                     keyExtractor={(item) => item.IdProducto.toString()}
@@ -220,36 +195,22 @@ export default function ListDetailScreen() {
                     renderItem={({ item }) => (
                         <View style={styles.productRow}>
                             {item.UrlImagen ? (
-                                <Image
-                                    source={{ uri: item.UrlImagen }}
-                                    style={styles.productImage}
-                                    resizeMode="cover"
-                                />
+                                <Image source={{ uri: item.UrlImagen }} style={styles.productImage} resizeMode="cover" />
                             ) : (
                                 <View style={[styles.productImage, { backgroundColor: '#eee' }]} />
                             )}
                             <View style={styles.productInfo}>
                                 <Text style={styles.productName}>{item.Nombre}</Text>
-                                <Text style={styles.productPrice}>
-                                    RD${parseFloat(item.PrecioActual).toFixed(2)}
-                                </Text>
-                                <Text style={styles.productQuantity}>
-                                    Cantidad: {item.Cantidad}
-                                </Text>
+                                <Text style={styles.productPrice}>RD${parseFloat(item.PrecioActual).toFixed(2)}</Text>
+                                <Text style={styles.productQuantity}>Cantidad: {item.Cantidad}</Text>
                             </View>
                         </View>
                     )}
-                    ListEmptyComponent={
-                        <Text style={styles.emptyText}>Esta lista no tiene productos.</Text>
-                    }
+                    ListEmptyComponent={<Text style={styles.emptyText}>Esta lista no tiene productos.</Text>}
                 />
 
-                {/* Botón “Ir a sucursal” */}
                 <TouchableOpacity
-                    style={[
-                        styles.goButton,
-                        (!branch || loadingBranch) && styles.goButtonDisabled,
-                    ]}
+                    style={[styles.goButton, (!branch || loadingBranch) && styles.goButtonDisabled]}
                     onPress={openMap}
                     disabled={!branch || loadingBranch}
                 >
@@ -257,9 +218,7 @@ export default function ListDetailScreen() {
                         <ActivityIndicator size="small" color="#FFF" />
                     ) : (
                         <Text style={styles.goButtonText}>
-                            {branch
-                                ? `Ir a sucursal: ${branch.NombreSucursal}`
-                                : 'Buscar sucursal...'}
+                            {branch ? `Ir a sucursal: ${branch.NombreSucursal}` : 'Buscar sucursal...'}
                         </Text>
                     )}
                 </TouchableOpacity>
@@ -270,88 +229,33 @@ export default function ListDetailScreen() {
 
 const styles = StyleSheet.create({
     loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F8F9FF',
+        flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FF',
     },
-    container: {
-        flex: 1,
-        backgroundColor: '#F8F9FF',
-    },
+    container: { flex: 1, backgroundColor: '#F8F9FF' },
     header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         backgroundColor: '#001D35',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
-        paddingBottom: 12,
-        paddingHorizontal: 16,
+        paddingBottom: 12, paddingHorizontal: 16,
     },
-    headerTitle: {
-        color: '#fff',
-        fontSize: 20,
-        fontWeight: '500',
-    },
+    headerTitle: { color: '#fff', fontSize: 20, fontWeight: '500' },
 
-    content: {
-        flex: 1,
-        padding: 16,
-    },
+    content: { flex: 1, padding: 16 },
     productRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
-        borderRadius: 12,
-        padding: 12,
-        marginBottom: 12,
-        elevation: 2,
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginBottom: 12, elevation: 2,
     },
-    productImage: {
-        width: 50,
-        height: 50,
-        borderRadius: 8,
-        backgroundColor: '#ddd',
-    },
-    productInfo: {
-        marginLeft: 12,
-        flex: 1,
-    },
-    productName: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#101418',
-    },
-    productPrice: {
-        fontSize: 14,
-        color: '#33618D',
-        marginTop: 4,
-    },
-    productQuantity: {
-        fontSize: 12,
-        color: '#555',
-        marginTop: 2,
-    },
-    emptyText: {
-        textAlign: 'center',
-        marginTop: 24,
-        color: '#555',
-    },
+    productImage: { width: 50, height: 50, borderRadius: 8 },
+    productInfo: { marginLeft: 12, flex: 1 },
+    productName: { fontSize: 16, fontWeight: '600', color: '#101418' },
+    productPrice: { fontSize: 14, color: '#33618D', marginTop: 4 },
+    productQuantity: { fontSize: 12, color: '#555', marginTop: 2 },
+    emptyText: { textAlign: 'center', marginTop: 24, color: '#555' },
 
     goButton: {
-        backgroundColor: '#33618D',
-        paddingVertical: 14,
-        borderRadius: 8,
-        alignItems: 'center',
-        marginTop: 16,
-        elevation: 3,
+        backgroundColor: '#33618D', paddingVertical: 14, borderRadius: 8, alignItems: 'center',
+        marginTop: 16, elevation: 3,
     },
-    goButtonDisabled: {
-        opacity: 0.6,
-    },
-    goButtonText: {
-        color: '#FFF',
-        fontSize: 16,
-        fontWeight: '600',
-    },
+    goButtonDisabled: { opacity: 0.6 },
+    goButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
 });

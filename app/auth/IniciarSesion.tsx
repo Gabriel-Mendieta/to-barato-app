@@ -294,7 +294,7 @@ export default function IniciarSesion() {
                             </View>
 
                             {/* Google / Apple */}
-                            <CustomButton
+                            {/* <CustomButton
                                 color="white"
                                 textFont="medium"
                                 textColor="neutral"
@@ -314,7 +314,7 @@ export default function IniciarSesion() {
                                 onPress={() => router.push("../tabs/home")}
                             >
                                 Continuar con Apple
-                            </CustomButton>
+                            </CustomButton> */}
 
                             <View
                                 style={{

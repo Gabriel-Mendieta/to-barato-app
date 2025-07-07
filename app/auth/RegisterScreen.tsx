@@ -215,7 +215,7 @@ export default function RegisterScreen() {
                                 </View>
 
                                 {/* Google / Apple */}
-                                <CustomButton
+                                {/* <CustomButton
                                     color="white"
                                     textFont="medium"
                                     textColor="neutral"
@@ -235,7 +235,7 @@ export default function RegisterScreen() {
                                     onPress={() => router.push('../tabs/home')}
                                 >
                                     Continuar con Apple
-                                </CustomButton>
+                                </CustomButton> */}
 
                                 {/* Link a Login */}
                                 <View style={styles.loginLink}>

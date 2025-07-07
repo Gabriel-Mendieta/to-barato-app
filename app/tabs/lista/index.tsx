@@ -16,13 +16,15 @@ import {
     ScrollView,
     Alert,
     Image,
+    Linking,
 } from 'react-native';
 import { MotiView } from 'moti';
 import { router } from 'expo-router';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 type Lista = {
     IdUsuario: number;
@@ -34,108 +36,79 @@ type Lista = {
 };
 
 type ProveedorInfo = {
-    IdTipoProveedor: number;
+    IdProveedor: number;
     Nombre: string;
     UrlLogo: string;
-    UrlPaginaWeb: string;
-    EnvioDomicilio: boolean;
+};
+
+type RutaSucursal = {
+    IdSucursal: number;
+    NombreSucursal: string;
+    Latitud: number;
+    Longitud: number;
     IdProveedor: number;
-    FechaCreacion: string;
+    Distancia: number;
 };
 
 export default function ShoppingListScreen() {
     const { height } = useWindowDimensions();
+
     const [listas, setListas] = useState<Lista[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [refreshing, setRefreshing] = useState<boolean>(false);
-
-    // itemCounts[IdLista] = número de productos que tiene esa lista
     const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
-
-    // proveedoresMap[IdProveedor] = datos completos del proveedor (logo, nombre, etc.)
     const [proveedoresMap, setProveedoresMap] = useState<Record<number, ProveedorInfo>>({});
+    const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
 
-    /**
-     * fetchUserLists:
-     *   1) Lee token y user_id desde SecureStore
-     *   2) Pide GET /lista
-     *   3) Filtra solo las listas del usuario actual
-     *   4) Para cada lista obtenida, llama a /Productosdelista/{IdLista} y guarda la cantidad
-     *   5) Lee los proveedores de cada lista: GET /proveedor/{IdProveedor}, los guarda en proveedoresMap
-     */
+    // --- 1) Fetch listas del usuario ---
     const fetchUserLists = useCallback(async () => {
         try {
+            setLoading(true);
             const token = await SecureStore.getItemAsync('access_token');
             const userIdStr = await SecureStore.getItemAsync('user_id');
-
             if (!token || !userIdStr) {
-                // Si falta token o user_id, redirigimos a login
                 router.replace('/auth/IniciarSesion');
                 return;
             }
-
-            // Fijamos el header de autorización para todas las peticiones axios
             axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-            // ==============================
-            // 1) GET /lista
-            // ==============================
             const resp = await axios.get<Lista[]>('https://tobarato-api.alirizvi.dev/api/lista');
-            const todasLasListas = resp.data;
-
-            // 2) Filtrar solo las listas que pertenecen a este usuario
-            const userIdNum = parseInt(userIdStr, 10);
-            const propias = todasLasListas.filter((l) => l.IdUsuario === userIdNum);
+            const userId = Number(userIdStr);
+            const propias = resp.data.filter((l) => l.IdUsuario === userId);
             setListas(propias);
 
-            // ==============================
-            // 3) Para cada lista, obtener la cantidad de productos
-            //    vía GET /productosdelista/{IdLista}
-            // ==============================
             const counts: Record<number, number> = {};
             await Promise.all(
-                propias.map(async (lista) => {
+                propias.map(async (l) => {
                     try {
-                        const respProd = await axios.get<
-                            Array<{ IdLista: number; IdProducto: number }>
-                        >(`https://tobarato-api.alirizvi.dev/api/productosdelista/${lista.IdLista}`);
-                        counts[lista.IdLista] = respProd.data.length;
-                    } catch (err) {
-                        console.warn(
-                            `[ShoppingList] No se pudo obtener productos de lista ${lista.IdLista}:`,
-                            err
+                        const r = await axios.get<any[]>(
+                            `https://tobarato-api.alirizvi.dev/api/productosdelista/${l.IdLista}`
                         );
-                        counts[lista.IdLista] = 0;
+                        counts[l.IdLista] = r.data.length;
+                    } catch {
+                        counts[l.IdLista] = 0;
                     }
                 })
             );
             setItemCounts(counts);
 
-            // ==============================
-            // 4) Para cada lista, obtener datos del proveedor:
-            //    GET /proveedor/{IdProveedor}
-            // ==============================
-            // Construimos un array de IdProveedor únicos (para no pedir dos veces el mismo)
-            const uniqueProveedorIds = Array.from(new Set(propias.map((l) => l.IdProveedor)));
-
-            // Para cada proveedor pendiente en uniqueProveedorIds, solicitamos su info
-            const provMapCopy: Record<number, ProveedorInfo> = {};
+            const uniqueProv = Array.from(new Set(propias.map((l) => l.IdProveedor)));
+            const provMap: Record<number, ProveedorInfo> = {};
             await Promise.all(
-                uniqueProveedorIds.map(async (provId) => {
+                uniqueProv.map(async (pid) => {
                     try {
-                        const respProv = await axios.get<ProveedorInfo>(
-                            `https://tobarato-api.alirizvi.dev/api/proveedor/${provId}`
+                        const r = await axios.get<ProveedorInfo>(
+                            `https://tobarato-api.alirizvi.dev/api/proveedor/${pid}`
                         );
-                        provMapCopy[provId] = respProv.data;
-                    } catch (err) {
-                        console.warn(`[ShoppingList] No se pudo obtener proveedor ${provId}:`, err);
+                        provMap[pid] = r.data;
+                    } catch {
+                        /* ignore */
                     }
                 })
             );
-            setProveedoresMap(provMapCopy);
+            setProveedoresMap(provMap);
         } catch (error) {
-            console.error('[ShoppingList] Error al obtener listas:', error);
-            // En caso de error (token expirado, etc.) borramos credenciales y llevamos a login
+            console.error(error);
             await SecureStore.deleteItemAsync('access_token');
             await SecureStore.deleteItemAsync('refresh_token');
             await SecureStore.deleteItemAsync('user_id');
@@ -147,105 +120,76 @@ export default function ShoppingListScreen() {
         }
     }, []);
 
-    // 1) Al montar, ejecuta fetchUserLists
     useEffect(() => {
         fetchUserLists();
     }, [fetchUserLists]);
 
-    // 2) Pull‐to‐refresh
     const onRefresh = useCallback(() => {
         setRefreshing(true);
         fetchUserLists();
     }, [fetchUserLists]);
 
-    // 3) Handler para eliminar una lista dada su id
-    const handleDeleteList = async (listaId: number) => {
-        Alert.alert('Eliminar lista', '¿Estás seguro de que deseas eliminar esta lista?', [
-            { text: 'Cancelar', style: 'cancel' },
-            {
-                text: 'Eliminar',
-                style: 'destructive',
-                onPress: async () => {
-                    try {
-                        // DELETE /lista/{id}
-                        await axios.delete(`https://tobarato-api.alirizvi.dev/api/lista/${listaId}`);
-                        // Una vez eliminado, volvemos a recargar las listas
-                        fetchUserLists();
-                    } catch (error) {
-                        console.error('[ShoppingList] Error al eliminar lista:', error);
-                        Alert.alert('Error', 'No se pudo eliminar la lista. Intenta nuevamente.');
-                    }
-                },
-            },
-        ]);
+    // --- 2) Selección por LongPress ---
+    const isSelecting = selectedLists.size > 0;
+    const toggleSelection = (id: number) => {
+        setSelectedLists((prev) => {
+            const copy = new Set(prev);
+            if (copy.has(id)) copy.delete(id);
+            else copy.add(id);
+            return copy;
+        });
     };
 
-    // 4) Componente para cada fila de FlatList
-    function ListItem({
-        lista,
-        index,
-        count,
-    }: {
-        lista: Lista;
-        index: number;
-        count: number;
-    }) {
-        // Obtenemos datos del proveedor para esta lista (puede ser undefined si aún no llegó)
-        const provInfo = proveedoresMap[lista.IdProveedor];
+    // --- 3) Generar ruta ---
+    const handleGenerateRoute = async () => {
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Sin permiso', 'Necesitamos tu ubicación para generar la ruta.');
+                return;
+            }
+            const pos = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Highest,
+            });
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
 
-        return (
-            <MotiView
-                from={{ opacity: 0, translateY: 20 }}
-                animate={{ opacity: 1, translateY: 0 }}
-                transition={{ delay: index * 100, type: 'timing', duration: 400 }}
-                style={styles.listItemContainer}
-            >
-                <TouchableOpacity
-                    onPress={() => {
-                        // Navegar al detalle de la lista
-                        router.push({
-                            pathname: `../tabs/list/${lista.IdLista}`,
-                            params: { idProveedor: String(lista.IdProveedor) },
-                        });
+            const provIds = listas
+                .filter((l) => selectedLists.has(l.IdLista))
+                .map((l) => l.IdProveedor);
 
-                    }}
-                    activeOpacity={0.8}
-                    style={styles.listItemButton}
-                >
-                    {/* Si tenemos provInfo, mostramos su logo; si no, mostramos el ícono genérico */}
-                    {provInfo ? (
-                        <Image
-                            source={{ uri: provInfo.UrlLogo }}
-                            style={styles.proveedorLogo}
-                            resizeMode="contain"
-                        />
-                    ) : (
-                        <Ionicons name="storefront-outline" size={28} color="#33618D" style={{ marginRight: 12 }} />
-                    )}
+            const resp = await axios.post<RutaSucursal[]>(
+                'https://tobarato-api.alirizvi.dev/api/ruta-multiples-listas',
+                { lat, lng, ids_proveedores: provIds }
+            );
+            const rutas = resp.data;
+            if (!rutas.length) {
+                Alert.alert('Ruta', 'No se encontraron sucursales para esa selección.');
+                return;
+            }
 
-                    <View style={styles.listItemTextContainer}>
-                        <Text style={styles.listItemTitle}>{lista.Nombre}</Text>
-                        <Text style={styles.listItemSubtitle}>
-                            {count} artículo{count === 1 ? '' : 's'}
-                        </Text>
-                        <Text style={styles.listItemPrice}>
-                            RD${parseFloat(lista.PrecioTotal).toFixed(2)}
-                        </Text>
-                    </View>
+            const origin = `${lat},${lng}`;
+            const coords = rutas.map((r) => `${r.Latitud},${r.Longitud}`);
+            if (Platform.OS === 'ios') {
+                const daddr = coords.map((c) => `&daddr=${c}`).join('');
+                Linking.openURL(`http://maps.apple.com/?saddr=${origin}${daddr}`);
+            } else {
+                const destination = coords[coords.length - 1];
+                const waypoints = coords.slice(0, -1).join('|');
+                const url =
+                    `https://www.google.com/maps/dir/?api=1&origin=${origin}` +
+                    `&destination=${destination}` +
+                    (waypoints ? `&waypoints=${waypoints}` : '') +
+                    `&travelmode=driving`;
+                Linking.openURL(url);
+            }
+        } catch (err) {
+            console.error(err);
+            Alert.alert('Error', 'No se pudo generar la ruta. Intenta nuevamente.');
+        }
+    };
 
-                    {/* Botón de “tres puntos” que despliega la opción Eliminar */}
-                    <TouchableOpacity
-                        onPress={() => handleDeleteList(lista.IdLista)}
-                        style={styles.listItemDotButton}
-                    >
-                        <MaterialCommunityIcons name="delete" size={24} color="red" />
-                    </TouchableOpacity>
-                </TouchableOpacity>
-            </MotiView>
-        );
-    }
-
-    // 5) Mostrar spinner inicial mientras loading = true y no estamos refrescando
+    // --- 4) Renderizado ---
     if (loading && !refreshing) {
         return (
             <SafeAreaView style={styles.container}>
@@ -254,17 +198,24 @@ export default function ShoppingListScreen() {
         );
     }
 
-    // 6) Si no hay listas, mostrar mensaje con pull‐to‐refresh
+    const FloatingAddButton = (
+        <TouchableOpacity
+            onPress={() => router.push('../../tabs/list/type-selection')}
+            style={[styles.floatingButton, styles.floatingButtonShadow]}
+            activeOpacity={0.8}
+        >
+            <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+    );
+
+    // Si no hay listas
     if (!listas.length) {
         return (
             <SafeAreaView style={styles.container}>
                 <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-
-                {/* Header */}
                 <View style={styles.header}>
                     <Text style={styles.headerTitle}>Lista de Compras</Text>
                 </View>
-
                 <ScrollView
                     style={{ flex: 1, backgroundColor: '#F8F9FF' }}
                     contentContainerStyle={[styles.noListsContainer, { minHeight: height }]}
@@ -272,20 +223,12 @@ export default function ShoppingListScreen() {
                 >
                     <Text style={styles.noListsText}>Aún no ha creado una lista.</Text>
                 </ScrollView>
-
-                {/* Botón flotante para crear nueva lista */}
-                <TouchableOpacity
-                    onPress={() => router.push('../../tabs/list/add')}
-                    style={[styles.floatingButton, styles.floatingButtonShadow]}
-                    activeOpacity={0.8}
-                >
-                    <Ionicons name="add" size={28} color="#fff" />
-                </TouchableOpacity>
+                {FloatingAddButton}
             </SafeAreaView>
         );
     }
 
-    // 7) Si hay listas, renderizamos el FlatList con pull‐to‐refresh habilitado
+    // Con listas
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#001D35" />
@@ -293,120 +236,156 @@ export default function ShoppingListScreen() {
             {/* Header */}
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>Lista de Compras</Text>
-                {/* <TouchableOpacity
-                    onPress={() => router.push('../../tabs/list/add')}
-                    style={styles.addButtonHeader}
-                >
-                    <Ionicons name="add-circle-outline" size={34} color="#FFFFFF" />
-                </TouchableOpacity> */}
             </View>
 
+            {/* FlatList de listas */}
             <FlatList
                 data={listas}
-                renderItem={({ item, index }) => (
-                    <ListItem
-                        lista={item}
-                        index={index}
-                        count={itemCounts[item.IdLista] || 0}
-                    />
-                )}
-                keyExtractor={(item) => item.IdLista.toString()}
-                contentContainerStyle={{
-                    paddingTop: 16,
-                    paddingBottom: height * 0.15,
+                keyExtractor={(l) => l.IdLista.toString()}
+                renderItem={({ item, index }) => {
+                    const count = itemCounts[item.IdLista] || 0;
+                    const provInfo = proveedoresMap[item.IdProveedor];
+                    const selected = selectedLists.has(item.IdLista);
+
+                    return (
+                        <MotiView
+                            from={{ opacity: 0, translateY: 20 }}
+                            animate={{ opacity: 1, translateY: 0 }}
+                            transition={{ delay: index * 100, type: 'timing', duration: 400 }}
+                            style={styles.listItemContainer}
+                        >
+                            <TouchableOpacity
+                                activeOpacity={0.8}
+                                style={[styles.listItemButton, selected && styles.listItemActive]}
+                                onPress={() => {
+                                    if (isSelecting) toggleSelection(item.IdLista);
+                                    else
+                                        router.push({
+                                            pathname: `../tabs/list/${item.IdLista}`,
+                                            params: { idProveedor: String(item.IdProveedor) },
+                                        });
+                                }}
+                                onLongPress={() => toggleSelection(item.IdLista)}
+                            >
+                                {provInfo ? (
+                                    <Image
+                                        source={{ uri: provInfo.UrlLogo }}
+                                        style={styles.proveedorLogo}
+                                        resizeMode="contain"
+                                    />
+                                ) : (
+                                    <Ionicons
+                                        name="storefront-outline"
+                                        size={28}
+                                        color="#33618D"
+                                        style={{ marginHorizontal: 12 }}
+                                    />
+                                )}
+                                <View style={styles.listItemTextContainer}>
+                                    <Text style={styles.listItemTitle}>{item.Nombre}</Text>
+                                    <Text style={styles.listItemSubtitle}>
+                                        {count} artículo{count === 1 ? '' : 's'}
+                                    </Text>
+                                    <Text style={styles.listItemPrice}>
+                                        RD${parseFloat(item.PrecioTotal).toFixed(2)}
+                                    </Text>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={() =>
+                                        Alert.alert('Eliminar lista', '¿Seguro deseas eliminar esta lista?', [
+                                            { text: 'Cancelar', style: 'cancel' },
+                                            {
+                                                text: 'Eliminar',
+                                                style: 'destructive',
+                                                onPress: async () => {
+                                                    try {
+                                                        await axios.delete(
+                                                            `https://tobarato-api.alirizvi.dev/api/lista/${item.IdLista}`
+                                                        );
+                                                        fetchUserLists();
+                                                    } catch {
+                                                        Alert.alert('Error', 'No se pudo eliminar.');
+                                                    }
+                                                },
+                                            },
+                                        ])
+                                    }
+                                    style={styles.iconButton}
+                                >
+                                    <MaterialCommunityIcons name="delete" size={24} color="red" />
+                                </TouchableOpacity>
+                            </TouchableOpacity>
+                        </MotiView>
+                    );
                 }}
-                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingTop: 16, paddingBottom: height * 0.2 }}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             />
 
-            {/* Botón flotante para crear nueva lista */}
-            <TouchableOpacity
-                onPress={() => router.push('../../tabs/list/add')}
-                style={[styles.floatingButton, styles.floatingButtonShadow]}
-                activeOpacity={0.8}
-            >
-                <Ionicons name="add" size={28} color="#fff" />
-            </TouchableOpacity>
+            {/* Botón “Generar Ruta” */}
+            {isSelecting && (
+                <TouchableOpacity
+                    style={[styles.routeBtn, selectedLists.size === 0 && styles.btnDisabled]}
+                    disabled={selectedLists.size === 0}
+                    onPress={handleGenerateRoute}
+                >
+                    <Text style={styles.routeBtnText}>
+                        Generar Ruta ({selectedLists.size})
+                    </Text>
+                </TouchableOpacity>
+            )}
+
+            {/* + Siempre visible */}
+            {FloatingAddButton}
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#F8F9FF',
-    },
+    container: { flex: 1, backgroundColor: '#F8F9FF' },
     header: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#001D35',
         paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 38,
         paddingBottom: 12,
-        paddingHorizontal: 16,
     },
-    headerTitle: {
-        color: '#FFFFFF',
-        fontSize: 20,
-        fontWeight: '500',
-        bottom: 12,
-    },
-    addButtonHeader: {
-        position: 'absolute',
-        right: 16,
-        padding: 4,
-        marginTop: 4,
-    },
-    noListsContainer: {
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    noListsText: {
-        fontSize: 16,
-        color: '#555',
-    },
-    listItemContainer: {
-        marginHorizontal: 16,
-        marginBottom: 16,
-    },
+    headerTitle: { color: '#FFF', fontSize: 20, fontWeight: '500' },
+
+    noListsContainer: { justifyContent: 'center', alignItems: 'center' },
+    noListsText: { fontSize: 16, color: '#555' },
+
+    listItemContainer: { marginHorizontal: 16, marginBottom: 16 },
     listItemButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#FFF',
         borderRadius: 24,
-        padding: 16,
-        elevation: 4,
+        padding: 12,
+        elevation: 2,
     },
-    listItemTextContainer: {
-        flex: 1,
-        marginLeft: 16,
-    },
-    listItemTitle: {
-        fontSize: 18,
-        fontWeight: '500',
-        color: '#101418',
-    },
-    listItemSubtitle: {
-        fontSize: 14,
-        color: '#6B7280',
-        marginTop: 4,
-    },
-    listItemPrice: {
-        fontSize: 14,
-        color: '#333',
-        marginTop: 2,
-        fontWeight: '500',
-    },
-    listItemDotButton: {
-        padding: 8,
-        borderRadius: 20,
-    },
-    proveedorLogo: {
-        width: 50,
-        height: 50,
+    listItemActive: { borderColor: '#F3732A', borderWidth: 2 },
+    proveedorLogo: { width: 40, height: 40, borderRadius: 8, marginHorizontal: 12 },
+    listItemTextContainer: { flex: 1 },
+    listItemTitle: { fontSize: 16, fontWeight: '600', color: '#101418' },
+    listItemSubtitle: { fontSize: 12, color: '#6B7280', marginTop: 4 },
+    listItemPrice: { fontSize: 14, color: '#333', marginTop: 2, fontWeight: '500' },
+
+    iconButton: { paddingHorizontal: 8 },
+
+    routeBtn: {
+        position: 'absolute',
+        bottom: 88,
+        left: 16,
+        right: 16,
+        backgroundColor: '#F3732A',
+        paddingVertical: 14,
         borderRadius: 8,
-        marginRight: 12,
+        alignItems: 'center',
     },
+    routeBtnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+    btnDisabled: { opacity: 0.6 },
+
     floatingButton: {
         position: 'absolute',
         bottom: 24,

@@ -75,6 +75,12 @@ const TabsLayout = () => {
                     href: null,
                 }}
             />
+            <Tabs.Screen
+                name="list/type-selection"
+                options={{
+                    href: null,
+                }}
+            />
         </Tabs>
     )
 }
