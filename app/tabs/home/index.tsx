@@ -96,6 +96,7 @@ export default function HomeScreenDynamic() {
                 const filt = data.filter(p => p.IdTipoProveedor === activeTipo);
                 setProveedores(filt);
                 if (filt.length) setActiveProveedor(filt[0].IdProveedor);
+                console.log(filt[0].Nombre);
             })
             .catch(console.error);
     }, [activeTipo]);
