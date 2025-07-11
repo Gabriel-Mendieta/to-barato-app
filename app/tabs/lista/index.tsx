@@ -180,8 +180,61 @@ export default function ShoppingListScreen() {
 
     // ---------- 3) Generar ruta para múltiples listas ----------
     const handleGenerateRoute = async () => {
-        // ... mismo código de ubicación y llamada a /ruta-multiples-listas ...
-        // (omito por brevedad)
+        try {
+            // Pedir permiso de ubicación
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Sin permiso', 'Necesitamos tu ubicación para generar la ruta.');
+                return;
+            }
+
+            // Obtener posición actual
+            const pos = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Highest,
+            });
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
+            // Filtrar los IDs de proveedor de las listas seleccionadas
+            const provIds = listas
+                .filter((l) => selectedLists.has(l.IdLista))
+                .map((l) => l.IdProveedor);
+
+            // Llamada al endpoint ruta-multiples-listas
+            const resp = await axios.post<RutaSucursal[]>(
+                'https://tobarato-api.alirizvi.dev/api/ruta-multiples-listas',
+                { lat, lng, ids_proveedores: provIds }
+            );
+            const rutas = resp.data;
+
+            if (!rutas.length) {
+                Alert.alert('Ruta', 'No se encontraron sucursales para esa selección.');
+                return;
+            }
+
+            // Construir URL de navegación
+            const origin = `${lat},${lng}`;
+            const coords = rutas.map((r) => `${r.Latitud},${r.Longitud}`);
+
+            if (Platform.OS === 'ios') {
+                // Apple Maps con múltiples destinos
+                const daddr = coords.map((c) => `&daddr=${c}`).join('');
+                Linking.openURL(`http://maps.apple.com/?saddr=${origin}${daddr}`);
+            } else {
+                // Google Maps
+                const destination = coords[coords.length - 1];
+                const waypoints = coords.slice(0, -1).join('|');
+                const url =
+                    `https://www.google.com/maps/dir/?api=1&origin=${origin}` +
+                    `&destination=${destination}` +
+                    (waypoints ? `&waypoints=${waypoints}` : '') +
+                    `&travelmode=driving`;
+                Linking.openURL(url);
+            }
+        } catch (err) {
+            console.error('[ShoppingList] Error generando ruta:', err);
+            Alert.alert('Error', 'No se pudo generar la ruta. Intenta nuevamente.');
+        }
     };
 
     // ---------- 4) Compartir lista como texto ----------
