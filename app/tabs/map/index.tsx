@@ -9,22 +9,28 @@ import {
     StyleSheet,
     Platform,
     StatusBar,
-    TouchableOpacity,
-    Linking,
     Alert,
     Image,
+    TouchableOpacity,
+    Linking,
 } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Region, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import * as Location from 'expo-location';
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 
+type TipoProveedor = {
+    IdTipoProveedor: number;
+    NombreTipoProveedor: string;
+};
+
 type Proveedor = {
     IdProveedor: number;
     Nombre: string;
     UrlLogo: string;
+    IdTipoProveedor: number;
 };
 
 type Sucursal = {
@@ -37,34 +43,26 @@ type Sucursal = {
 
 export default function MapScreen() {
     const [region, setRegion] = useState<Region | null>(null);
-    const [loading, setLoading] = useState<boolean>(true);
-
+    const [loading, setLoading] = useState(true);
     const [token, setToken] = useState<string | null>(null);
+
+    const [tipos, setTipos] = useState<TipoProveedor[]>([]);
     const [providers, setProviders] = useState<Proveedor[]>([]);
     const [branches, setBranches] = useState<Sucursal[]>([]);
 
-    // 'all' o el IdProveedor convertido a string
-    const [selectedProv, setSelectedProv] = useState<string>('all');
+    const [selectedTipo, setSelectedTipo] = useState<string>('all');
+    const [selectedProvider, setSelectedProvider] = useState<string>('all');
+    const [filteredBranches, setFilteredBranches] = useState<Sucursal[]>([]);
     const [selectedBranch, setSelectedBranch] = useState<Sucursal | null>(null);
 
-    // Lista filtrada de sucursales
-    const [filteredBranches, setFilteredBranches] = useState<Sucursal[]>([]);
-
-    // 1) Leer token (si el API lo requiere)
+    // 1) Leer token
     useEffect(() => {
-        SecureStore.getItemAsync('access_token')
-            .then((t) => {
-                console.log('[Map] token cargado →', t);
-                setToken(t);
-            })
-            .catch((err) => {
-                console.warn('[Map] no pude leer token', err);
-            });
+        SecureStore.getItemAsync('access_token').then(setToken).catch(console.warn);
     }, []);
 
-    // 2) Pedir permiso de ubicación + región inicial
+    // 2) Pedir permiso / región inicial
     useEffect(() => {
-        (async () => {
+        ; (async () => {
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 Alert.alert('Sin permiso', 'No podemos obtener tu ubicación');
@@ -84,64 +82,60 @@ export default function MapScreen() {
         })();
     }, []);
 
-    // 3) Fetch de proveedores y sucursales
+    // 3) Fetch tipos, proveedores y sucursales
     useEffect(() => {
         const headers: any = {};
         if (token) headers.Authorization = `Bearer ${token}`;
 
+        // Tipos
         axios
-            .get<Proveedor[]>('https://tobarato-api.alirizvi.dev/api/proveedor', {
-                headers,
-            })
-            .then((res) => {
-                console.log('[Map] proveedores', res.data);
-                setProviders(res.data);
-            })
-            .catch((err) =>
-                console.error('[Map] error fetching proveedores', err)
-            );
+            .get<TipoProveedor[]>('https://tobarato-api.alirizvi.dev/api/tipoproveedor', { headers })
+            .then(res => setTipos(res.data))
+            .catch(err => console.warn('[Map] error fetching tipos', err));
 
+        // Proveedores
         axios
-            .get<Sucursal[]>('https://tobarato-api.alirizvi.dev/api/sucursal', {
-                headers,
-            })
-            .then((res) => {
-                console.log('[Map] sucursales raw', res.data);
-                setBranches(res.data);
-            })
-            .catch((err) =>
-                console.error('[Map] error fetching sucursales', err)
-            );
+            .get<Proveedor[]>('https://tobarato-api.alirizvi.dev/api/proveedor', { headers })
+            .then(res => setProviders(res.data))
+            .catch(err => console.error('[Map] error fetching proveedores', err));
+
+        // Sucursales
+        axios
+            .get<Sucursal[]>('https://tobarato-api.alirizvi.dev/api/sucursal', { headers })
+            .then(res => setBranches(res.data))
+            .catch(err => console.error('[Map] error fetching sucursales', err));
     }, [token]);
 
-    // 4) Cada vez que cambien selectedProv o branches, recalculamos filteredBranches
+    // 4) Filtrar sucursales según tipo y proveedor seleccionado
     useEffect(() => {
-        if (selectedProv === 'all') {
-            setFilteredBranches(branches);
-        } else {
-            const idNum = parseInt(selectedProv, 10);
-            setFilteredBranches(branches.filter((b) => b.IdProveedor === idNum));
-        }
-        // Limpiamos tarjeta inferior cuando cambiamos proveedor
         setSelectedBranch(null);
-    }, [selectedProv, branches]);
 
-    // Helper para abrir app de mapas según plataforma
+        // primero filtrar providers según tipo
+        const provIdsByTipo =
+            selectedTipo === 'all'
+                ? providers.map(p => p.IdProveedor)
+                : providers
+                    .filter(p => p.IdTipoProveedor === Number(selectedTipo))
+                    .map(p => p.IdProveedor);
+
+        // luego si hay proveedor específico, lo restringe aún más
+        const finalProvIds =
+            selectedProvider === 'all'
+                ? provIdsByTipo
+                : provIdsByTipo.filter(id => id === Number(selectedProvider));
+
+        setFilteredBranches(branches.filter(b => finalProvIds.includes(b.IdProveedor)));
+    }, [selectedTipo, selectedProvider, branches, providers]);
+
+    // 5) Abrir navegación
     const openNavigation = (lat: number, lng: number, label: string) => {
         const url = Platform.select({
-            ios: `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(
-                label
-            )}`,
+            ios: `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(label)}`,
             android: `google.navigation:q=${lat},${lng}`,
         });
-        if (url) {
-            Linking.openURL(url).catch((err) =>
-                console.warn('No se pudo abrir la app de mapas:', err)
-            );
-        }
+        if (url) Linking.openURL(url).catch(console.warn);
     };
 
-    // Si todavía no tenemos región o estamos en loading
     if (loading || region === null) {
         return (
             <SafeAreaView style={styles.container}>
@@ -150,24 +144,19 @@ export default function MapScreen() {
         );
     }
 
-    // Buscar proveedor de la sucursal seleccionada
-    const providerOfBranch = selectedBranch
-        ? providers.find((p) => p.IdProveedor === selectedBranch.IdProveedor)
-        : null;
-
-    // Generar la parte “residual” del nombre de la sucursal,
-    // es decir, remover el prefijo que coincide con el nombre del proveedor.
-    const getBranchDisplayName = (): string => {
-        if (!selectedBranch || !providerOfBranch) return '';
-        const fullBranchName = selectedBranch.NombreSucursal;
-        const provName = providerOfBranch.Nombre;
-
-        // Si el nombre de la sucursal comienza con el nombre del proveedor,
-        // lo removemos (ignorando mayúsculas/minúsculas) y recortamos espacios sobrantes.
-        const regex = new RegExp(`^\\s*${provName}\\s*`, 'i');
-        const stripped = fullBranchName.replace(regex, '').trim();
-        return stripped.length > 0 ? stripped : fullBranchName;
+    // Helper para nombre resumido
+    const getBranchName = (b: Sucursal) => {
+        const prov = providers.find(p => p.IdProveedor === b.IdProveedor);
+        if (!prov) return b.NombreSucursal;
+        const regex = new RegExp(`^\\s*${prov.Nombre}\\s*`, 'i');
+        const stripped = b.NombreSucursal.replace(regex, '').trim();
+        return stripped || b.NombreSucursal;
     };
+
+    // Lista de proveedores para el segundo dropdown
+    const proveedoresFiltrados = providers.filter(
+        p => selectedTipo === 'all' || p.IdTipoProveedor === Number(selectedTipo)
+    );
 
     return (
         <SafeAreaView style={styles.container}>
@@ -175,56 +164,64 @@ export default function MapScreen() {
 
             {/* HEADER */}
             <View style={styles.header}>
-                <Ionicons
-                    name="arrow-back"
-                    size={28}
-                    color="#fff"
-                    onPress={() => {
-                        /* router.back() */
-                    }}
-                />
+                <Ionicons name="arrow-back" size={28} color="#fff" onPress={() => { }} />
                 <Text style={styles.headerTitle}>Mapa de Sucursales</Text>
                 <View style={{ width: 28 }} />
             </View>
 
-            {/* PICKER DE PROVEEDORES */}
+            {/* DROPDOWN 1: Tipo de proveedor */}
             <View style={styles.pickerContainer}>
                 <Picker
-                    selectedValue={selectedProv}
-                    onValueChange={(v) => {
-                        setSelectedProv(v);
-                    }}
-                    mode="dropdown" // en iOS: "dropdown" o "dialog"
+                    selectedValue={selectedTipo}
+                    onValueChange={setSelectedTipo}
+                    mode="dropdown"
                 >
-                    <Picker.Item label="Todos" value="all" />
-                    {providers.map((p) => (
+                    <Picker.Item label="Todos los tipos" value="all" />
+                    {tipos.map(t => (
+                        <Picker.Item
+                            key={t.IdTipoProveedor}
+                            label={t.NombreTipoProveedor}
+                            value={String(t.IdTipoProveedor)}
+                        />
+                    ))}
+                </Picker>
+            </View>
+
+            {/* DROPDOWN 2: Proveedor */}
+            <View style={styles.pickerContainer}>
+                <Picker
+                    selectedValue={selectedProvider}
+                    onValueChange={setSelectedProvider}
+                    mode="dropdown"
+                >
+                    <Picker.Item label="Todos los proveedores" value="all" />
+                    {proveedoresFiltrados.map(p => (
                         <Picker.Item
                             key={p.IdProveedor}
                             label={p.Nombre}
-                            value={p.IdProveedor.toString()}
+                            value={String(p.IdProveedor)}
                         />
                     ))}
                 </Picker>
             </View>
 
             {/* MAPA */}
-            {/*
-        Agregamos key={selectedProv} para que iOS “remonte” el MapView
-        cada vez que cambie el proveedor, así los markers se actualizan al instante.
-      */}
             <MapView
-                key={selectedProv}
+                key={`${selectedTipo}-${selectedProvider}`}
                 style={styles.map}
                 initialRegion={region}
                 showsUserLocation
+                provider={PROVIDER_DEFAULT}
             >
-                {filteredBranches.map((b) => {
+                <UrlTile
+                    urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    maximumZ={19}
+                    flipY={false}
+                />
+                {filteredBranches.map(b => {
                     const lat = parseFloat(b.Latitud);
                     const lng = parseFloat(b.Longitud);
-                    if (isNaN(lat) || isNaN(lng)) {
-                        console.warn('[Map] lat/lng inválida para', b);
-                        return null;
-                    }
+                    if (isNaN(lat) || isNaN(lng)) return null;
                     return (
                         <Marker
                             key={b.IdSucursal}
@@ -236,42 +233,36 @@ export default function MapScreen() {
             </MapView>
 
             {/* TARJETA INFERIOR */}
-            {selectedBranch && providerOfBranch && (
-                <View style={styles.card}>
-                    {/* 1) Logo del proveedor */}
-                    {providerOfBranch.UrlLogo ? (
-                        <Image
-                            source={{ uri: providerOfBranch.UrlLogo }}
-                            style={styles.providerLogo}
-                            resizeMode="contain"
-                        />
-                    ) : null}
-
-                    <View style={styles.info}>
-                        {/* 2) Nombre del proveedor */}
-                        <Text style={styles.providerName}>
-                            {providerOfBranch.Nombre}
-                        </Text>
-                        {/* 3) Nombre “residual” de la sucursal */}
-                        <Text style={styles.branchName}>
-                            {getBranchDisplayName()}
-                        </Text>
+            {selectedBranch && (() => {
+                const prov = providers.find(p => p.IdProveedor === selectedBranch.IdProveedor)!;
+                return (
+                    <View style={styles.card}>
+                        {prov.UrlLogo && (
+                            <Image
+                                source={{ uri: prov.UrlLogo }}
+                                style={styles.providerLogo}
+                                resizeMode="contain"
+                            />
+                        )}
+                        <View style={styles.info}>
+                            <Text style={styles.providerName}>{prov.Nombre}</Text>
+                            <Text style={styles.branchName}>{getBranchName(selectedBranch)}</Text>
+                        </View>
+                        <TouchableOpacity
+                            style={styles.button}
+                            onPress={() =>
+                                openNavigation(
+                                    parseFloat(selectedBranch.Latitud),
+                                    parseFloat(selectedBranch.Longitud),
+                                    selectedBranch.NombreSucursal
+                                )
+                            }
+                        >
+                            <Text style={styles.buttonText}>Ir</Text>
+                        </TouchableOpacity>
                     </View>
-
-                    <TouchableOpacity
-                        style={styles.button}
-                        onPress={() =>
-                            openNavigation(
-                                parseFloat(selectedBranch.Latitud),
-                                parseFloat(selectedBranch.Longitud),
-                                selectedBranch.NombreSucursal
-                            )
-                        }
-                    >
-                        <Text style={styles.buttonText}>Ir</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
+                );
+            })()}
         </SafeAreaView>
     );
 }
@@ -283,8 +274,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         backgroundColor: '#001D35',
-        paddingTop:
-            Platform.OS === 'android' ? StatusBar.currentHeight : 16,
+        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
         paddingBottom: 12,
         paddingHorizontal: 16,
     },
@@ -293,9 +283,10 @@ const styles = StyleSheet.create({
     pickerContainer: {
         backgroundColor: '#FFF',
         marginHorizontal: 16,
+        marginTop: 8,
         borderRadius: 8,
-        marginVertical: 8,
         overflow: 'hidden',
+        elevation: 2,
     },
 
     map: { flex: 1 },
@@ -308,7 +299,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFF',
         borderRadius: 12,
         flexDirection: 'row',
-        alignItems: 'center', // para que el logo y los textos queden alineados verticalmente
+        alignItems: 'center',
         padding: 12,
         elevation: 6,
     },
@@ -318,19 +309,9 @@ const styles = StyleSheet.create({
         marginRight: 12,
         borderRadius: 8,
     },
-    info: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    providerName: {
-        fontSize: 16,
-        fontWeight: '700',
-        marginBottom: 2,
-    },
-    branchName: {
-        fontSize: 14,
-        color: '#555',
-    },
+    info: { flex: 1, justifyContent: 'center' },
+    providerName: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
+    branchName: { fontSize: 14, color: '#555' },
 
     button: {
         backgroundColor: '#F3732A',

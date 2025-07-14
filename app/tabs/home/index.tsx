@@ -96,7 +96,6 @@ export default function HomeScreenDynamic() {
                 const filt = data.filter(p => p.IdTipoProveedor === activeTipo);
                 setProveedores(filt);
                 if (filt.length) setActiveProveedor(filt[0].IdProveedor);
-                console.log(filt[0].Nombre);
             })
             .catch(console.error);
     }, [activeTipo]);
@@ -372,7 +371,13 @@ const styles = StyleSheet.create({
     tabTextActive: { color: '#F3732A', fontWeight: '700' },
 
     providerRow: { paddingVertical: 12, paddingLeft: 16 },
-    providerBtn: { marginRight: 12, backgroundColor: '#FFF', borderRadius: 15, padding: 8 },
+    // providerBtn: { marginRight: 12, backgroundColor: '#FFF', borderRadius: 15, padding: 8 },
+    providerBtn: {
+        marginRight: 12,
+        backgroundColor: '#F0F0F0',   // gris muy claro
+        borderRadius: 15,
+        padding: 8,
+    },
     providerBtnActive: { borderWidth: 3, borderColor: 'rgba(243,115,42,0.6)', borderRadius: 15 },
     providerLogo: { width: 60, height: 20, resizeMode: 'contain' },
 

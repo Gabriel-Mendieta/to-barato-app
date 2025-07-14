@@ -4,21 +4,27 @@
     "slug": "to-barato-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/icons/logo.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/icons/splash.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#001D35"
+    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/icons/logo.png",
+        "backgroundColor": "#001D35"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "package": "com.gabrielmendieta.tobaratoapp"
     },
     "web": {
       "bundler": "metro",
@@ -40,6 +46,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "429dba0f-854f-447a-ad1a-5b1035d63cbc"
+      }
     }
   }
 }

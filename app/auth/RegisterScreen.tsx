@@ -1,4 +1,5 @@
 // app/auth/RegisterScreen.tsx
+
 import React, { useState } from "react";
 import {
     SafeAreaView,
@@ -42,12 +43,17 @@ export default function RegisterScreen() {
     // validaciones
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const isEmailValid = emailRegex.test(email);
+
+    // mínimo 6, al menos 1 mayúscula, 1 número y 1 caracter especial
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}$/;
+    const isPasswordValid = passwordRegex.test(password);
+
     const canSubmit =
         firstName.trim().length > 0 &&
         lastName.trim().length > 0 &&
         username.trim().length > 0 &&
         isEmailValid &&
-        password.length >= 6;
+        isPasswordValid;
 
     const handleRegister = async () => {
         if (!canSubmit) return;
@@ -55,13 +61,9 @@ export default function RegisterScreen() {
         setSendingOtp(true);
 
         try {
-            // 1) Solicitar OTP
             await axios.post(
-                `https://tobarato-api.alirizvi.dev/api/solicitar-otp?email=${encodeURIComponent(
-                    email
-                )}`
+                `https://tobarato-api.alirizvi.dev/api/solicitar-otp?email=${encodeURIComponent(email)}`
             );
-            // 2) Navegar a pantalla de OTP, pasando los datos del usuario
             router.push({
                 pathname: "/auth/Otp",
                 params: {
@@ -79,44 +81,43 @@ export default function RegisterScreen() {
     };
 
     return (
-        <SafeAreaView
-            style={[
-                styles.container,
-                { backgroundColor: colorScheme === 'dark' ? '#0a0a0a' : '#F8F9FF' }
-            ]}
-        >
-            <ScrollView keyboardShouldPersistTaps="handled">
-                <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                    <View style={{ flex: 1 }}>
-                        {/* Fondo con logo */}
-                        <ImageBackground
-                            source={peso}
-                            resizeMode="stretch"
-                            style={globalStyles.pesosBacground}
-                        >
-                            <View style={styles.overlay} />
+        <SafeAreaView style={[styles.container, { backgroundColor: "#F8F9FF" }]}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 80}
+            >
+                <ScrollView
+                    contentContainerStyle={{ flexGrow: 1 }}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <View style={{ flex: 1 }}>
+                            {/* Fondo con logo */}
+                            <ImageBackground
+                                source={peso}
+                                resizeMode="stretch"
+                                style={globalStyles.pesosBacground}
+                            >
+                                <View style={styles.overlay} />
 
-                            <View style={styles.logoRow}>
-                                <Image
-                                    source={require('../../assets/icons/logo.png')}
-                                    resizeMode="contain"
-                                    style={styles.logo}
-                                />
-                                <View>
-                                    <Text style={styles.logoText}>To'</Text>
-                                    <Text style={styles.logoTextBold}>Barato</Text>
+                                <View style={styles.logoRow}>
+                                    <Image
+                                        source={require("../../assets/icons/logo.png")}
+                                        resizeMode="contain"
+                                        style={styles.logo}
+                                    />
+                                    <View>
+                                        <Text style={styles.logoText}>To'</Text>
+                                        <Text style={styles.logoTextBold}>Barato</Text>
+                                    </View>
                                 </View>
-                            </View>
-                        </ImageBackground>
+                            </ImageBackground>
 
-                        <KeyboardAvoidingView
-                            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                            keyboardVerticalOffset={80}
-                        >
                             <MotiView
                                 from={{ opacity: 0, translateY: 20 }}
                                 animate={{ opacity: 1, translateY: 0 }}
-                                transition={{ type: 'timing', duration: 400 }}
+                                transition={{ type: "timing", duration: 400 }}
                                 style={styles.form}
                             >
                                 <Text style={styles.title}>Completa tus datos</Text>
@@ -172,7 +173,12 @@ export default function RegisterScreen() {
 
                                 {/* Contraseña */}
                                 <Text style={styles.label}>Contraseña</Text>
-                                <View style={styles.passwordWrap}>
+                                <View
+                                    style={[
+                                        styles.passwordWrap,
+                                        !isPasswordValid && password.length > 0 && styles.inputError,
+                                    ]}
+                                >
                                     <TextInput
                                         style={styles.passwordInput}
                                         placeholder="Mínimo 6 caracteres"
@@ -180,18 +186,25 @@ export default function RegisterScreen() {
                                         value={password}
                                         onChangeText={setPassword}
                                         secureTextEntry={!passwordVisible}
+                                        autoCapitalize="none"
                                     />
                                     <TouchableOpacity
-                                        onPress={() => setPasswordVisible(v => !v)}
+                                        onPress={() => setPasswordVisible((v) => !v)}
                                         style={styles.eyeBtn}
                                     >
                                         <Ionicons
-                                            name={passwordVisible ? 'eye' : 'eye-off'}
+                                            name={passwordVisible ? "eye" : "eye-off"}
                                             size={20}
                                             color="#001D35"
                                         />
                                     </TouchableOpacity>
                                 </View>
+                                {password.length > 0 && !isPasswordValid && (
+                                    <Text style={styles.errorText}>
+                                        La contraseña debe tener al menos 6 caracteres,
+                                        incluir una mayúscula, un número y un carácter especial.
+                                    </Text>
+                                )}
 
                                 {/* Error OTP */}
                                 {otpError.length > 0 && (
@@ -205,7 +218,7 @@ export default function RegisterScreen() {
                                     onPress={handleRegister}
                                     disabled={!canSubmit || sendingOtp}
                                 >
-                                    {sendingOtp ? 'Enviando OTP...' : 'Registrarse'}
+                                    {sendingOtp ? "Enviando OTP..." : "Registrarse"}
                                 </CustomButton>
 
                                 {/* Línea divisoria */}
@@ -214,43 +227,24 @@ export default function RegisterScreen() {
                                     <Text style={styles.orText}>o</Text>
                                 </View>
 
-                                {/* Google / Apple */}
-                                {/* <CustomButton
-                                    color="white"
-                                    textFont="medium"
-                                    textColor="neutral"
-                                    variant="withIcon"
-                                    icon="logo-google"
-                                    onPress={() => router.push('../tabs/home')}
-                                >
-                                    Continuar con Google
-                                </CustomButton>
-
-                                <CustomButton
-                                    color="white"
-                                    textFont="medium"
-                                    textColor="neutral"
-                                    variant="withIcon"
-                                    icon="logo-apple"
-                                    onPress={() => router.push('../tabs/home')}
-                                >
-                                    Continuar con Apple
-                                </CustomButton> */}
-
                                 {/* Link a Login */}
                                 <View style={styles.loginLink}>
-                                    <Text style={{ color: '#001D35' }}>Ya tengo una cuenta. </Text>
-                                    <TouchableOpacity onPress={() => router.push('/auth/IniciarSesion')}>
-                                        <Text style={{ color: '#7F5610', fontWeight: 'bold' }}>
+                                    <Text style={{ color: "#001D35" }}>Ya tengo una cuenta. </Text>
+                                    <TouchableOpacity
+                                        onPress={() => router.push("/auth/IniciarSesion")}
+                                    >
+                                        <Text
+                                            style={{ color: "#7F5610", fontWeight: "bold" }}
+                                        >
                                             Iniciar Sesión
                                         </Text>
                                     </TouchableOpacity>
                                 </View>
                             </MotiView>
-                        </KeyboardAvoidingView>
-                    </View>
-                </TouchableWithoutFeedback>
-            </ScrollView>
+                        </View>
+                    </TouchableWithoutFeedback>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
@@ -259,11 +253,11 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     overlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(16,55,92,0.61)',
+        backgroundColor: "rgba(16,55,92,0.61)",
     },
     logoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection: "row",
+        alignItems: "center",
         paddingHorizontal: 24,
         paddingTop: 40,
         paddingBottom: 16,
@@ -271,56 +265,56 @@ const styles = StyleSheet.create({
     logo: { width: 70, height: 105, marginRight: 10 },
     logoText: {
         fontSize: 47,
-        color: '#fff',
-        fontFamily: 'Lexend-Medium',
+        color: "#fff",
+        fontFamily: "Lexend-Medium",
         marginBottom: -10,
     },
     logoTextBold: {
         fontSize: 47,
-        color: '#fff',
-        fontWeight: 'bold',
-        fontFamily: 'Lexend-Medium',
+        color: "#fff",
+        fontWeight: "bold",
+        fontFamily: "Lexend-Medium",
     },
-    form: { paddingHorizontal: 24, paddingTop: 16 },
+    form: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40 },
     title: {
         fontSize: 30,
-        textAlign: 'center',
+        textAlign: "center",
         marginBottom: 24,
-        color: '#101418',
-        fontFamily: 'Lexend-Black',
+        color: "#101418",
+        fontFamily: "Lexend-Black",
     },
-    label: { fontSize: 12, color: '#001D35', marginBottom: 6 },
+    label: { fontSize: 12, color: "#001D35", marginBottom: 6 },
     input: {
-        backgroundColor: '#fff',
+        backgroundColor: "#fff",
         borderWidth: 1,
-        borderColor: '#DBE1E7',
+        borderColor: "#DBE1E7",
         borderRadius: 6,
         paddingHorizontal: 12,
         paddingVertical: 10,
         marginBottom: 16,
     },
-    inputError: { borderColor: '#D1170F' },
+    inputError: { borderColor: "#D1170F" },
     errorText: {
-        color: '#D1170F',
+        color: "#D1170F",
         marginTop: -12,
         marginBottom: 12,
         fontSize: 12,
     },
     passwordWrap: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#fff',
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fff",
         borderWidth: 1,
-        borderColor: '#DBE1E7',
+        borderColor: "#DBE1E7",
         borderRadius: 6,
-        marginBottom: 24,
+        marginBottom: 8,
     },
     passwordInput: { flex: 1, paddingHorizontal: 12, paddingVertical: 10 },
     eyeBtn: { paddingHorizontal: 12 },
     orLine: {
         alignItems: "center",
         marginBottom: 20,
-        position: "relative"
+        position: "relative",
     },
     orSeparator: {
         position: "absolute",
@@ -328,18 +322,18 @@ const styles = StyleSheet.create({
         backgroundColor: "#B5C1CC",
         left: 0,
         right: 0,
-        top: 12
+        top: 12,
     },
     orText: {
         backgroundColor: "#F8F9FF",
         paddingHorizontal: 10,
         color: "#33618D",
-        fontWeight: "bold"
+        fontWeight: "bold",
     },
     loginLink: {
-        flexDirection: 'row',
-        justifyContent: 'center',
+        flexDirection: "row",
+        justifyContent: "center",
         marginTop: 10,
-        marginBottom: 40
+        marginBottom: 40,
     },
 });
