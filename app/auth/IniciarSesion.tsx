@@ -144,7 +144,10 @@ export default function IniciarSesion() {
         <SafeAreaView
             style={{
                 flex: 1,
-                backgroundColor: colorScheme === "dark" ? "#0a0a0a" : "#F8F9FF",
+                // backgroundColor: colorScheme === "dark" ? "#0a0a0a" : "#F8F9FF",
+                backgroundColor: "#F8F9FF",
+
+
             }}
         >
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
