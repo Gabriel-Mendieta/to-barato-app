@@ -66,6 +66,7 @@ export default function AddToListScreen() {
                 const resp = await axios.get<ProductoAPI[]>(
                     `https://tobarato-api.alirizvi.dev/api/productotipoproveedor/${tipoId}`
                 );
+                console.log(tipoId)
                 productos = resp.data;
             } else {
                 const resp = await axios.get<ProductoAPI[]>(

@@ -1,25 +1,30 @@
 import { Ionicons } from '@expo/vector-icons'
 import React from 'react'
 import { Tabs } from 'expo-router'
-import { Animated } from 'react-native';
 
 const TabsLayout = () => {
     return (
-        <Tabs screenOptions={{ tabBarActiveTintColor: '#001D35', headerShown: false }}>
+        <Tabs
+            screenOptions={{
+                headerShown: false,
+                tabBarStyle: { backgroundColor: '#001D35' },
+                tabBarActiveTintColor: 'white',
+                tabBarInactiveTintColor: 'gray',
+            }}
+        >
             <Tabs.Screen
                 name="home/index"
                 options={{
                     title: 'Home',
-                    tabBarIcon: ({ color }) => <Ionicons size={28} name="home" color={color} />,
+                    tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
                     animation: 'shift',
                 }}
-
             />
             <Tabs.Screen
                 name="lista/index"
                 options={{
                     title: 'Listas',
-                    tabBarIcon: ({ color }) => <Ionicons size={28} name="cart-outline" color={color} />,
+                    tabBarIcon: ({ color, size }) => <Ionicons name="cart-outline" size={size} color={color} />,
                     animation: 'shift',
                 }}
             />
@@ -27,7 +32,7 @@ const TabsLayout = () => {
                 name="map/index"
                 options={{
                     title: 'Proveedores',
-                    tabBarIcon: ({ color }) => <Ionicons size={28} name="map-outline" color={color} />,
+                    tabBarIcon: ({ color, size }) => <Ionicons name="map-outline" size={size} color={color} />,
                     animation: 'shift',
                 }}
             />
@@ -35,52 +40,18 @@ const TabsLayout = () => {
                 name="perfil/index"
                 options={{
                     title: 'Perfil',
-                    tabBarIcon: ({ color }) => <Ionicons size={28} name="person-outline" color={color} />,
+                    tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
                     animation: 'shift',
                 }}
             />
-            <Tabs.Screen
-                name="list/add"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="list/providers"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="list/[id]"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="product/[id]"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="settings/ChangePassword"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="settings/EditProfile"
-                options={{
-                    href: null,
-                }}
-            />
-            <Tabs.Screen
-                name="list/type-selection"
-                options={{
-                    href: null,
-                }}
-            />
+            {/* Resto de pantallas ocultas */}
+            <Tabs.Screen name="list/add" options={{ href: null }} />
+            <Tabs.Screen name="list/providers" options={{ href: null }} />
+            <Tabs.Screen name="list/[id]" options={{ href: null }} />
+            <Tabs.Screen name="product/[id]" options={{ href: null }} />
+            <Tabs.Screen name="settings/ChangePassword" options={{ href: null }} />
+            <Tabs.Screen name="settings/EditProfile" options={{ href: null }} />
+            <Tabs.Screen name="list/type-selection" options={{ href: null }} />
         </Tabs>
     )
 }

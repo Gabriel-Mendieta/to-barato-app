@@ -384,8 +384,28 @@ const styles = StyleSheet.create({
     categorySection: { marginBottom: 24 },
     categoryTitle: { fontSize: 18, fontWeight: '700', color: '#101418', marginLeft: 16, marginBottom: 8 },
 
-    card: { backgroundColor: '#FFF', borderRadius: 12, overflow: 'hidden', elevation: 3 },
-    cardImage: { width: '100%', aspectRatio: 1 },
+    // card: { backgroundColor: '#FFF', borderRadius: 12, overflow: 'hidden', elevation: 3 },
+    card: {
+        backgroundColor: '#FFF',
+        borderRadius: 12,
+        // iOS shadow
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 6,
+        // Android shadow
+        elevation: 4,
+        // IMPORTANTE: para que la sombra no se recorte en Android
+        overflow: 'visible',
+    },
+    // cardImage: { width: '100%', aspectRatio: 1 },
+    cardImage: {
+        width: '100%',
+        aspectRatio: 1,
+        // redondear solo las esquinas superiores
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+    },
     cardBody: { padding: 12, paddingBottom: 32 },
     cardTitle: { fontSize: 16, fontWeight: '600', color: '#101418', marginBottom: 4 },
     priceRow: { flexDirection: 'row', alignItems: 'baseline' },

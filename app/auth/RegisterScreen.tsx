@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     inputError: { borderColor: "#D1170F" },
     errorText: {
         color: "#D1170F",
-        marginTop: -12,
+        marginTop: 2,
         marginBottom: 12,
         fontSize: 12,
     },
