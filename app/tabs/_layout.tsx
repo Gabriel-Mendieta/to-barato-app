@@ -52,6 +52,8 @@ const TabsLayout = () => {
             <Tabs.Screen name="settings/ChangePassword" options={{ href: null }} />
             <Tabs.Screen name="settings/EditProfile" options={{ href: null }} />
             <Tabs.Screen name="list/type-selection" options={{ href: null }} />
+            <Tabs.Screen name="list/iaResult" options={{ href: null }} />
+
         </Tabs>
     )
 }

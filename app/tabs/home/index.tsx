@@ -218,7 +218,7 @@ export default function HomeScreenDynamic() {
                 </ScrollView>
             </View>
 
-            {/* PROVEEDORES LOGOS */}
+            {/* PROVEEDORES LOGOS - MODIFICADO */}
             <View style={styles.providerRow}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {proveedores.map(p => (
@@ -227,7 +227,7 @@ export default function HomeScreenDynamic() {
                             onPress={() => setActiveProveedor(p.IdProveedor)}
                             style={[styles.providerBtn, activeProveedor === p.IdProveedor && styles.providerBtnActive]}
                         >
-                            <Image source={{ uri: p.UrlLogo }} style={styles.providerLogo} />
+                            <Image source={{ uri: p.UrlLogo }} style={styles.providerBtnBackground} resizeMode="contain" />
                         </Pressable>
                     ))}
                 </ScrollView>
@@ -374,11 +374,31 @@ const styles = StyleSheet.create({
     // providerBtn: { marginRight: 12, backgroundColor: '#FFF', borderRadius: 15, padding: 8 },
     providerBtn: {
         marginRight: 12,
-        backgroundColor: '#F0F0F0',   // gris muy claro
         borderRadius: 15,
-        padding: 8,
+        width: 72,
+        height: 40,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: '#ccc',
+        backgroundColor: '#FFF',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    providerBtnActive: { borderWidth: 3, borderColor: 'rgba(243,115,42,0.6)', borderRadius: 15 },
+    providerBtnActive: {
+        borderColor: '#F3732A',
+        borderWidth: 2,
+    },
+    providerBtnBackground: {
+        width: '90%',
+        height: '90%',
+    },
+    // providerBtn: {
+    //     marginRight: 12,
+    //     backgroundColor: '#F0F0F0',   // gris muy claro
+    //     borderRadius: 15,
+    //     padding: 8,
+    // },
+    // providerBtnActive: { borderWidth: 3, borderColor: 'rgba(243,115,42,0.6)', borderRadius: 15 },
     providerLogo: { width: 60, height: 20, resizeMode: 'contain' },
 
     categorySection: { marginBottom: 24 },
