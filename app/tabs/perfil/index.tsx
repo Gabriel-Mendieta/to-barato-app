@@ -310,7 +310,7 @@ export default function ProfileScreen() {
                     </TouchableOpacity>
 
                     {/* 3) PREFERENCIAS */}
-                    <TouchableOpacity
+                    {/* <TouchableOpacity
                         style={styles.optionItem}
                         onPress={() => router.push("/settings/Preferences")}
                     >
@@ -323,7 +323,7 @@ export default function ProfileScreen() {
                             size={24}
                             color="#6B7280"
                         />
-                    </TouchableOpacity>
+                    </TouchableOpacity> */}
 
                     {/* 4) ELIMINAR CUENTA */}
                     <TouchableOpacity
