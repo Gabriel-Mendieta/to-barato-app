@@ -303,7 +303,11 @@ export default function EditProfileScreen() {
         >
           <View style={[styles.content, { width: getEditProfileFormWidth(width) }]}>
             <View style={styles.avatarSection}>
-              <View style={styles.avatarEditor}>
+              <View
+                accessibilityLabel={initials}
+                style={styles.avatarEditor}
+                testID="edit-profile-avatar-wrapper"
+              >
                 {avatarUri && !avatarImageFailed ? (
                   <Image
                     source={{ uri: avatarUri }}
@@ -337,7 +341,7 @@ export default function EditProfileScreen() {
                   ]}
                   testID="edit-profile-avatar-edit"
                 >
-                  <Ionicons name="create-outline" size={20} color={colors.white} />
+                  <Ionicons name="create-outline" size={22} color={colors.white} />
                 </Pressable>
               </View>
             </View>
@@ -453,7 +457,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   avatarEditor: {
+    width: 112,
+    height: 112,
     position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
   },
   avatar: {
     width: 96,
@@ -476,14 +485,19 @@ const styles = StyleSheet.create({
   },
   avatarEditButton: {
     position: 'absolute',
-    right: -6,
-    bottom: -6,
+    right: 0,
+    bottom: 0,
     width: 44,
     height: 44,
     borderRadius: radii.pill,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#06182D',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
   form: {
     gap: spacing.lg,

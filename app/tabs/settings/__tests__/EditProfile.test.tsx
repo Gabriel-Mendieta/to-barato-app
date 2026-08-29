@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import EditProfileScreen, { getEditProfileFormWidth } from '../EditProfile';
 
@@ -166,14 +166,45 @@ describe('Editar perfil', () => {
     renderEditProfile();
     await screen.findByTestId('edit-profile-avatar');
 
-    const pencil = screen.getByTestId('edit-profile-avatar-edit');
+    const avatarWrapper = screen.getByTestId('edit-profile-avatar-wrapper');
+    const pencil = within(avatarWrapper).getByTestId('edit-profile-avatar-edit');
+    const pencilStyle = StyleSheet.flatten(
+      typeof pencil.props.style === 'function'
+        ? pencil.props.style({ pressed: false })
+        : pencil.props.style,
+    );
+    const pencilIcon = pencil.findByProps({ name: 'create-outline' });
+
+    expect(StyleSheet.flatten(avatarWrapper.props.style)).toEqual(
+      expect.objectContaining({
+        width: 112,
+        height: 112,
+        position: 'relative',
+        overflow: 'visible',
+      }),
+    );
     expect(pencil.props.accessibilityRole).toBe('button');
     expect(pencil.props.accessibilityLabel).toBe('Editar foto de perfil');
     expect(pencil.props.accessibilityHint).toBe(
       'Abre el selector de fotos para cambiar tu imagen.',
     );
-    expect(StyleSheet.flatten(pencil.props.style)).toEqual(
-      expect.objectContaining({ width: 44, height: 44 }),
+    expect(pencilStyle).toEqual(
+      expect.objectContaining({
+        position: 'absolute',
+        right: 0,
+        bottom: 0,
+        width: 44,
+        height: 44,
+        borderRadius: 999,
+        borderWidth: 3,
+        backgroundColor: '#0B2545',
+        borderColor: '#F4F6FB',
+        shadowOpacity: 0.25,
+        elevation: 3,
+      }),
+    );
+    expect(pencilIcon.props).toEqual(
+      expect.objectContaining({ name: 'create-outline', size: 22, color: '#ffffff' }),
     );
     expect(mockRequestMediaLibraryPermissionsAsync).not.toHaveBeenCalled();
 
