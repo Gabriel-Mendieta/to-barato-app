@@ -17,6 +17,9 @@ if (!i18n.isInitialized) {
     resources,
     lng: initialLanguage,
     fallbackLng: 'es',
+    // Resources are bundled locally. Initialize synchronously so screens do
+    // not render translation keys during the first frame.
+    initAsync: false,
     interpolation: { escapeValue: false },
     react: { useSuspense: false },
   });

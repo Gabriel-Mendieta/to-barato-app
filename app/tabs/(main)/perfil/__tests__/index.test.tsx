@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import ProfileScreen from '../index';
 
@@ -45,6 +46,7 @@ jest.mock('react-i18next', () => ({
     t: (key: string, options?: { version?: string }) => {
       const translations: Record<string, string> = {
         'profile.brandLogo': "Logotipo de To' Barato",
+        'profile.brandName': "To'\nBarato",
         'profile.hello': 'Hola',
         'profile.online': 'Usuario activo',
         'profile.notifications': 'Notificaciones',
@@ -64,7 +66,7 @@ jest.mock('react-i18next', () => ({
         'profile.preferences': 'Preferencias',
         'profile.preferencesSubtitle': 'Productos favoritos, tiendas',
         'profile.privacySecurity': 'Privacidad y seguridad',
-        'profile.privacySecuritySubtitle': 'Contraseña',
+        'profile.privacySecuritySubtitle': 'Contraseña, 2FA',
         'profile.logout': 'Cerrar Sesión',
         'profile.logoutSubtitle': 'Salir de la cuenta',
         'profile.comingSoon': 'Próximamente',
@@ -72,7 +74,7 @@ jest.mock('react-i18next', () => ({
         'profile.saved': 'Ahorrado',
         'profile.products': 'Productos',
         'profile.lists': 'Listas',
-        'profile.metricUnavailable': 'N/D',
+        'profile.metricUnavailable': 'No disponible',
         'profile.footer': `To' Barato v${options?.version ?? '1.0.0'} · Hecho en RD 🇩🇴`,
         'profile.sessionExpired': 'Sesión expirada',
         'profile.sessionExpiredBody': 'Inicia sesión nuevamente.',
@@ -152,12 +154,23 @@ describe('Perfil', () => {
     expect(screen.getByText('María Rodríguez')).toBeTruthy();
     expect(within(screen.getByTestId('profile-metric-products')).getByText('3')).toBeTruthy();
     expect(within(screen.getByTestId('profile-metric-lists')).getByText('2')).toBeTruthy();
-    expect(within(screen.getByTestId('profile-metric-savings')).getByText('N/D')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('profile-metric-savings')).getByText('No disponible'),
+    ).toBeTruthy();
     expect(screen.getByText('Editar perfil')).toBeTruthy();
     expect(screen.getByText('Preferencias')).toBeTruthy();
     expect(screen.getByText('Notificaciones')).toBeTruthy();
     expect(screen.getByText('Privacidad y seguridad')).toBeTruthy();
     expect(screen.getByText('Cerrar Sesión')).toBeTruthy();
+
+    const editOption = screen.getByTestId('profile-option-edit');
+    const editStyle = StyleSheet.flatten(editOption.props.style);
+    expect(editStyle).toEqual(
+      expect.objectContaining({ backgroundColor: '#ffffff', borderRadius: 20, minHeight: 76 }),
+    );
+    expect(screen.getByTestId('profile-option-edit-trailing')).toBeTruthy();
+    expect(screen.getByTestId('profile-option-edit-chevron')).toBeTruthy();
+    expect(screen.queryAllByText(/^profile\./)).toHaveLength(0);
   });
 
   it('muestra fallback cuando las listas offline no están disponibles', async () => {
@@ -167,9 +180,15 @@ describe('Perfil', () => {
 
     await waitFor(() => expect(screen.getByTestId('profile-metric-lists')).toBeTruthy());
 
-    expect(within(screen.getByTestId('profile-metric-products')).getByText('N/D')).toBeTruthy();
-    expect(within(screen.getByTestId('profile-metric-lists')).getByText('N/D')).toBeTruthy();
-    expect(within(screen.getByTestId('profile-metric-savings')).getByText('N/D')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('profile-metric-products')).getByText('No disponible'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('profile-metric-lists')).getByText('No disponible'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('profile-metric-savings')).getByText('No disponible'),
+    ).toBeTruthy();
   });
 
   it('conserva las acciones de editar, preferencias, privacidad y cierre de sesión', async () => {
@@ -181,6 +200,9 @@ describe('Perfil', () => {
 
     fireEvent.press(screen.getByTestId('profile-option-preferences'));
     expect(mockShowToast).toHaveBeenCalledWith('info', 'Preferencias', 'Próximamente');
+
+    fireEvent.press(screen.getByTestId('profile-option-notifications'));
+    expect(screen.getByText('Oferta disponible')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('profile-option-privacy'));
     expect(mockPush).toHaveBeenCalledWith('/tabs/settings/ChangePassword');

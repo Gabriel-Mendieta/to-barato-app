@@ -6,13 +6,13 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
-  Platform,
   useColorScheme,
   useWindowDimensions,
 } from 'react-native';
@@ -100,13 +100,18 @@ function ProfileOption({
           </Text>
         </View>
       </View>
-      <View style={styles.optionTrailing}>
+      <View style={styles.optionTrailing} testID={`${testID}-trailing`}>
         {badge ? (
           <View style={[styles.badge, { backgroundColor: colors.orangeSoft }]}>
             <Text style={[styles.badgeText, { color: colors.orangeDeep }]}>{badge}</Text>
           </View>
         ) : null}
-        <Ionicons name="chevron-forward" size={20} color={colors.tabInactive} />
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={colors.tabInactive}
+          testID={`${testID}-chevron`}
+        />
       </View>
     </Pressable>
   );
@@ -205,7 +210,7 @@ export default function ProfileScreen() {
 
   const user = userQuery.data;
   const loading = checkingSession || userQuery.isPending;
-  const horizontalPadding = width >= layout.tabletBreakpoint ? layout.gutterWide : layout.gutter;
+  const horizontalPadding = width >= layout.tabletBreakpoint ? layout.gutterWide : spacing.xl;
   const itemCount = itemCountQueries.reduce((total, query) => total + (query.data?.length ?? 0), 0);
   const fullName = user
     ? [user.Nombres, user.Apellidos].filter((part) => part?.trim()).join(' ') ||
@@ -223,6 +228,7 @@ export default function ProfileScreen() {
   const itemCountError = itemCountQueries.some((query) => query.isError);
   const metricsLoading = listsQuery.isPending || itemCountQueries.some((query) => query.isPending);
   const unavailableMetric = t('profile.metricUnavailable');
+  const heroBackground = colorScheme === 'dark' ? colors.card : colors.navy;
   const version = Constants.expoConfig?.version;
 
   if (loading) {
@@ -249,7 +255,7 @@ export default function ProfileScreen() {
             style={[styles.logo, { tintColor: colors.orange }]}
             accessibilityLabel={t('profile.brandLogo')}
           />
-          <Text style={[styles.brandName, { color: colors.navy }]}>To&apos;{'\n'}Barato</Text>
+          <Text style={[styles.brandName, { color: colors.navy }]}>{t('profile.brandName')}</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -275,7 +281,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.content, width >= layout.tabletBreakpoint && styles.tabletContent]}>
-          <View style={[styles.hero, { backgroundColor: colors.navy }]} testID="profile-hero">
+          <View style={[styles.hero, { backgroundColor: heroBackground }]} testID="profile-hero">
             <View style={styles.heroTop}>
               <View style={styles.avatarWrapper}>
                 {user.UrlPerfil ? (
@@ -506,7 +512,7 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1 },
   content: { width: '100%' },
   tabletContent: { maxWidth: layout.maxContentWidth, alignSelf: 'center' },
-  hero: { borderRadius: radii.xl, padding: spacing.xl, marginBottom: spacing.lg },
+  hero: { borderRadius: radii.xl, padding: spacing.xl, marginBottom: spacing.xl },
   heroTop: { flexDirection: 'row', alignItems: 'center' },
   avatarWrapper: { position: 'relative' },
   avatar: {
@@ -547,12 +553,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#55769A',
   },
-  metrics: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  metrics: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
   metric: {
     flex: 1,
-    minHeight: 60,
+    minWidth: 0,
+    minHeight: 62,
     justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radii.md,
     backgroundColor: 'rgba(255,255,255,0.12)',
@@ -566,11 +573,12 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     marginTop: 2,
   },
-  options: { gap: spacing.sm },
+  options: { gap: spacing.md },
   option: {
     minHeight: 76,
-    borderRadius: radii.lg,
-    padding: spacing.md,
+    width: '100%',
+    borderRadius: 20,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -580,7 +588,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: Platform.select({ android: 3, default: 0 }),
   },
-  optionContent: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  optionContent: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+  },
   optionIcon: {
     width: 48,
     height: 48,
@@ -588,10 +602,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionCopy: { flex: 1, marginLeft: spacing.md, paddingRight: spacing.sm },
+  optionCopy: { flex: 1, minWidth: 0, marginLeft: spacing.md, paddingRight: spacing.sm },
   optionTitle: { fontFamily: typography.bold, fontSize: typography.sizes.md },
   optionSubtitle: { fontFamily: typography.medium, fontSize: typography.sizes.xs, marginTop: 2 },
-  optionTrailing: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  optionTrailing: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   badge: {
     minWidth: 24,
     height: 24,
