@@ -15,6 +15,8 @@ import {
   useColorScheme,
   useWindowDimensions,
   type ColorSchemeName,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,6 +73,50 @@ function getInitials(fullName: string) {
       .slice(0, 2)
       .map((part) => part[0]?.toUpperCase())
       .join('') || '?'
+  );
+}
+
+type IconButtonProps = {
+  accessibilityLabel: string;
+  accessibilityHint?: string;
+  onPress: () => void;
+  testID: string;
+  hitSlop?: number;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+};
+
+/**
+ * NativeWind's JSX runtime swaps every `Pressable` for a cssInterop wrapper that
+ * flattens `style` into a plain object. A `({ pressed }) => [...]` callback
+ * flattens to `{}`, so the button reaches the native side with no size, fill or
+ * position — invisible. Static arrays survive, so the pressed state lives here.
+ */
+function IconButton({
+  accessibilityLabel,
+  accessibilityHint,
+  onPress,
+  testID,
+  hitSlop,
+  style,
+  children,
+}: IconButtonProps) {
+  const [pressed, setPressed] = useState(false);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      hitSlop={hitSlop}
+      onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      style={[style, pressed ? styles.pressed : null]}
+      testID={testID}
+    >
+      {children}
+    </Pressable>
   );
 }
 
@@ -291,19 +337,14 @@ export default function EditProfileScreen() {
         backgroundColor={colors.bg}
       />
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
+        <IconButton
           accessibilityLabel={t('profile.back')}
           onPress={() => router.back()}
-          style={({ pressed }) => [
-            styles.backButton,
-            { backgroundColor: colors.card, borderColor: colors.line },
-            pressed && styles.pressed,
-          ]}
+          style={[styles.backButton, { backgroundColor: colors.card, borderColor: colors.line }]}
           testID="edit-profile-back"
         >
           <Ionicons name="chevron-back" size={22} color={colors.navy} />
-        </Pressable>
+        </IconButton>
         <Text style={[styles.headerTitle, { color: colors.navy }]}>{t('profile.editTitle')}</Text>
         <View style={styles.headerSide} />
       </View>
@@ -346,21 +387,19 @@ export default function EditProfileScreen() {
                   </LinearGradient>
                 )}
                 {/* Rendered after the avatar so it paints on top of it. */}
-                <Pressable
-                  accessibilityRole="button"
+                <IconButton
                   accessibilityLabel={t('profile.editPhoto')}
                   accessibilityHint={t('profile.editPhotoHint')}
                   hitSlop={8}
                   onPress={() => void handlePickAvatar()}
-                  style={({ pressed }) => [
+                  style={[
                     styles.avatarEditButton,
                     { backgroundColor: badgeColors.background, borderColor: badgeColors.border },
-                    pressed && styles.pressed,
                   ]}
                   testID="edit-profile-avatar-button"
                 >
                   <Ionicons name="pencil" size={20} color={badgeColors.icon} />
-                </Pressable>
+                </IconButton>
               </View>
             </View>
 

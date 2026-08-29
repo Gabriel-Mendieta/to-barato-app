@@ -1,7 +1,17 @@
 import React from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import type { ReactTestInstance } from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { cssInterop } from 'nativewind';
 import { darkColors, lightColors } from '@/src/shared/theme/tokens';
 import EditProfileScreen, {
   getAvatarEditBadgeColors,
@@ -133,14 +143,52 @@ beforeEach(() => {
   });
 });
 
-/** Pressable resolves `style` lazily, so tests must handle both shapes. */
-function flattenPressableStyle(element: { props: { style?: unknown } }) {
-  const { style } = element.props;
-  return StyleSheet.flatten(
-    typeof style === 'function'
-      ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
-      : style,
-  ) as Record<string, number>;
+/**
+ * Jest skips NativeWind's JSX runtime, so this rebuilds the device conditions:
+ * cssInterop flattens the `style` prop and silently drops it when it is a
+ * `({ pressed }) => ...` callback instead of a static array. The probe wraps a
+ * local component on purpose — wrapping `Pressable` would register it in the
+ * global interop map and change every other component in the suite.
+ */
+function StyleProbe(props: { testID: string; style?: StyleProp<ViewStyle> }) {
+  return <View {...props} />;
+}
+
+const NativeWindProbe = cssInterop(StyleProbe, { className: 'style' }) as typeof StyleProbe;
+
+function flattenThroughNativeWind(style: unknown) {
+  const probe = render(<NativeWindProbe testID="nativewind-probe" style={style as ViewStyle} />);
+  const resolved = StyleSheet.flatten(probe.getByTestId('nativewind-probe').props.style) as Record<
+    string,
+    number
+  >;
+  probe.unmount();
+  return resolved;
+}
+
+/**
+ * `Pressable` resolves a callback `style` before handing it to its host view, so
+ * the host always looks fine in Jest. cssInterop sits above `Pressable` on
+ * device, so assertions have to read the prop `Pressable` itself receives.
+ */
+function pressableStyleProp(element: ReactTestInstance) {
+  for (let node: ReactTestInstance | null = element; node; node = node.parent) {
+    const { type } = node;
+    if (typeof type === 'function' && (type.displayName ?? type.name) === 'Pressable') {
+      return node.props.style as unknown;
+    }
+  }
+  throw new Error(`No Pressable wraps testID "${String(element.props.testID)}"`);
+}
+
+/**
+ * A `({ pressed }) => ...` callback survives `StyleSheet.flatten` in Jest but is
+ * wiped on device, so every assertion also pins the prop down to a static array.
+ */
+function flattenStaticStyle(element: ReactTestInstance) {
+  const style = pressableStyleProp(element);
+  expect(typeof style).not.toBe('function');
+  return StyleSheet.flatten(style as StyleProp<ViewStyle>) as Record<string, number>;
 }
 
 describe('Editar perfil', () => {
@@ -182,9 +230,9 @@ describe('Editar perfil', () => {
 
     const avatarWrapper = screen.getByTestId('edit-profile-avatar-wrapper');
     const pencil = within(avatarWrapper).getByTestId('edit-profile-avatar-button');
-    const pencilStyle = flattenPressableStyle(pencil);
     const pencilIcon = pencil.findByProps({ name: 'pencil' });
     const avatarStyle = StyleSheet.flatten(avatarWrapper.props.style);
+    const pencilStyle = flattenStaticStyle(pencil);
 
     expect(avatarStyle).toEqual(
       expect.objectContaining({
@@ -212,6 +260,7 @@ describe('Editar perfil', () => {
         borderColor: '#ffffff',
         shadowOpacity: 0.32,
         elevation: 8,
+        zIndex: 2,
       }),
     );
     expect(pencilIcon.props).toEqual(
@@ -241,6 +290,58 @@ describe('Editar perfil', () => {
     });
   });
 
+  it('atenúa el lápiz al presionarlo sin perder el círculo navy', async () => {
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-avatar');
+
+    expect(
+      flattenStaticStyle(screen.getByTestId('edit-profile-avatar-button')).opacity,
+    ).toBeUndefined();
+
+    fireEvent(screen.getByTestId('edit-profile-avatar-button'), 'pressIn');
+    const pressedStyle = flattenStaticStyle(screen.getByTestId('edit-profile-avatar-button'));
+    expect(pressedStyle.opacity).toBe(0.72);
+    expect(pressedStyle).toEqual(
+      expect.objectContaining({ backgroundColor: '#0B2545', width: 44, height: 44 }),
+    );
+
+    fireEvent(screen.getByTestId('edit-profile-avatar-button'), 'pressOut');
+    expect(
+      flattenStaticStyle(screen.getByTestId('edit-profile-avatar-button')).opacity,
+    ).toBeUndefined();
+  });
+
+  it('conserva el círculo navy del lápiz bajo el runtime real de NativeWind', async () => {
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-avatar');
+
+    const pencilStyle = pressableStyleProp(screen.getByTestId('edit-profile-avatar-button'));
+    const backStyle = pressableStyleProp(screen.getByTestId('edit-profile-back'));
+
+    // A function style is flattened to `{}` by cssInterop: that is the exact
+    // reason the badge reached the device with no fill, size or position.
+    expect(flattenThroughNativeWind(() => [{ width: 44, backgroundColor: '#0B2545' }])).toEqual({});
+
+    expect(flattenThroughNativeWind(pencilStyle)).toEqual(
+      expect.objectContaining({
+        position: 'absolute',
+        right: -6,
+        bottom: -6,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        borderWidth: 3,
+        backgroundColor: '#0B2545',
+        borderColor: '#ffffff',
+        zIndex: 2,
+        elevation: 8,
+      }),
+    );
+    expect(flattenThroughNativeWind(backStyle)).toEqual(
+      expect.objectContaining({ width: 44, height: 44, backgroundColor: '#ffffff' }),
+    );
+  });
+
   it('mantiene el contraste del lápiz en claro y en oscuro', () => {
     expect(getAvatarEditBadgeColors(lightColors, 'light')).toEqual({
       background: '#0B2545',
@@ -260,7 +361,7 @@ describe('Editar perfil', () => {
     renderEditProfile();
     await screen.findByTestId('edit-profile-name-input');
 
-    const backStyle = flattenPressableStyle(screen.getByTestId('edit-profile-back'));
+    const backStyle = flattenStaticStyle(screen.getByTestId('edit-profile-back'));
     expect(backStyle).toEqual(
       expect.objectContaining({
         width: 44,
