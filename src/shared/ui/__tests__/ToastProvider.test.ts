@@ -18,6 +18,9 @@ describe('showToast', () => {
     expect(Toast.show).toHaveBeenCalledWith(
       expect.objectContaining({
         autoHide: true,
+        position: 'top',
+        swipeable: true,
+        topOffset: 12,
         visibilityTime: 2600,
       }),
     );

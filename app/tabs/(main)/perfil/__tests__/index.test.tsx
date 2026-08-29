@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import ProfileScreen from '../index';
+import ProfileScreen, { getProfileContentMaxWidth } from '../index';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -166,15 +166,46 @@ describe('Perfil', () => {
 
     const editOption = screen.getByTestId('profile-option-edit');
     const editStyle = StyleSheet.flatten(editOption.props.style);
-    expect(editStyle).toEqual(
-      expect.objectContaining({ backgroundColor: '#ffffff', borderRadius: 18, minHeight: 68 }),
+    const editSurface = screen.getByTestId('profile-option-edit-surface');
+    const editSurfaceStyle = StyleSheet.flatten(editSurface.props.style);
+    expect(editStyle).toEqual(expect.objectContaining({ width: '100%', minHeight: 72 }));
+    expect(editSurfaceStyle).toEqual(
+      expect.objectContaining({
+        backgroundColor: '#ffffff',
+        width: '100%',
+        minHeight: 72,
+        borderRadius: 18,
+        borderWidth: 1,
+        shadowOpacity: expect.any(Number),
+        elevation: expect.any(Number),
+      }),
     );
     expect(editOption.props.accessibilityRole).toBe('button');
+    expect(editOption.props.accessibilityHint).toBe('Nombre, correo, teléfono');
     expect(screen.getByTestId('profile-option-edit-trailing')).toBeTruthy();
     expect(screen.getByTestId('profile-option-edit-chevron')).toBeTruthy();
     expect(
       StyleSheet.flatten(screen.getByTestId('profile-option-edit-chevron').props.style),
     ).toEqual(expect.objectContaining({ width: 44, height: 44 }));
+    expect(
+      StyleSheet.flatten(screen.getByTestId('profile-option-edit-surface').props.style).position,
+    ).not.toBe('absolute');
+    expect(
+      StyleSheet.flatten(screen.getByTestId('profile-option-edit-surface').props.style)
+        .flexDirection,
+    ).toBe('row');
+    expect(
+      StyleSheet.flatten(screen.getByTestId('profile-option-edit-surface').props.style).padding,
+    ).toBe(16);
+    for (const id of ['edit', 'preferences', 'notifications', 'privacy', 'logout']) {
+      const option = screen.getByTestId(`profile-option-${id}`);
+      const chevron = screen.getByTestId(`profile-option-${id}-chevron`);
+      expect(option.props.accessibilityRole).toBe('button');
+      expect(chevron.props.accessibilityRole).toBe('button');
+      expect(StyleSheet.flatten(chevron.props.style)).toEqual(
+        expect.objectContaining({ width: 44, height: 44 }),
+      );
+    }
     expect(
       within(screen.getByTestId('profile-option-preferences-badge')).getByText('3'),
     ).toBeTruthy();
@@ -203,6 +234,56 @@ describe('Perfil', () => {
     ).toBeTruthy();
   });
 
+  it('mantiene filas y texto estables en anchos mayores y nombres largos', async () => {
+    mockUseCurrentUser.mockReturnValue({
+      data: {
+        IdTipoUsuario: 1,
+        NombreUsuario: 'mariard',
+        Correo: 'maria.rodriguez.long@example.com',
+        Telefono: '8095551234',
+        Nombres: 'María Fernanda Alejandra',
+        Apellidos: 'Rodríguez de la Cruz Martínez',
+        Estado: true,
+        UrlPerfil: null,
+        FechaNacimiento: '1992-03-18',
+        IdUsuario: 1,
+        FechaCreacion: '2024-01-01T00:00:00Z',
+      },
+      isPending: false,
+      isError: false,
+    });
+    expect(getProfileContentMaxWidth(834)).toBe(720);
+    expect(getProfileContentMaxWidth(402)).toBe(370);
+
+    const screen = renderProfile();
+
+    await waitFor(() => expect(screen.getByTestId('profile-options')).toBeTruthy());
+
+    const contentStyle = StyleSheet.flatten(screen.getByTestId('profile-content').props.style);
+    expect(contentStyle.width).toBe('100%');
+    expect(contentStyle.maxWidth).toBeGreaterThan(0);
+    expect(contentStyle.maxWidth).toBeLessThanOrEqual(720);
+
+    for (const id of ['edit', 'preferences', 'notifications', 'privacy', 'logout']) {
+      const surface = screen.getByTestId(`profile-option-${id}-surface`);
+      const surfaceStyle = StyleSheet.flatten(surface.props.style);
+      expect(surfaceStyle).toEqual(
+        expect.objectContaining({
+          width: '100%',
+          minHeight: 72,
+          borderRadius: 18,
+          shadowOpacity: expect.any(Number),
+          elevation: expect.any(Number),
+        }),
+      );
+      expect(surfaceStyle.position).not.toBe('absolute');
+    }
+
+    const title = screen.getByText('María Fernanda Alejandra Rodríguez de la Cruz Martínez');
+    expect(title.props.numberOfLines).toBe(2);
+    expect(title.props.ellipsizeMode).toBe('tail');
+  });
+
   it('conserva las acciones de editar, preferencias, privacidad y cierre de sesión', async () => {
     const screen = renderProfile();
     await waitFor(() => expect(screen.getByTestId('profile-option-edit')).toBeTruthy());
@@ -222,6 +303,8 @@ describe('Perfil', () => {
 
     fireEvent.press(screen.getByTestId('profile-option-notifications'));
     expect(screen.getByText('Oferta disponible')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('profile-notifications-done'));
+    expect(screen.queryByTestId('profile-notifications-close')).toBeNull();
 
     fireEvent.press(screen.getByTestId('profile-option-privacy'));
     expect(mockPush).toHaveBeenCalledWith('/tabs/settings/ChangePassword');

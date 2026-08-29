@@ -82,48 +82,55 @@ function ProfileOption({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}. ${subtitle}`}
+      accessibilityLabel={title}
+      accessibilityHint={subtitle}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.option,
-        { backgroundColor: colors.card, borderColor: colors.line },
-        pressed && styles.pressed,
-      ]}
+      style={({ pressed }) => [styles.optionPressable, pressed && styles.pressed]}
       testID={testID}
     >
-      <View style={styles.optionContent}>
-        <View style={[styles.optionIcon, { backgroundColor: iconBackground }]}>
-          <Ionicons name={icon} size={22} color={iconColor} />
-        </View>
-        <View style={styles.optionCopy}>
-          <Text style={[styles.optionTitle, { color: danger ? colors.red : colors.ink }]}>
-            {title}
-          </Text>
-          <Text style={[styles.optionSubtitle, { color: colors.muted }]} numberOfLines={2}>
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-      <View style={styles.optionTrailing} testID={`${testID}-trailing`}>
-        {badge ? (
-          <View
-            style={[styles.badge, { backgroundColor: colors.orangeSoft }]}
-            pointerEvents="none"
-            testID={`${testID}-badge`}
-          >
-            <Text style={[styles.badgeText, { color: colors.orangeDeep }]}>{badge}</Text>
+      <View
+        style={[styles.optionSurface, { backgroundColor: colors.card, borderColor: colors.line }]}
+        testID={`${testID}-surface`}
+      >
+        <View style={styles.optionContent}>
+          <View style={[styles.optionIcon, { backgroundColor: iconBackground }]}>
+            <Ionicons name={icon} size={22} color={iconColor} />
           </View>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={title}
-          hitSlop={8}
-          onPress={onPress}
-          style={styles.chevronHitbox}
-          testID={`${testID}-chevron`}
-        >
-          <Ionicons name="chevron-forward" size={20} color={colors.tabInactive} />
-        </Pressable>
+          <View style={styles.optionCopy}>
+            <Text
+              style={[styles.optionTitle, { color: danger ? colors.red : colors.ink }]}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {title}
+            </Text>
+            <Text style={[styles.optionSubtitle, { color: colors.muted }]} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.optionTrailing} testID={`${testID}-trailing`}>
+          {badge ? (
+            <View
+              style={[styles.badge, { backgroundColor: colors.orangeSoft }]}
+              pointerEvents="none"
+              testID={`${testID}-badge`}
+            >
+              <Text style={[styles.badgeText, { color: colors.orangeDeep }]}>{badge}</Text>
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${title}, abrir`}
+            accessibilityHint={subtitle}
+            hitSlop={8}
+            onPress={onPress}
+            style={styles.chevronHitbox}
+            testID={`${testID}-chevron`}
+          >
+            <Ionicons name="chevron-forward" size={20} color={colors.tabInactive} />
+          </Pressable>
+        </View>
       </View>
     </Pressable>
   );
@@ -170,6 +177,15 @@ function Metric({ label, value, testID }: { label: string; value: string; testID
       </Text>
     </View>
   );
+}
+
+export function getProfileHorizontalPadding(width: number) {
+  return width >= layout.tabletBreakpoint ? layout.gutterWide : layout.gutter;
+}
+
+export function getProfileContentMaxWidth(width: number) {
+  const horizontalPadding = getProfileHorizontalPadding(width);
+  return Math.min(layout.maxContentWidth, Math.max(0, width - horizontalPadding * 2));
 }
 
 export default function ProfileScreen() {
@@ -248,7 +264,8 @@ export default function ProfileScreen() {
 
   const user = userQuery.data;
   const loading = checkingSession || userQuery.isPending;
-  const horizontalPadding = width >= layout.tabletBreakpoint ? layout.gutterWide : layout.gutter;
+  const horizontalPadding = getProfileHorizontalPadding(width);
+  const contentMaxWidth = getProfileContentMaxWidth(width);
   const itemCount = itemCountQueries.reduce((total, query) => total + (query.data?.length ?? 0), 0);
   const fullName = user
     ? [user.Nombres, user.Apellidos].filter((part) => part?.trim()).join(' ') ||
@@ -297,6 +314,7 @@ export default function ProfileScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('profile.notifications')}
+          accessibilityHint={t('profile.notificationsSubtitle')}
           onPress={() => setShowNotifications(true)}
           style={({ pressed }) => [
             styles.notificationButton,
@@ -320,7 +338,7 @@ export default function ProfileScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.content, width >= layout.tabletBreakpoint && styles.tabletContent]}>
+        <View style={[styles.content, { maxWidth: contentMaxWidth }]} testID="profile-content">
           <LinearGradient
             colors={['#0B2545', '#19426E']}
             start={{ x: 0, y: 0 }}
@@ -341,7 +359,7 @@ export default function ProfileScreen() {
                 ) : null}
               </View>
               <View style={styles.heroCopy}>
-                <Text style={styles.heroName} numberOfLines={2}>
+                <Text style={styles.heroName} numberOfLines={2} ellipsizeMode="tail">
                   {fullName}
                 </Text>
                 <Text style={styles.heroContact} numberOfLines={1}>
@@ -354,6 +372,7 @@ export default function ProfileScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('profile.editProfile')}
+                accessibilityHint={t('profile.editProfileSubtitle')}
                 onPress={() => router.push('/tabs/settings/EditProfile')}
                 style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
                 testID="profile-edit-hero"
@@ -450,14 +469,26 @@ export default function ProfileScreen() {
         transparent
         statusBarTranslucent
         onRequestClose={() => setShowNotifications(false)}
+        onDismiss={() => setShowNotifications(false)}
       >
         <View style={styles.modalOverlay}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('profile.close')}
+            accessibilityHint={t('profile.close')}
+            onPress={() => setShowNotifications(false)}
+            style={StyleSheet.absoluteFill}
+            testID="profile-notifications-backdrop"
+          />
           <View
             style={[
               styles.modalCard,
               {
                 backgroundColor: colors.card,
-                width: width >= layout.tabletBreakpoint ? Math.min(520, width) : '100%',
+                width:
+                  width >= layout.tabletBreakpoint
+                    ? Math.min(520, width - horizontalPadding * 2)
+                    : '100%',
               },
             ]}
           >
@@ -469,6 +500,7 @@ export default function ProfileScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('profile.close')}
+                accessibilityHint={t('profile.close')}
                 onPress={() => setShowNotifications(false)}
                 style={styles.modalClose}
                 testID="profile-notifications-close"
@@ -500,6 +532,7 @@ export default function ProfileScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('profile.close')}
+              accessibilityHint={t('profile.close')}
               onPress={() => setShowNotifications(false)}
               style={[styles.modalDone, { backgroundColor: colors.navy }]}
               testID="profile-notifications-done"
@@ -557,17 +590,16 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   scrollContent: { flexGrow: 1 },
-  content: { width: '100%' },
-  tabletContent: { maxWidth: layout.maxContentWidth, alignSelf: 'center' },
+  content: { width: '100%', alignSelf: 'center' },
   hero: {
     borderRadius: radii.xl,
-    paddingTop: spacing.xl,
-    paddingHorizontal: 18,
-    paddingBottom: 18,
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
     marginBottom: spacing.xl,
     overflow: 'hidden',
   },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   avatarWrapper: { position: 'relative' },
   avatar: {
     width: 70,
@@ -614,7 +646,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#55769A',
   },
-  metrics: { flexDirection: 'row', gap: 6, marginTop: spacing.lg },
+  metrics: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.lg },
   metric: {
     flex: 1,
     minWidth: 0,
@@ -635,21 +667,24 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   options: { gap: spacing.sm },
-  option: {
-    minHeight: 68,
+  optionPressable: {
     width: '100%',
+    minHeight: 72,
+  },
+  optionSurface: {
+    width: '100%',
+    minHeight: 72,
+    padding: spacing.lg,
     borderRadius: 18,
-    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderWidth: 1,
     shadowColor: '#0B2545',
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 9,
     shadowOffset: { width: 0, height: 3 },
     elevation: Platform.select({ android: 3, default: 0 }),
-    borderWidth: 1,
-    borderColor: '#EEF0F5',
   },
   optionContent: {
     flex: 1,
@@ -659,20 +694,26 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   optionIcon: {
-    width: 40,
-    height: 40,
+    width: 46,
+    height: 46,
+    flexShrink: 0,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionCopy: { flex: 1, minWidth: 0, marginLeft: spacing.md, paddingRight: spacing.sm },
+  optionCopy: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: spacing.md,
+    paddingRight: spacing.sm,
+  },
   optionTitle: { fontFamily: typography.bold, fontSize: typography.sizes.md },
   optionSubtitle: { fontFamily: typography.medium, fontSize: typography.sizes.xs, marginTop: 2 },
   optionTrailing: {
     flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
   chevronHitbox: {
     width: 44,
