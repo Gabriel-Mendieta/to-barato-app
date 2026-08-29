@@ -8,9 +8,15 @@ import type {
   ListItemRelationUpdateRequest,
   ListUpdateRequest,
   MessageResponse,
+  NearbyBranchDTO,
 } from '@/src/shared/api/dto';
 
 export type ListEntityId = string | number;
+
+export type ListRouteBranch = Pick<
+  NearbyBranchDTO,
+  'IdSucursal' | 'NombreSucursal' | 'Latitud' | 'Longitud' | 'IdProveedor' | 'Distancia'
+>;
 
 export async function all(userId: ListEntityId): Promise<ListDTO[]> {
   const { data } = await api.get<ListDTO[]>(endpoints.lista);
@@ -25,6 +31,18 @@ export async function items(listId: ListEntityId): Promise<ListItemDTO[]> {
 
 export async function create(payload: ListCreateRequest): Promise<ListDTO> {
   const { data } = await api.post<ListDTO>(endpoints.lista, payload);
+  return data;
+}
+
+export async function remove(listId: ListEntityId): Promise<MessageResponse> {
+  const { data } = await api.delete<MessageResponse>(endpoints.listaById(listId));
+  return data;
+}
+
+export async function route(providerIds: number[]): Promise<ListRouteBranch[]> {
+  const { data } = await api.post<ListRouteBranch[]>(endpoints.rutaMultiplesListas, {
+    ids_proveedores: providerIds,
+  });
   return data;
 }
 
@@ -74,6 +92,8 @@ export const listsApi = {
   all,
   items,
   create,
+  remove,
+  route,
   addItem,
   updateItem,
   removeItem,

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/src/shared/api';
 import type {
   ListCreateRequest,
@@ -12,6 +12,7 @@ import {
   addItem,
   all,
   create as createList,
+  remove as deleteList,
   items,
   removeItem,
   updateItem,
@@ -52,6 +53,17 @@ export function useListItems(listId: ListEntityId | null | undefined) {
   });
 }
 
+export function useListItemCounts(listIds: ListEntityId[]) {
+  return useQueries({
+    queries: listIds.map((listId) => ({
+      queryKey: queryKeys.lists.items(listId),
+      queryFn: () => items(listId),
+      enabled: isValidId(listId),
+      networkMode: 'always' as const,
+    })),
+  });
+}
+
 export function useCreateList() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -78,6 +90,52 @@ export function useCreateList() {
         });
       }
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers.root });
+    },
+  });
+}
+
+type DeleteListMutationContext = {
+  previousLists?: ListDTO[];
+};
+
+export function useDeleteList(userId?: ListEntityId | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (listId: ListEntityId) => {
+      if (!isValidId(listId)) throw new Error('No hay una lista válida.');
+      return deleteList(listId);
+    },
+    networkMode: 'always',
+    onMutate: async (listId): Promise<DeleteListMutationContext> => {
+      if (!isValidId(userId)) return {};
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.lists.all(userId),
+      });
+      const previousLists = queryClient.getQueryData<ListDTO[]>(queryKeys.lists.all(userId));
+      if (previousLists) {
+        queryClient.setQueryData<ListDTO[]>(
+          queryKeys.lists.all(userId),
+          previousLists.filter((list) => list.IdLista !== Number(listId)),
+        );
+      }
+      return { previousLists };
+    },
+    onError: (_error, _listId, context) => {
+      if (context?.previousLists !== undefined && isValidId(userId)) {
+        queryClient.setQueryData(queryKeys.lists.all(userId), context.previousLists);
+      }
+    },
+    onSettled: (_response, _error, listId) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.lists.items(listId),
+      });
+      if (isValidId(userId)) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.lists.all(userId),
+        });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.lists.root });
+      }
     },
   });
 }

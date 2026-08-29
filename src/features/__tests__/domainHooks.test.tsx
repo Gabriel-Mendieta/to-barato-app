@@ -4,7 +4,9 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import {
   useAddListItem,
   useCreateList,
+  useDeleteList,
   useListItems,
+  useLists,
   useRemoveListItem,
   useUpdateListItem,
   useUpdateListProvider,
@@ -46,6 +48,15 @@ describe('hooks de React Query', () => {
 
   it('deshabilita consultas cuando el ID de lista es inválido', () => {
     const { result } = renderHook(() => useListItems(null), {
+      wrapper: createWrapper(),
+    });
+
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(result.current.isPending).toBe(true);
+  });
+
+  it('deshabilita listas raíz cuando no hay un usuario válido', () => {
+    const { result } = renderHook(() => useLists(null), {
       wrapper: createWrapper(),
     });
 
@@ -170,6 +181,51 @@ describe('hooks de React Query', () => {
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.providers.root,
+    });
+  });
+
+  it('elimina una lista optimistamente, revierte el snapshot ante error e invalida su key de usuario', async () => {
+    const client = createQueryClient();
+    const invalidateQueries = jest.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
+    const previous = [
+      {
+        IdLista: 11,
+        IdUsuario: 7,
+        IdProveedor: 2,
+        Nombre: 'Compras',
+        PrecioTotal: '120.00',
+        FechaCreacion: '',
+      },
+      {
+        IdLista: 12,
+        IdUsuario: 7,
+        IdProveedor: 3,
+        Nombre: 'Casa',
+        PrecioTotal: '50.00',
+        FechaCreacion: '',
+      },
+    ];
+    client.setQueryData(queryKeys.lists.all(7), previous);
+    let rejectRequest!: (error: Error) => void;
+    jest.spyOn(api, 'delete').mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectRequest = reject;
+        }) as never,
+    );
+
+    const { result } = renderHook(() => useDeleteList(7), {
+      wrapper: createWrapper(client),
+    });
+    act(() => result.current.mutate(11));
+    await waitFor(() => expect(client.getQueryData(queryKeys.lists.all(7))).toEqual([previous[1]]));
+
+    act(() => rejectRequest(new Error('fallo')));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(client.getQueryData(queryKeys.lists.all(7))).toEqual(previous);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.lists.all(7),
     });
   });
 

@@ -1,4 +1,5 @@
 import { parseProductId } from '@/src/features/products/screenSelectors';
+import { calculateListSummary } from '@/src/features/lists/screenSelectors';
 import {
   acquireSingleFlight,
   parseIncomingProducts,
@@ -8,6 +9,24 @@ import {
 } from '@/src/features/providers/screenSelectors';
 
 describe('selectores de pantallas de productos', () => {
+  it('deriva total, progreso y ahorro desde listas y conteos', () => {
+    expect(
+      calculateListSummary(
+        [
+          { IdLista: 1, PrecioTotal: '100.00' },
+          { IdLista: 2, PrecioTotal: '50.50' },
+        ],
+        { 1: 4, 2: 2 },
+      ),
+    ).toEqual({
+      budgetTotal: 150.5,
+      totalItems: 6,
+      totalDone: 3,
+      budgetPct: 50,
+      savings: 31.3,
+    });
+  });
+
   it('deriva el proveedor inicial sin actualizar estado desde un effect', () => {
     const providers = [
       { IdProveedor: 7, Nombre: 'Proveedor inicial' },

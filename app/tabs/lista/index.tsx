@@ -1,4 +1,3 @@
-import { api, endpoints, clearSession } from '@/src/shared/api';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -13,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import {
   BottomSheetBackdrop,
@@ -20,8 +20,23 @@ import {
   BottomSheetView,
   type BottomSheetModalMethods,
 } from '@/src/shared/ui/BottomSheetCompat';
-import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
+import { getAccessToken, getUserId, type ListDTO } from '@/src/shared/api';
+import { items as getListItems, route as generateListsRoute } from '@/src/features/lists/api';
+import {
+  useCreateList,
+  useDeleteList,
+  useListItemCounts,
+  useLists,
+} from '@/src/features/lists/hooks';
+import { calculateListSummary, estimateDone } from '@/src/features/lists/screenSelectors';
+import { detail as getProduct, units as getUnits } from '@/src/features/products/api';
+import {
+  all as getProviders,
+  byId as getProvider,
+  types as getProviderTypes,
+  nearby,
+} from '@/src/features/providers/api';
 import {
   Screen,
   Stagger,
@@ -37,54 +52,6 @@ import {
 } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
-
-type Lista = {
-  IdUsuario: number;
-  IdProveedor: number;
-  Nombre: string;
-  PrecioTotal: string;
-  IdLista: number;
-  FechaCreacion: string;
-};
-
-type ProveedorInfo = {
-  IdProveedor: number;
-  Nombre: string;
-  UrlLogo: string;
-  IdTipoProveedor?: number;
-};
-
-type TipoProveedor = {
-  IdTipoProveedor: number;
-  NombreTipoProveedor: string;
-};
-
-type UnidadMedida = {
-  IdUnidadMedida: number;
-  NombreUnidadMedida: string;
-};
-
-type RutaSucursal = {
-  IdSucursal: number;
-  NombreSucursal: string;
-  Latitud: number;
-  Longitud: number;
-  IdProveedor: number;
-  Distancia: number;
-};
-
-type ProductoEnLista = {
-  IdProducto: number;
-  PrecioActual: string;
-  Cantidad: number;
-};
-
-type ProductoAPI = {
-  IdProducto: number;
-  Nombre: string;
-  UrlImagen: string;
-  IdUnidadMedida: number;
-};
 
 type ListVisual = { bg: string; emoji: string };
 
@@ -108,16 +75,8 @@ const VISUAL_FALLBACK: ListVisual[] = [
   { bg: '#FFE3E1', emoji: '💊' },
 ];
 
-function listVisual(lista: Lista, index: number): ListVisual {
+function listVisual(lista: ListDTO, index: number): ListVisual {
   return VISUAL_BY_PROVIDER[lista.IdProveedor] ?? VISUAL_FALLBACK[index % VISUAL_FALLBACK.length];
-}
-
-/** Offline stub for “comprados” until the API exposes checked items. */
-function estimateDone(idLista: number, items: number) {
-  if (items <= 0) return 0;
-  const seed = (idLista * 7) % 10;
-  if (seed < 4) return 0;
-  return Math.min(items, Math.max(1, Math.floor((items * seed) / 12)));
 }
 
 function formatMoney(value: number) {
@@ -129,62 +88,68 @@ function formatMoney(value: number) {
   };
 }
 
+function parseUserId(value: string | null): number | null {
+  if (!value?.trim()) return null;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 export default function ShoppingListScreen() {
   const { t } = useTranslation();
-  const [listas, setListas] = useState<Lista[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
   const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
   const [notifOpen, setNotifOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [menuList, setMenuList] = useState<Lista | null>(null);
+  const [menuList, setMenuList] = useState<ListDTO | null>(null);
   const menuSheetRef = React.useRef<BottomSheetModalMethods>(null);
 
-  const fetchUserLists = useCallback(async () => {
-    try {
-      setLoading(true);
-      const token = await SecureStore.getItemAsync('access_token');
-      const userIdStr = await SecureStore.getItemAsync('user_id');
-      if (!token || !userIdStr) {
-        router.replace('/auth/IniciarSesion');
-        return;
-      }
-
-      const resp = await api.get<Lista[]>(endpoints.lista);
-      const userId = Number(userIdStr);
-      const propias = resp.data.filter((l) => l.IdUsuario === userId);
-      setListas(propias);
-
-      const counts: Record<number, number> = {};
-      await Promise.all(
-        propias.map(async (l) => {
-          try {
-            const r = await api.get<unknown[]>(endpoints.productosDeLista(l.IdLista));
-            counts[l.IdLista] = r.data.length;
-          } catch {
-            counts[l.IdLista] = 0;
-          }
-        }),
-      );
-      setItemCounts(counts);
-    } catch {
-      await clearSession();
-      router.replace('/auth/IniciarSesion');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  const sessionQuery = useQuery({
+    queryKey: ['session', 'user-id'],
+    queryFn: async () => {
+      const [token, storedUserId] = await Promise.all([getAccessToken(), getUserId()]);
+      return token && parseUserId(storedUserId) ? parseUserId(storedUserId) : null;
+    },
+    staleTime: Infinity,
+  });
+  const userId = sessionQuery.data ?? null;
+  const listsQuery = useLists(userId);
+  const listas = useMemo(() => listsQuery.data ?? [], [listsQuery.data]);
+  const refetchLists = listsQuery.refetch;
+  const listIds = useMemo(() => listas.map((lista) => lista.IdLista), [listas]);
+  const itemQueries = useListItemCounts(listIds);
+  const itemCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        listIds.map((listId, index) => [listId, itemQueries[index]?.data?.length ?? 0]),
+      ) as Record<number, number>,
+    [itemQueries, listIds],
+  );
+  const createListMutation = useCreateList();
+  const deleteListMutation = useDeleteList(userId);
 
   useEffect(() => {
-    fetchUserLists();
-  }, [fetchUserLists]);
+    if (!sessionQuery.isSuccess && !sessionQuery.isError) return;
+    if (!userId) router.replace('/auth/IniciarSesion');
+  }, [sessionQuery.isError, sessionQuery.isSuccess, userId]);
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    fetchUserLists();
-  }, [fetchUserLists]);
+    try {
+      await refetchLists();
+      await Promise.all(itemQueries.map((query) => query.refetch()));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [itemQueries, refetchLists]);
+
+  const loading =
+    sessionQuery.isPending ||
+    (userId != null && listsQuery.isPending) ||
+    itemQueries.some((query) => query.isPending);
+  const listError = listsQuery.isError || itemQueries.some((query) => query.isError);
+  const retryLists = useCallback(() => {
+    void Promise.all([refetchLists(), ...itemQueries.map((query) => query.refetch())]);
+  }, [itemQueries, refetchLists]);
 
   const isSelecting = selectedLists.size > 0;
   const toggleSelection = (id: number) => {
@@ -196,21 +161,8 @@ export default function ShoppingListScreen() {
     });
   };
 
-  const budgetTotal = useMemo(
-    () => listas.reduce((sum, l) => sum + (parseFloat(l.PrecioTotal) || 0), 0),
-    [listas],
-  );
-  const totalItems = useMemo(
-    () => Object.values(itemCounts).reduce((a, b) => a + b, 0),
-    [itemCounts],
-  );
-  const totalDone = useMemo(
-    () => listas.reduce((sum, l) => sum + estimateDone(l.IdLista, itemCounts[l.IdLista] || 0), 0),
-    [listas, itemCounts],
-  );
-  const budgetPct = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
-  // Design stub (~20.8% of sample budget) until real savings exist.
-  const savings = Math.round(budgetTotal * 0.208 * 100) / 100;
+  const summary = useMemo(() => calculateListSummary(listas, itemCounts), [itemCounts, listas]);
+  const { budgetTotal, totalItems, totalDone, budgetPct, savings } = summary;
   const money = formatMoney(budgetTotal);
   const savingsMoney = formatMoney(savings);
 
@@ -230,12 +182,7 @@ export default function ShoppingListScreen() {
 
       const provIds = listas.filter((l) => selectedLists.has(l.IdLista)).map((l) => l.IdProveedor);
 
-      const resp = await api.post<RutaSucursal[]>(endpoints.rutaMultiplesListas, {
-        lat,
-        lng,
-        ids_proveedores: provIds,
-      });
-      const rutas = resp.data;
+      const rutas = await generateListsRoute(provIds);
 
       if (!rutas.length) {
         showToast('info', t('lists.route'), t('lists.noBranches'));
@@ -263,33 +210,29 @@ export default function ShoppingListScreen() {
     }
   };
 
-  const shareList = async (lista: Lista) => {
+  const shareList = async (lista: ListDTO) => {
     try {
-      const respProd = await api.get<ProductoEnLista[]>(endpoints.productosDeLista(lista.IdLista));
-      const prodsEnLista = respProd.data;
+      const prodsEnLista = await getListItems(lista.IdLista);
 
       const detalles = await Promise.all(
         prodsEnLista.map(async (pl) => {
-          const r = await api.get<ProductoAPI>(endpoints.productoById(pl.IdProducto));
+          const product = await getProduct(pl.IdProducto);
           return {
             ...pl,
-            Nombre: r.data.Nombre,
-            IdUnidadMedida: r.data.IdUnidadMedida,
+            Nombre: product.Nombre,
+            IdUnidadMedida: product.IdUnidadMedida,
           };
         }),
       );
 
-      const rUnidades = await api.get<UnidadMedida[]>(endpoints.unidadmedida);
       const unidadesMap = Object.fromEntries(
-        rUnidades.data.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida]),
+        (await getUnits()).map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida]),
       );
 
-      const rProv = await api.get<ProveedorInfo & { IdTipoProveedor: number }>(
-        endpoints.proveedorById(lista.IdProveedor),
+      const prov = await getProvider(lista.IdProveedor);
+      const tipo = (await getProviderTypes()).find(
+        (t) => t.IdTipoProveedor === prov.IdTipoProveedor,
       );
-      const prov = rProv.data;
-      const rTipos = await api.get<TipoProveedor[]>(endpoints.tipoproveedor);
-      const tipo = rTipos.data.find((t) => t.IdTipoProveedor === prov.IdTipoProveedor);
 
       let sucursalNombre = 'N/A';
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -303,8 +246,7 @@ export default function ShoppingListScreen() {
           ids_productos: detalles.map((d) => d.IdProducto),
           lista_cantidad: detalles.map((d) => d.Cantidad),
         };
-        const rSuc = await api.post<RutaSucursal[]>(endpoints.sucursalCercana, body);
-        const found = rSuc.data.find((b) => b.IdProveedor === lista.IdProveedor);
+        const found = (await nearby(body)).find((b) => b.IdProveedor === lista.IdProveedor);
         if (found) sucursalNombre = found.NombreSucursal;
       }
 
@@ -313,12 +255,10 @@ export default function ShoppingListScreen() {
       message += `Nombre Sucursal: ${sucursalNombre}\n\n`;
       message += `Productos:\n`;
       detalles.forEach((d) => {
-        const unidad = unidadesMap[d.IdUnidadMedida] ?? '';
-        message += `• ${d.Nombre} x${d.Cantidad} ${unidad} RD$${parseFloat(d.PrecioActual).toFixed(
-          2,
-        )}\n`;
+        const unidad = d.IdUnidadMedida != null ? (unidadesMap[d.IdUnidadMedida] ?? '') : '';
+        message += `• ${d.Nombre} x${d.Cantidad} ${unidad} RD$${Number(d.PrecioActual).toFixed(2)}\n`;
       });
-      message += `\nPrecio total: RD$${parseFloat(lista.PrecioTotal).toFixed(2)}`;
+      message += `\nPrecio total: RD$${Number(lista.PrecioTotal).toFixed(2)}`;
 
       await Share.share({ message });
     } catch {
@@ -326,35 +266,43 @@ export default function ShoppingListScreen() {
     }
   };
 
-  const confirmDelete = (lista: Lista) => {
+  const confirmDelete = (lista: ListDTO) => {
     void triggerHaptic('warning');
     Alert.alert(t('lists.deleteList'), t('lists.deleteConfirmation'), [
       { text: t('lists.cancel'), style: 'cancel' },
       {
         text: t('lists.delete'),
         style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.delete(endpoints.listaById(lista.IdLista));
-            void triggerHaptic('success');
-            showToast('success', t('lists.listDeleted'));
-            fetchUserLists();
-          } catch {
-            void triggerHaptic('error');
-            showToast('error', t('lists.deleteFailed'), t('lists.tryAgain'));
-          }
+        onPress: () => {
+          if (deleteListMutation.isPending) return;
+          deleteListMutation.mutate(lista.IdLista, {
+            onSuccess: () => {
+              setSelectedLists((previous) => {
+                if (!previous.has(lista.IdLista)) return previous;
+                const next = new Set(previous);
+                next.delete(lista.IdLista);
+                return next;
+              });
+              void triggerHaptic('success');
+              showToast('success', t('lists.listDeleted'));
+            },
+            onError: () => {
+              void triggerHaptic('error');
+              showToast('error', t('lists.deleteFailed'), t('lists.tryAgain'));
+            },
+          });
         },
       },
     ]);
   };
 
-  const openMenu = (lista: Lista) => {
+  const openMenu = (lista: ListDTO) => {
     void triggerHaptic('selection');
     setMenuList(lista);
     requestAnimationFrame(() => menuSheetRef.current?.present());
   };
 
-  const openList = (item: Lista) => {
+  const openList = (item: ListDTO) => {
     if (isSelecting) {
       toggleSelection(item.IdLista);
       return;
@@ -372,30 +320,32 @@ export default function ShoppingListScreen() {
   const goCreate = () => setCreateOpen(true);
 
   const onConfirmCreate = async ({ tipo, nombre }: CreateListPayload) => {
-    try {
-      const userIdStr = await SecureStore.getItemAsync('user_id');
-      const userId = userIdStr ? Number(userIdStr) : null;
-      if (!userId) {
-        showToast('error', t('lists.sessionExpired'), t('lists.sessionExpiredBody'));
-        return;
-      }
+    if (createListMutation.isPending) return;
+    if (!userId) {
+      showToast('error', t('lists.sessionExpired'), t('lists.sessionExpiredBody'));
+      return;
+    }
 
-      const { data: proveedores } = await api.get<ProveedorInfo[]>(endpoints.proveedor);
-      const match = (proveedores ?? []).find((p) => p.IdTipoProveedor === tipo.IdTipoProveedor);
-      const idProveedor = match?.IdProveedor ?? proveedores?.[0]?.IdProveedor;
+    try {
+      const proveedores = await getProviders();
+      const match = proveedores.find((p) => p.IdTipoProveedor === tipo.IdTipoProveedor);
+      const idProveedor = match?.IdProveedor ?? proveedores[0]?.IdProveedor;
       if (!idProveedor) {
         showToast('error', t('lists.noProviders'), t('lists.noProvidersBody'));
         return;
       }
 
-      const { data: lista } = await api.post<{ IdLista: number }>(endpoints.lista, {
+      const trimmedName = nombre.trim();
+      const lista = await createListMutation.mutateAsync({
         IdUsuario: userId,
         IdProveedor: idProveedor,
-        Nombre: nombre.trim(),
+        Nombre: trimmedName,
         PrecioTotal: '0.00',
       });
-      const listaId = lista?.IdLista;
-      if (!listaId) throw new Error('Sin IdLista');
+      const listaId = Number(lista.IdLista);
+      if (!Number.isInteger(listaId) || listaId <= 0) {
+        throw new Error('Sin IdLista');
+      }
 
       setCreateOpen(false);
       void triggerHaptic('success');
@@ -404,7 +354,7 @@ export default function ShoppingListScreen() {
         params: {
           listaId: String(listaId),
           tipo: String(tipo.IdTipoProveedor),
-          nombre: nombre.trim(),
+          nombre: trimmedName,
           idProveedor: String(idProveedor),
         },
       });
@@ -430,6 +380,20 @@ export default function ShoppingListScreen() {
             </View>
           ))}
         </View>
+      </Screen>
+    );
+  }
+
+  if (listError) {
+    return (
+      <Screen edges={['top']}>
+        <EmptyState
+          icon="cloud-offline-outline"
+          title={t('search.productsFailed')}
+          description={t('lists.tryAgain')}
+          actionLabel={t('shared.retry')}
+          onAction={retryLists}
+        />
       </Screen>
     );
   }

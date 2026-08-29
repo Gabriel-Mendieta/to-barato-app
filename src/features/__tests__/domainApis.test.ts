@@ -1,9 +1,11 @@
 import { api, endpoints } from '@/src/shared/api';
 import { setOfflineMode, __resetDevModeForTests } from '@/src/shared/dev';
+import { MOCK_USER_ID } from '@/src/shared/dev/mocks/data';
 import {
   addItem,
   all as allLists,
   create as createList,
+  items as allListItems,
   removeItem,
   updateItem,
   updateListProvider,
@@ -130,6 +132,8 @@ describe('APIs y query keys de dominios', () => {
     const product = await detail(1);
     const productPrices = await prices(1);
     const providerProducts = await byProvider(1);
+    const lists = await allLists(MOCK_USER_ID);
+    const listItems = await allListItems(lists[0].IdLista);
     expect(providers.length).toBeGreaterThan(0);
     expect(types.length).toBeGreaterThan(0);
     expect(allBranchesResult.length).toBeGreaterThan(0);
@@ -139,5 +143,7 @@ describe('APIs y query keys de dominios', () => {
     expect(product.IdProducto).toBe(1);
     expect(productPrices.length).toBeGreaterThan(0);
     expect(providerProducts.length).toBeGreaterThan(0);
+    expect(lists.length).toBeGreaterThan(0);
+    expect(listItems.length).toBeGreaterThan(0);
   }, 15000);
 });
