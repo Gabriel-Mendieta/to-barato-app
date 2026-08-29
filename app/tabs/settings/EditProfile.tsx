@@ -305,7 +305,7 @@ export default function EditProfileScreen() {
             <View style={styles.avatarSection}>
               <View
                 accessibilityLabel={initials}
-                style={styles.avatarEditor}
+                style={styles.avatarFrame}
                 testID="edit-profile-avatar-wrapper"
               >
                 {avatarUri && !avatarImageFailed ? (
@@ -336,10 +336,10 @@ export default function EditProfileScreen() {
                   onPress={() => void handlePickAvatar()}
                   style={({ pressed }) => [
                     styles.avatarEditButton,
-                    { backgroundColor: colors.navy, borderColor: colors.bg },
+                    { backgroundColor: colors.navy, borderColor: colors.white },
                     pressed && styles.pressed,
                   ]}
-                  testID="edit-profile-avatar-edit"
+                  testID="edit-profile-avatar-button"
                 >
                   <Ionicons name="create-outline" size={22} color={colors.white} />
                 </Pressable>
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     paddingBottom: spacing.lg,
   },
-  avatarEditor: {
+  avatarFrame: {
     width: 112,
     height: 112,
     position: 'relative',
@@ -465,8 +465,8 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   avatar: {
-    width: 96,
-    height: 96,
+    width: 112,
+    height: 112,
     borderRadius: radii.pill,
   },
   avatarFallback: {
@@ -485,19 +485,20 @@ const styles = StyleSheet.create({
   },
   avatarEditButton: {
     position: 'absolute',
-    right: 0,
-    bottom: 0,
+    right: -6,
+    bottom: -6,
     width: 44,
     height: 44,
-    borderRadius: radii.pill,
+    borderRadius: 22,
     borderWidth: 3,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
     shadowColor: '#06182D',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    shadowOpacity: 0.32,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
   },
   form: {
     gap: spacing.lg,

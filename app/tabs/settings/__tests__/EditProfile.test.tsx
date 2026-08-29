@@ -154,7 +154,7 @@ describe('Editar perfil', () => {
     expect(screen.getByText('Ingrese su correo')).toBeTruthy();
     expect(screen.getByText('Para alertas y verificación')).toBeTruthy();
     expect(screen.getByTestId('edit-profile-avatar')).toBeTruthy();
-    expect(screen.getByTestId('edit-profile-avatar-edit')).toBeTruthy();
+    expect(screen.getByTestId('edit-profile-avatar-button')).toBeTruthy();
     const visibleText = screen
       .UNSAFE_getAllByType(Text)
       .map((node) => getTextContent(node.props.children))
@@ -167,7 +167,7 @@ describe('Editar perfil', () => {
     await screen.findByTestId('edit-profile-avatar');
 
     const avatarWrapper = screen.getByTestId('edit-profile-avatar-wrapper');
-    const pencil = within(avatarWrapper).getByTestId('edit-profile-avatar-edit');
+    const pencil = within(avatarWrapper).getByTestId('edit-profile-avatar-button');
     const pencilStyle = StyleSheet.flatten(
       typeof pencil.props.style === 'function'
         ? pencil.props.style({ pressed: false })
@@ -191,16 +191,16 @@ describe('Editar perfil', () => {
     expect(pencilStyle).toEqual(
       expect.objectContaining({
         position: 'absolute',
-        right: 0,
-        bottom: 0,
+        right: -6,
+        bottom: -6,
         width: 44,
         height: 44,
-        borderRadius: 999,
+        borderRadius: 22,
         borderWidth: 3,
         backgroundColor: '#0B2545',
-        borderColor: '#F4F6FB',
-        shadowOpacity: 0.25,
-        elevation: 3,
+        borderColor: '#ffffff',
+        shadowOpacity: 0.32,
+        elevation: 8,
       }),
     );
     expect(pencilIcon.props).toEqual(
@@ -224,7 +224,7 @@ describe('Editar perfil', () => {
     renderEditProfile();
     await screen.findByTestId('edit-profile-avatar');
 
-    fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
+    fireEvent.press(screen.getByTestId('edit-profile-avatar-button'));
 
     await waitFor(() => expect(mockLaunchImageLibraryAsync).toHaveBeenCalled());
     expect(screen.queryByTestId('edit-profile-avatar-image')).toBeNull();
@@ -237,7 +237,7 @@ describe('Editar perfil', () => {
     renderEditProfile();
     await screen.findByTestId('edit-profile-avatar');
 
-    fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
+    fireEvent.press(screen.getByTestId('edit-profile-avatar-button'));
 
     await waitFor(() =>
       expect(mockShowToast).toHaveBeenCalledWith(
@@ -258,7 +258,7 @@ describe('Editar perfil', () => {
     renderEditProfile();
     await screen.findByTestId('edit-profile-avatar');
 
-    fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
+    fireEvent.press(screen.getByTestId('edit-profile-avatar-button'));
 
     const image = await screen.findByTestId('edit-profile-avatar-image');
     expect(image.props.source).toEqual({ uri: 'file:///tmp/avatar.jpg' });
