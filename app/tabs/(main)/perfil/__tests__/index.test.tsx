@@ -150,8 +150,9 @@ describe('Perfil', () => {
 
     await waitFor(() => expect(screen.getByTestId('profile-hero')).toBeTruthy());
 
-    expect(screen.getByText('Hola')).toBeTruthy();
     expect(screen.getByText('María Rodríguez')).toBeTruthy();
+    expect(screen.getByText('maria@example.com')).toBeTruthy();
+    expect(screen.getByText('8095551234')).toBeTruthy();
     expect(within(screen.getByTestId('profile-metric-products')).getByText('3')).toBeTruthy();
     expect(within(screen.getByTestId('profile-metric-lists')).getByText('2')).toBeTruthy();
     expect(
@@ -166,10 +167,21 @@ describe('Perfil', () => {
     const editOption = screen.getByTestId('profile-option-edit');
     const editStyle = StyleSheet.flatten(editOption.props.style);
     expect(editStyle).toEqual(
-      expect.objectContaining({ backgroundColor: '#ffffff', borderRadius: 20, minHeight: 76 }),
+      expect.objectContaining({ backgroundColor: '#ffffff', borderRadius: 18, minHeight: 68 }),
     );
+    expect(editOption.props.accessibilityRole).toBe('button');
     expect(screen.getByTestId('profile-option-edit-trailing')).toBeTruthy();
     expect(screen.getByTestId('profile-option-edit-chevron')).toBeTruthy();
+    expect(
+      StyleSheet.flatten(screen.getByTestId('profile-option-edit-chevron').props.style),
+    ).toEqual(expect.objectContaining({ width: 44, height: 44 }));
+    expect(
+      within(screen.getByTestId('profile-option-preferences-badge')).getByText('3'),
+    ).toBeTruthy();
+    expect(screen.getByTestId('profile-option-notifications-badge')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('profile-option-notifications-badge')).getByText('2'),
+    ).toBeTruthy();
     expect(screen.queryAllByText(/^profile\./)).toHaveLength(0);
   });
 
@@ -198,6 +210,13 @@ describe('Perfil', () => {
     fireEvent.press(screen.getByTestId('profile-option-edit'));
     expect(mockPush).toHaveBeenCalledWith('/tabs/settings/EditProfile');
 
+    fireEvent.press(screen.getByTestId('profile-edit-hero'));
+    expect(mockPush).toHaveBeenCalledWith('/tabs/settings/EditProfile');
+
+    fireEvent.press(screen.getByTestId('profile-notifications-header'));
+    expect(screen.getByTestId('profile-notifications-close')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('profile-notifications-close'));
+
     fireEvent.press(screen.getByTestId('profile-option-preferences'));
     expect(mockShowToast).toHaveBeenCalledWith('info', 'Preferencias', 'Próximamente');
 
@@ -205,6 +224,9 @@ describe('Perfil', () => {
     expect(screen.getByText('Oferta disponible')).toBeTruthy();
 
     fireEvent.press(screen.getByTestId('profile-option-privacy'));
+    expect(mockPush).toHaveBeenCalledWith('/tabs/settings/ChangePassword');
+
+    fireEvent.press(screen.getByTestId('profile-option-privacy-chevron'));
     expect(mockPush).toHaveBeenCalledWith('/tabs/settings/ChangePassword');
 
     fireEvent.press(screen.getByTestId('profile-option-logout'));

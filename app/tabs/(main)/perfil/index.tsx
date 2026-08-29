@@ -16,11 +16,12 @@ import {
   useColorScheme,
   useWindowDimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useListItemCounts, useLists } from '@/src/features/lists/hooks';
 import { useCurrentUser } from '@/src/features/profile/hooks';
 import { clearSession, getAccessToken, getUserId, queryClient } from '@/src/shared/api';
-import { showToast } from '@/src/shared/ui';
+import { FLOATING_TAB_BAR_CLEARANCE, showToast } from '@/src/shared/ui';
 import { layout, radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
 
@@ -45,6 +46,7 @@ const NOTIFICATION_ITEMS = [
     titleKey: 'offers',
     bodyKey: 'offerDescription',
     timeKey: 'fourHoursAgo',
+    unread: true,
   },
   {
     id: 'reminder',
@@ -52,6 +54,7 @@ const NOTIFICATION_ITEMS = [
     titleKey: 'reminder',
     bodyKey: 'reminderDescription',
     timeKey: 'oneDayAgo',
+    unread: true,
   },
   {
     id: 'price',
@@ -59,6 +62,7 @@ const NOTIFICATION_ITEMS = [
     titleKey: 'priceUpdate',
     bodyKey: 'priceUpdateDescription',
     timeKey: 'twelveDaysAgo',
+    unread: false,
   },
 ];
 
@@ -82,7 +86,7 @@ function ProfileOption({
       onPress={onPress}
       style={({ pressed }) => [
         styles.option,
-        { backgroundColor: colors.card },
+        { backgroundColor: colors.card, borderColor: colors.line },
         pressed && styles.pressed,
       ]}
       testID={testID}
@@ -102,18 +106,51 @@ function ProfileOption({
       </View>
       <View style={styles.optionTrailing} testID={`${testID}-trailing`}>
         {badge ? (
-          <View style={[styles.badge, { backgroundColor: colors.orangeSoft }]}>
+          <View
+            style={[styles.badge, { backgroundColor: colors.orangeSoft }]}
+            pointerEvents="none"
+            testID={`${testID}-badge`}
+          >
             <Text style={[styles.badgeText, { color: colors.orangeDeep }]}>{badge}</Text>
           </View>
         ) : null}
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={colors.tabInactive}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          hitSlop={8}
+          onPress={onPress}
+          style={styles.chevronHitbox}
           testID={`${testID}-chevron`}
-        />
+        >
+          <Ionicons name="chevron-forward" size={20} color={colors.tabInactive} />
+        </Pressable>
       </View>
     </Pressable>
+  );
+}
+
+function Avatar({ uri, initials }: { uri: string | null; initials: string }) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (uri && !imageFailed) {
+    return (
+      <Image
+        source={{ uri }}
+        style={styles.avatar}
+        onError={() => setImageFailed(true)}
+        accessibilityLabel={initials}
+      />
+    );
+  }
+
+  return (
+    <LinearGradient
+      colors={['#F2A03D', '#E97C2A']}
+      style={[styles.avatar, styles.avatarFallback]}
+      accessibilityLabel={initials}
+    >
+      <Text style={styles.avatarInitials}>{initials}</Text>
+    </LinearGradient>
   );
 }
 
@@ -207,10 +244,11 @@ export default function ProfileScreen() {
       })),
     [t],
   );
+  const unreadNotifications = notifications.filter((notification) => notification.unread);
 
   const user = userQuery.data;
   const loading = checkingSession || userQuery.isPending;
-  const horizontalPadding = width >= layout.tabletBreakpoint ? layout.gutterWide : spacing.xl;
+  const horizontalPadding = width >= layout.tabletBreakpoint ? layout.gutterWide : layout.gutter;
   const itemCount = itemCountQueries.reduce((total, query) => total + (query.data?.length ?? 0), 0);
   const fullName = user
     ? [user.Nombres, user.Apellidos].filter((part) => part?.trim()).join(' ') ||
@@ -228,7 +266,6 @@ export default function ProfileScreen() {
   const itemCountError = itemCountQueries.some((query) => query.isError);
   const metricsLoading = listsQuery.isPending || itemCountQueries.some((query) => query.isPending);
   const unavailableMetric = t('profile.metricUnavailable');
-  const heroBackground = colorScheme === 'dark' ? colors.card : colors.navy;
   const version = Constants.expoConfig?.version;
 
   if (loading) {
@@ -276,38 +313,42 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingHorizontal: horizontalPadding, paddingBottom: 116 },
+          {
+            paddingHorizontal: horizontalPadding,
+            paddingBottom: FLOATING_TAB_BAR_CLEARANCE,
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.content, width >= layout.tabletBreakpoint && styles.tabletContent]}>
-          <View style={[styles.hero, { backgroundColor: heroBackground }]} testID="profile-hero">
+          <LinearGradient
+            colors={['#0B2545', '#19426E']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.hero}
+            testID="profile-hero"
+          >
             <View style={styles.heroTop}>
               <View style={styles.avatarWrapper}>
-                {user.UrlPerfil ? (
-                  <Image source={{ uri: user.UrlPerfil }} style={styles.avatar} />
-                ) : (
-                  <View
-                    style={[
-                      styles.avatar,
-                      styles.avatarFallback,
-                      { backgroundColor: colors.orange },
-                    ]}
-                  >
-                    <Text style={styles.avatarInitials}>{initials}</Text>
-                  </View>
-                )}
+                <Avatar uri={user.UrlPerfil} initials={initials} />
                 {user.Estado ? (
                   <View
                     accessibilityLabel={t('profile.online')}
                     style={[styles.onlineIndicator, { backgroundColor: colors.green }]}
-                  />
+                  >
+                    <Ionicons name="checkmark" size={12} color={colors.white} />
+                  </View>
                 ) : null}
               </View>
               <View style={styles.heroCopy}>
-                <Text style={styles.greeting}>{t('profile.hello')}</Text>
                 <Text style={styles.heroName} numberOfLines={2}>
                   {fullName}
+                </Text>
+                <Text style={styles.heroContact} numberOfLines={1}>
+                  {user.Correo}
+                </Text>
+                <Text style={styles.heroContact} numberOfLines={1}>
+                  {user.Telefono}
                 </Text>
               </View>
               <Pressable
@@ -344,7 +385,7 @@ export default function ProfileScreen() {
                 testID="profile-metric-lists"
               />
             </View>
-          </View>
+          </LinearGradient>
 
           <View style={styles.options} testID="profile-options">
             <ProfileOption
@@ -362,6 +403,7 @@ export default function ProfileScreen() {
               iconColor={colors.orangeDeep}
               title={t('profile.preferences')}
               subtitle={t('profile.preferencesSubtitle')}
+              badge="3"
               testID="profile-option-preferences"
               onPress={() => showToast('info', t('profile.preferences'), t('profile.comingSoon'))}
             />
@@ -371,7 +413,7 @@ export default function ProfileScreen() {
               iconColor={colors.orangeDeep}
               title={t('profile.notifications')}
               subtitle={t('profile.notificationsSubtitle')}
-              badge={String(notifications.length)}
+              badge={String(unreadNotifications.length)}
               testID="profile-option-notifications"
               onPress={() => setShowNotifications(true)}
             />
@@ -406,6 +448,7 @@ export default function ProfileScreen() {
         visible={showNotifications}
         animationType="slide"
         transparent
+        statusBarTranslucent
         onRequestClose={() => setShowNotifications(false)}
       >
         <View style={styles.modalOverlay}>
@@ -414,10 +457,11 @@ export default function ProfileScreen() {
               styles.modalCard,
               {
                 backgroundColor: colors.card,
-                width: width >= layout.tabletBreakpoint ? 520 : '88%',
+                width: width >= layout.tabletBreakpoint ? Math.min(520, width) : '100%',
               },
             ]}
           >
+            <View style={[styles.sheetHandle, { backgroundColor: colors.line }]} />
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.ink }]}>
                 {t('profile.notifications')}
@@ -427,6 +471,7 @@ export default function ProfileScreen() {
                 accessibilityLabel={t('profile.close')}
                 onPress={() => setShowNotifications(false)}
                 style={styles.modalClose}
+                testID="profile-notifications-close"
               >
                 <Ionicons name="close" size={24} color={colors.muted} />
               </Pressable>
@@ -454,8 +499,10 @@ export default function ProfileScreen() {
             </ScrollView>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel={t('profile.close')}
               onPress={() => setShowNotifications(false)}
               style={[styles.modalDone, { backgroundColor: colors.navy }]}
+              testID="profile-notifications-done"
             >
               <Text style={styles.modalDoneText}>{t('profile.close')}</Text>
             </Pressable>
@@ -476,18 +523,18 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
   },
-  brand: { flexDirection: 'row', alignItems: 'center', minHeight: 48 },
-  logo: { width: 34, height: 44, resizeMode: 'contain', marginRight: spacing.sm },
+  brand: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  logo: { width: 36, height: 40, resizeMode: 'contain', marginRight: spacing.sm },
   brandName: {
     fontFamily: typography.extrabold,
-    fontSize: typography.sizes.lg,
-    lineHeight: 19,
+    fontSize: 20,
+    lineHeight: 21,
     letterSpacing: -0.4,
   },
   notificationButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.lg,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.8)',
@@ -512,13 +559,20 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1 },
   content: { width: '100%' },
   tabletContent: { maxWidth: layout.maxContentWidth, alignSelf: 'center' },
-  hero: { borderRadius: radii.xl, padding: spacing.xl, marginBottom: spacing.xl },
-  heroTop: { flexDirection: 'row', alignItems: 'center' },
+  hero: {
+    borderRadius: radii.xl,
+    paddingTop: spacing.xl,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    marginBottom: spacing.xl,
+    overflow: 'hidden',
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatarWrapper: { position: 'relative' },
   avatar: {
-    width: 78,
-    height: 78,
-    borderRadius: 39,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     borderWidth: 3,
     borderColor: '#F2A03D',
     backgroundColor: '#fff',
@@ -527,21 +581,28 @@ const styles = StyleSheet.create({
   avatarInitials: { color: '#fff', fontFamily: typography.extrabold, fontSize: 28 },
   onlineIndicator: {
     position: 'absolute',
-    right: -1,
-    bottom: 2,
-    width: 19,
-    height: 19,
-    borderRadius: 10,
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 3,
     borderColor: '#0B2545',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  heroCopy: { flex: 1, marginHorizontal: spacing.md },
-  greeting: { color: '#B9C9DC', fontFamily: typography.medium, fontSize: typography.sizes.sm },
+  heroCopy: { flex: 1, minWidth: 0 },
   heroName: {
     color: '#fff',
     fontFamily: typography.bold,
     fontSize: typography.sizes.lg,
-    marginTop: 3,
+    letterSpacing: -0.2,
+  },
+  heroContact: {
+    color: '#B9C9DC',
+    fontFamily: typography.medium,
+    fontSize: typography.sizes.xs,
+    marginTop: 2,
   },
   editButton: {
     minWidth: 48,
@@ -553,11 +614,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#55769A',
   },
-  metrics: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
+  metrics: { flexDirection: 'row', gap: 6, marginTop: spacing.lg },
   metric: {
     flex: 1,
     minWidth: 0,
-    minHeight: 62,
+    minHeight: 60,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -573,20 +634,22 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     marginTop: 2,
   },
-  options: { gap: spacing.md },
+  options: { gap: spacing.sm },
   option: {
-    minHeight: 76,
+    minHeight: 68,
     width: '100%',
-    borderRadius: 20,
-    padding: spacing.lg,
+    borderRadius: 18,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#0B2545',
     shadowOpacity: 0.07,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: Platform.select({ android: 3, default: 0 }),
+    borderWidth: 1,
+    borderColor: '#EEF0F5',
   },
   optionContent: {
     flex: 1,
@@ -596,8 +659,8 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   optionIcon: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -610,6 +673,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  chevronHitbox: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   badge: {
     minWidth: 24,
@@ -631,10 +700,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(5, 18, 35, 0.48)',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    width: '100%',
+    maxHeight: '78%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: spacing.lg,
   },
-  modalCard: { maxHeight: '78%', borderRadius: radii.xl, padding: spacing.lg },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: radii.pill,
+    backgroundColor: '#E0E4EC',
+    marginBottom: spacing.md,
+  },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
