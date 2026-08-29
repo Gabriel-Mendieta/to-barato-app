@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, typography } from '../theme';
+import { typography, useThemeColors } from '../theme';
 
 export type TabKey = 'home' | 'lista' | 'map' | 'perfil';
 
@@ -17,7 +17,7 @@ type TabDef = {
 /**
  * Specs from ToBarato.zip `BottomTabs` (components.jsx):
  * - absolute left/right 12, bottom 14
- * - white pill, radius 22, padding 8, border #EEF0F5
+ * - card-colored pill, radius 22, padding 8, tokenized border
  * - shadow 0 10px 30px rgba(11,37,69,.10) + 0 2px 6px rgba(11,37,69,.06)
  * - 4 equal columns, gap 4
  * - active: orangeSoft bg, radius 16, padding 8/4/6, orangeDeep icon+label
@@ -81,8 +81,19 @@ type PillProps = {
 };
 
 function TabPill({ active, onPress, onLongPress }: PillProps) {
+  const colors = useThemeColors();
   return (
-    <View style={styles.pill} pointerEvents="auto">
+    <View
+      style={[
+        styles.pill,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.line,
+          shadowColor: colors.navy,
+        },
+      ]}
+      pointerEvents="auto"
+    >
       {TABS.map((tab) => {
         const isActive = tab.key === active;
         const tint = isActive ? colors.orangeDeep : colors.tabInactive;
@@ -101,7 +112,7 @@ function TabPill({ active, onPress, onLongPress }: PillProps) {
               <View
                 style={[
                   styles.item,
-                  isActive && styles.itemActive,
+                  isActive && { backgroundColor: colors.orangeSoft },
                   pressed && !isActive && styles.itemPressed,
                 ]}
               >
@@ -111,7 +122,10 @@ function TabPill({ active, onPress, onLongPress }: PillProps) {
                   color={tint}
                 />
                 <Text
-                  style={[styles.label, isActive && styles.labelActive]}
+                  style={[
+                    styles.label,
+                    { color: isActive ? colors.orangeDeep : colors.tabInactive },
+                  ]}
                   numberOfLines={1}
                   adjustsFontSizeToFit
                   minimumFontScale={0.85}
@@ -161,14 +175,13 @@ type AppTabBarProps = {
     routes: RouteLike[];
   };
   descriptors?: Record<string, { options: Record<string, unknown> }>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   navigation: any;
 };
 
 function switchTab(
   navigation: AppTabBarProps['navigation'],
   state: AppTabBarProps['state'],
-  tab: TabDef
+  tab: TabDef,
 ) {
   const route = state.routes.find((r) => r.name === tab.routeName);
   if (!route) return;
@@ -199,8 +212,7 @@ export function AppTabBar({ state, navigation }: AppTabBarProps) {
     return null;
   }
 
-  const activeTab =
-    TABS.find((t) => t.routeName === current)?.key ?? ('home' as TabKey);
+  const activeTab = TABS.find((t) => t.routeName === current)?.key ?? ('home' as TabKey);
 
   return (
     <FloatingDock>
@@ -228,15 +240,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: PILL_SIDE_INSET,
   },
   pill: {
-    backgroundColor: colors.card,
     borderRadius: 22,
     padding: 8,
     flexDirection: 'row',
     gap: 4,
     borderWidth: 1,
-    borderColor: '#EEF0F5',
     // Zip: 0 10px 30px rgba(11,37,69,.10), 0 2px 6px rgba(11,37,69,.06)
-    shadowColor: colors.navy,
     shadowOpacity: 0.1,
     shadowRadius: 15,
     shadowOffset: { width: 0, height: 10 },
@@ -256,9 +265,6 @@ const styles = StyleSheet.create({
     gap: 2,
     backgroundColor: 'transparent',
   },
-  itemActive: {
-    backgroundColor: colors.orangeSoft, // #FFEACB
-  },
   itemPressed: {
     opacity: 0.7,
   },
@@ -266,10 +272,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: typography.bold,
     fontWeight: '700',
-    color: colors.tabInactive,
     letterSpacing: -0.1,
-  },
-  labelActive: {
-    color: colors.orangeDeep,
   },
 });

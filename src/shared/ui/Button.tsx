@@ -9,7 +9,7 @@ import {
   TextStyle,
   Platform,
 } from 'react-native';
-import { colors, radii, spacing, typography } from '../theme';
+import { radii, spacing, typography, useThemeColors } from '../theme';
 
 type Tone = 'navy' | 'orange' | 'light';
 type Size = 'md' | 'lg';
@@ -30,27 +30,28 @@ type Props = {
  * Solid fills live on an inner View so NativeWind / Tailwind preflight
  * cannot wipe Pressable backgrounds (white label on transparent → invisible CTA).
  */
-const toneStyles: Record<
-  Tone,
-  { bg: string; fg: string; border?: string; shadow: string }
-> = {
-  navy: {
-    bg: colors.navy,
-    fg: colors.white,
-    shadow: 'rgba(11,37,69,0.18)',
-  },
-  orange: {
-    bg: colors.orange,
-    fg: colors.white,
-    shadow: 'rgba(242,160,61,0.32)',
-  },
-  light: {
-    bg: colors.white,
-    fg: colors.navy,
-    border: colors.line,
-    shadow: 'rgba(11,37,69,0.08)',
-  },
-};
+function getToneStyles(
+  colors: ReturnType<typeof useThemeColors>,
+): Record<Tone, { bg: string; fg: string; border?: string; shadow: string }> {
+  return {
+    navy: {
+      bg: colors.navy,
+      fg: colors.white,
+      shadow: 'rgba(11,37,69,0.18)',
+    },
+    orange: {
+      bg: colors.orange,
+      fg: colors.white,
+      shadow: 'rgba(242,160,61,0.32)',
+    },
+    light: {
+      bg: colors.card,
+      fg: colors.navy,
+      border: colors.line,
+      shadow: 'rgba(11,37,69,0.08)',
+    },
+  };
+}
 
 /** Flatten JSX text (`Label {name}`) into one string; null if mixed with elements. */
 function asLabelText(node: React.ReactNode): string | null {
@@ -83,7 +84,8 @@ export function Button({
   style,
   textStyle,
 }: Props) {
-  const t = toneStyles[tone];
+  const colors = useThemeColors();
+  const t = getToneStyles(colors)[tone];
   const inactive = disabled || loading;
   const label = asLabelText(children);
 
@@ -122,14 +124,7 @@ export function Button({
         {loading ? (
           <ActivityIndicator color={t.fg} />
         ) : label != null ? (
-          <Text
-            style={[
-              styles.label,
-              size === 'lg' && styles.labelLg,
-              { color: t.fg },
-              textStyle,
-            ]}
-          >
+          <Text style={[styles.label, size === 'lg' && styles.labelLg, { color: t.fg }, textStyle]}>
             {label}
           </Text>
         ) : (

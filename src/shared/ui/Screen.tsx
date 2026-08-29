@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, useWindowDimensions, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, layout, spacing, typography } from '../theme';
+import { layout, spacing, typography, useThemeColors } from '../theme';
 
 type Edge = 'top' | 'bottom' | 'left' | 'right';
 
@@ -23,11 +23,12 @@ type Props = {
 export function Screen({
   children,
   adaptive = true,
-  backgroundColor = colors.bg,
+  backgroundColor,
   edges = ['top', 'bottom'],
   gutters = true,
   style,
 }: Props) {
+  const colors = useThemeColors();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= layout.tabletBreakpoint;
@@ -38,7 +39,7 @@ export function Screen({
       style={[
         styles.root,
         {
-          backgroundColor,
+          backgroundColor: backgroundColor ?? colors.bg,
           paddingTop: pad('top'),
           paddingBottom: pad('bottom'),
           paddingLeft: gutters
@@ -66,7 +67,8 @@ export function Screen({
 }
 
 export function ScreenTitle({ children }: { children: React.ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
+  const colors = useThemeColors();
+  return <Text style={[styles.title, { color: colors.navy }]}>{children}</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -75,7 +77,6 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: typography.extrabold,
     fontSize: 24,
-    color: colors.navy,
     letterSpacing: -0.3,
     marginBottom: spacing.sm,
   },

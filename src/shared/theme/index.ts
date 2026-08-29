@@ -11,3 +11,4 @@ export {
   getCategoryImageBg,
 } from './tokens';
 export type { Theme } from './tokens';
+export { useThemeColors } from './useThemeColors';

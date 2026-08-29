@@ -1,7 +1,10 @@
 /**
  * Design tokens from Claude Design (ToBarato.zip) — adapted for React Native.
+ *
+ * `lightColors` and `darkColors` are the canonical palettes. `colors` remains
+ * an alias for the light palette so existing imports keep working.
  */
-export const colors = {
+const lightColors = {
   navy: '#0B2545',
   navy2: '#133b6b',
   navySoft: '#19426E',
@@ -23,11 +26,39 @@ export const colors = {
   white: '#ffffff',
 } as const;
 
+const darkColors = {
+  navy: '#9BC5F0',
+  navy2: '#7EACD8',
+  navySoft: '#8DB7E2',
+  ink: '#F4F7FB',
+  muted: '#AAB6C8',
+  line: '#334155',
+  bg: '#0B1424',
+  card: '#142235',
+  orange: '#F2A03D',
+  orangeSoft: '#5A3A16',
+  orangeDeep: '#FFC46B',
+  green: '#5FD39A',
+  greenSoft: '#153C2B',
+  red: '#FF8A82',
+  redSoft: '#4A211F',
+  blueSoft: '#1C3654',
+  lilacSoft: '#332A51',
+  tabInactive: '#9AA8BB',
+  white: '#FFFFFF',
+} as const;
+
+/** Backwards-compatible light palette import. */
+export const colors = lightColors;
+export { lightColors, darkColors };
+export type ThemeColors = Readonly<Record<keyof typeof lightColors, string>>;
+
+export function getThemeColors(colorScheme?: 'light' | 'dark' | 'unspecified' | null): ThemeColors {
+  return colorScheme === 'dark' ? darkColors : lightColors;
+}
+
 /** Brand colors per supermarket / provider (IdProveedor). */
-export const providerBrand: Record<
-  number,
-  { color: string; bg: string; label?: string }
-> = {
+export const providerBrand: Record<number, { color: string; bg: string; label?: string }> = {
   1: { color: '#2E78B5', bg: '#DCEAF7' }, // Nacional
   2: { color: '#1B6E3F', bg: '#DCF3E5' }, // Jumbo
   3: { color: '#D63939', bg: '#FFE3E0' }, // La Sirena
@@ -62,7 +93,7 @@ export const categoryImageBg: Record<number, string> = {
 };
 
 export function getCategoryImageBg(categoriaId: number) {
-  return categoryImageBg[categoriaId] ?? '#EEF0F5';
+  return categoryImageBg[categoriaId] ?? colors.line;
 }
 
 export const spacing = {
@@ -89,7 +120,13 @@ export const typography = {
   semibold: 'PlusJakartaSans_600SemiBold',
   bold: 'PlusJakartaSans_700Bold',
   extrabold: 'PlusJakartaSans_800ExtraBold',
-  mono: 'SpaceMono', // fallback if JetBrains Mono not bundled
+  sizes: {
+    xs: 11,
+    sm: 13,
+    md: 15,
+    lg: 18,
+    xl: 24,
+  },
 } as const;
 
 export const layout = {
@@ -101,6 +138,8 @@ export const layout = {
 
 export const theme = {
   colors,
+  lightColors,
+  darkColors,
   spacing,
   radii,
   typography,
