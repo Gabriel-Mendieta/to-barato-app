@@ -29,18 +29,19 @@ import {
   useListItemCounts,
   useLists,
 } from '@/src/features/lists/hooks';
-import { calculateListSummary, estimateDone } from '@/src/features/lists/screenSelectors';
+import { calculateListProgress, calculateListSummary } from '@/src/features/lists/screenSelectors';
 import { detail as getProduct, units as getUnits } from '@/src/features/products/api';
 import {
-  all as getProviders,
   byId as getProvider,
   types as getProviderTypes,
   nearby,
 } from '@/src/features/providers/api';
+import { useProviders } from '@/src/features/providers/hooks';
 import {
   Screen,
   Stagger,
   Chip,
+  CreateListButton,
   FadeInUp,
   FLOATING_TAB_BAR_CLEARANCE,
   CreateListModal,
@@ -50,7 +51,7 @@ import {
   showToast,
   triggerHaptic,
 } from '@/src/shared/ui';
-import { colors, radii, spacing, typography } from '@/src/shared/theme';
+import { radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
 
 type ListVisual = { bg: string; emoji: string };
@@ -96,9 +97,10 @@ function parseUserId(value: string | null): number | null {
 
 export default function ShoppingListScreen() {
   const { t } = useTranslation();
+  const themeColors = useThemeColors();
+  const styles = useMemo(() => createStyles(themeColors), [themeColors]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
-  const [notifOpen, setNotifOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [menuList, setMenuList] = useState<ListDTO | null>(null);
   const menuSheetRef = React.useRef<BottomSheetModalMethods>(null);
@@ -113,6 +115,7 @@ export default function ShoppingListScreen() {
   });
   const userId = sessionQuery.data ?? null;
   const listsQuery = useLists(userId);
+  const providersQuery = useProviders();
   const listas = useMemo(() => listsQuery.data ?? [], [listsQuery.data]);
   const refetchLists = listsQuery.refetch;
   const listIds = useMemo(() => listas.map((lista) => lista.IdLista), [listas]);
@@ -318,6 +321,10 @@ export default function ShoppingListScreen() {
   };
 
   const goCreate = () => setCreateOpen(true);
+  const createDisabled = createListMutation.isPending;
+  const showUpcomingNotification = () => {
+    showToast('info', t('auth.login.comingSoon'), t('lists.notificationsUnavailable'));
+  };
 
   const onConfirmCreate = async ({ tipo, nombre }: CreateListPayload) => {
     if (createListMutation.isPending) return;
@@ -327,7 +334,7 @@ export default function ShoppingListScreen() {
     }
 
     try {
-      const proveedores = await getProviders();
+      const proveedores = providersQuery.data ?? (await providersQuery.refetch()).data ?? [];
       const match = proveedores.find((p) => p.IdTipoProveedor === tipo.IdTipoProveedor);
       const idProveedor = match?.IdProveedor ?? proveedores[0]?.IdProveedor;
       if (!idProveedor) {
@@ -419,28 +426,21 @@ export default function ShoppingListScreen() {
                 accessibilityLabel={t('shared.back')}
                 hitSlop={8}
               >
-                <Ionicons name="chevron-back" size={22} color={colors.navy} />
+                <Ionicons name="chevron-back" size={22} color={themeColors.navy} />
               </Pressable>
               <Text style={styles.title} numberOfLines={1}>
                 {t('lists.title')}
               </Text>
               <Pressable
-                onPress={() => setNotifOpen((v) => !v)}
+                onPress={showUpcomingNotification}
                 style={styles.headerBtn}
                 accessibilityRole="button"
                 accessibilityLabel={t('lists.notifications')}
                 hitSlop={8}
               >
-                <Ionicons name="notifications-outline" size={20} color={colors.navy} />
+                <Ionicons name="notifications-outline" size={20} color={themeColors.navy} />
               </Pressable>
             </View>
-
-            {notifOpen ? (
-              <View style={styles.notifSheet}>
-                <Text style={styles.notifTitle}>{t('lists.notifications')}</Text>
-                <Text style={styles.notifBody}>{t('lists.notificationsUnavailable')}</Text>
-              </View>
-            ) : null}
 
             <View style={styles.budgetPad}>
               <View style={styles.budgetCard}>
@@ -492,8 +492,7 @@ export default function ShoppingListScreen() {
         }
         renderItem={({ item, index }) => {
           const count = itemCounts[item.IdLista] || 0;
-          const done = estimateDone(item.IdLista, count);
-          const pct = count ? Math.round((done / count) * 100) : 0;
+          const progress = calculateListProgress(item.IdLista, count);
           const visual = listVisual(item, index);
           const selected = selectedLists.has(item.IdLista);
 
@@ -526,7 +525,11 @@ export default function ShoppingListScreen() {
                       accessibilityLabel={t('lists.listOptions')}
                       style={styles.moreBtn}
                     >
-                      <Ionicons name="ellipsis-horizontal" size={18} color={colors.tabInactive} />
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={18}
+                        color={themeColors.tabInactive}
+                      />
                     </Pressable>
                   </View>
 
@@ -534,15 +537,20 @@ export default function ShoppingListScreen() {
                     <Text style={styles.metaText}>
                       {t(count === 1 ? 'lists.articles_one' : 'lists.articles_other', { count })}
                     </Text>
-                    {done > 0 ? (
+                    {progress.done > 0 ? (
                       <Chip tone="green" size="sm" style={styles.doneChip}>
-                        {t('lists.purchased', { count: done })}
+                        {t('lists.purchased', { count: progress.done })}
                       </Chip>
                     ) : null}
                   </View>
 
                   <View style={styles.cardProgressTrack}>
-                    <View style={[styles.cardProgressFill, { width: `${Math.min(100, pct)}%` }]} />
+                    <View
+                      style={[
+                        styles.cardProgressFill,
+                        { width: `${Math.min(100, progress.percentage)}%` },
+                      ]}
+                    />
                   </View>
                 </View>
               </Pressable>
@@ -551,14 +559,11 @@ export default function ShoppingListScreen() {
         }}
         ListFooterComponent={
           listas.length > 0 ? (
-            <Pressable
+            <CreateListButton
+              label={t('lists.newList')}
               onPress={goCreate}
-              style={[styles.dashedCreate, { marginHorizontal: spacing.lg }]}
-              accessibilityRole="button"
-            >
-              <Ionicons name="add" size={18} color={colors.muted} />
-              <Text style={styles.dashedCreateText}>{t('lists.newList')}</Text>
-            </Pressable>
+              disabled={createDisabled}
+            />
           ) : null
         }
       />
@@ -570,7 +575,7 @@ export default function ShoppingListScreen() {
             onPress={handleGenerateRoute}
             accessibilityRole="button"
           >
-            <Ionicons name="navigate" size={18} color={colors.white} />
+            <Ionicons name="navigate" size={18} color={themeColors.white} />
             <Text style={styles.routeBtnText}>
               {t('lists.generateRoute', { count: selectedLists.size })}
             </Text>
@@ -600,7 +605,7 @@ export default function ShoppingListScreen() {
         backdropComponent={(props: Record<string, unknown>) => (
           <BottomSheetBackdrop {...props} pressBehavior="close" />
         )}
-        backgroundStyle={{ backgroundColor: colors.card }}
+        backgroundStyle={{ backgroundColor: themeColors.card }}
       >
         <BottomSheetView style={styles.menuSheet}>
           <Text style={styles.menuTitle} numberOfLines={1}>
@@ -614,7 +619,7 @@ export default function ShoppingListScreen() {
               if (selected) void shareList(selected);
             }}
           >
-            <Ionicons name="share-outline" size={20} color={colors.navy} />
+            <Ionicons name="share-outline" size={20} color={themeColors.navy} />
             <Text style={styles.menuButtonText}>{t('lists.share')}</Text>
           </Pressable>
           <Pressable
@@ -625,7 +630,7 @@ export default function ShoppingListScreen() {
               if (selected) toggleSelection(selected.IdLista);
             }}
           >
-            <Ionicons name="checkmark-circle-outline" size={20} color={colors.navy} />
+            <Ionicons name="checkmark-circle-outline" size={20} color={themeColors.navy} />
             <Text style={styles.menuButtonText}>{t('lists.selectForRoute')}</Text>
           </Pressable>
           <Pressable
@@ -636,8 +641,10 @@ export default function ShoppingListScreen() {
               if (selected) confirmDelete(selected);
             }}
           >
-            <Ionicons name="trash-outline" size={20} color={colors.red} />
-            <Text style={[styles.menuButtonText, { color: colors.red }]}>{t('lists.delete')}</Text>
+            <Ionicons name="trash-outline" size={20} color={themeColors.red} />
+            <Text style={[styles.menuButtonText, { color: themeColors.red }]}>
+              {t('lists.delete')}
+            </Text>
           </Pressable>
         </BottomSheetView>
       </BottomSheetModal>
@@ -645,333 +652,326 @@ export default function ShoppingListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
-    paddingBottom: 10,
-    gap: 8,
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.navy,
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  title: {
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: typography.extrabold,
-    fontSize: 20,
-    color: colors.navy,
-    letterSpacing: -0.2,
-  },
+function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
+  return StyleSheet.create({
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xs,
+      paddingBottom: 10,
+      gap: 8,
+    },
+    headerBtn: {
+      width: 50,
+      height: 50,
+      borderRadius: 16,
+      backgroundColor: themeColors.card,
+      borderWidth: 1,
+      borderColor: themeColors.line,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...Platform.select({
+        ios: {
+          shadowColor: themeColors.navy,
+          shadowOpacity: 0.05,
+          shadowRadius: 2,
+          shadowOffset: { width: 0, height: 1 },
+        },
+        android: { elevation: 1 },
+        default: {},
+      }),
+    },
+    title: {
+      flex: 1,
+      textAlign: 'center',
+      fontFamily: typography.extrabold,
+      fontSize: 20,
+      color: themeColors.navy,
+      letterSpacing: -0.2,
+    },
 
-  notifSheet: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.card,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: 14,
-  },
-  notifTitle: {
-    fontFamily: typography.extrabold,
-    fontSize: 15,
-    color: colors.navy,
-    marginBottom: 4,
-  },
-  notifBody: {
-    fontFamily: typography.medium,
-    fontSize: 12,
-    color: colors.muted,
-    lineHeight: 18,
-  },
+    notifSheet: {
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.sm,
+      backgroundColor: themeColors.card,
+      borderRadius: radii.lg,
+      borderWidth: 1,
+      borderColor: themeColors.line,
+      padding: 14,
+    },
+    notifTitle: {
+      fontFamily: typography.extrabold,
+      fontSize: 15,
+      color: themeColors.navy,
+      marginBottom: 4,
+    },
+    notifBody: {
+      fontFamily: typography.medium,
+      fontSize: 12,
+      color: themeColors.muted,
+      lineHeight: 18,
+    },
 
-  budgetPad: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: 4,
-    paddingBottom: 8,
-  },
-  budgetCard: {
-    backgroundColor: '#FFF4E0',
-    borderWidth: 1,
-    borderColor: '#FFD49A',
-    borderRadius: 18,
-    padding: 14,
-  },
-  budgetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  budgetLabel: {
-    fontSize: 11,
-    fontFamily: typography.extrabold,
-    color: '#A35A0E',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  budgetValue: {
-    fontSize: 26,
-    fontFamily: typography.extrabold,
-    color: colors.navy,
-    marginTop: 2,
-    letterSpacing: -0.4,
-  },
-  budgetMono: { fontFamily: typography.extrabold },
-  budgetCents: {
-    fontSize: 18,
-    fontFamily: typography.medium,
-    opacity: 0.8,
-  },
-  budgetSideLabel: {
-    fontSize: 11,
-    fontFamily: typography.bold,
-    color: '#7A4B0E',
-  },
-  budgetSideValue: {
-    fontSize: 17,
-    fontFamily: typography.extrabold,
-    color: colors.green,
-    letterSpacing: -0.2,
-  },
-  progressRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  progressTrack: {
-    flex: 1,
-    height: 8,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    borderRadius: radii.pill,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.orange,
-    borderRadius: radii.pill,
-  },
-  progressMeta: {
-    fontSize: 11,
-    fontFamily: typography.extrabold,
-    color: '#7A4B0E',
-    minWidth: 30,
-    textAlign: 'right',
-  },
+    budgetPad: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: 4,
+      paddingBottom: 8,
+    },
+    budgetCard: {
+      backgroundColor: themeColors.orangeSoft,
+      borderWidth: 1,
+      borderColor: themeColors.orange,
+      borderRadius: 18,
+      padding: 14,
+    },
+    budgetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    budgetLabel: {
+      fontSize: 11,
+      fontFamily: typography.extrabold,
+      color: themeColors.orangeDeep,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    budgetValue: {
+      fontSize: 26,
+      fontFamily: typography.extrabold,
+      color: themeColors.navy,
+      marginTop: 2,
+      letterSpacing: -0.4,
+    },
+    budgetMono: { fontFamily: typography.extrabold },
+    budgetCents: {
+      fontSize: 18,
+      fontFamily: typography.medium,
+      opacity: 0.8,
+    },
+    budgetSideLabel: {
+      fontSize: 11,
+      fontFamily: typography.bold,
+      color: themeColors.orangeDeep,
+    },
+    budgetSideValue: {
+      fontSize: 17,
+      fontFamily: typography.extrabold,
+      color: themeColors.green,
+      letterSpacing: -0.2,
+    },
+    progressRow: {
+      marginTop: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    progressTrack: {
+      flex: 1,
+      height: 8,
+      backgroundColor: themeColors.card,
+      borderRadius: radii.pill,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      backgroundColor: themeColors.orange,
+      borderRadius: radii.pill,
+    },
+    progressMeta: {
+      fontSize: 11,
+      fontFamily: typography.extrabold,
+      color: themeColors.orangeDeep,
+      minWidth: 30,
+      textAlign: 'right',
+    },
 
-  selectHint: {
-    fontFamily: typography.medium,
-    fontSize: 12,
-    color: colors.muted,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.lg,
-  },
+    selectHint: {
+      fontFamily: typography.medium,
+      fontSize: 12,
+      color: themeColors.muted,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.lg,
+    },
 
-  cardWrap: {
-    marginBottom: 10,
-    paddingHorizontal: spacing.lg,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.line,
-    shadowColor: colors.navy,
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-  },
-  cardSelected: {
-    borderColor: colors.orange,
-    borderWidth: 2,
-    backgroundColor: colors.orangeSoft,
-  },
-  catIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catEmoji: { fontSize: 26, lineHeight: 30 },
-  cardBody: { flex: 1, minWidth: 0 },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  cardTitle: {
-    flex: 1,
-    fontSize: 15,
-    fontFamily: typography.extrabold,
-    color: colors.navy,
-    letterSpacing: -0.15,
-  },
-  moreBtn: { padding: 4 },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-    flexWrap: 'wrap',
-  },
-  metaText: {
-    fontSize: 12,
-    fontFamily: typography.semibold,
-    color: colors.muted,
-  },
-  doneChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  cardProgressTrack: {
-    marginTop: 8,
-    height: 5,
-    backgroundColor: '#EEF1F6',
-    borderRadius: radii.pill,
-    overflow: 'hidden',
-  },
-  cardProgressFill: {
-    height: '100%',
-    backgroundColor: colors.orange,
-    borderRadius: radii.pill,
-  },
+    cardWrap: {
+      marginBottom: 14,
+      paddingHorizontal: spacing.lg,
+    },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+      backgroundColor: themeColors.card,
+      borderRadius: 18,
+      minHeight: 120,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: themeColors.line,
+      ...Platform.select({
+        ios: {
+          shadowColor: themeColors.navy,
+          shadowOpacity: 0.04,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+        },
+        android: { elevation: 2 },
+        default: {},
+      }),
+    },
+    cardSelected: {
+      borderColor: themeColors.orange,
+      borderWidth: 2,
+      backgroundColor: themeColors.orangeSoft,
+    },
+    catIcon: {
+      width: 62,
+      height: 62,
+      borderRadius: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    catEmoji: { fontSize: 32, lineHeight: 36 },
+    cardBody: { flex: 1, minWidth: 0 },
+    cardTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+    },
+    cardTitle: {
+      flex: 1,
+      fontSize: 15,
+      fontFamily: typography.extrabold,
+      color: themeColors.navy,
+      letterSpacing: -0.15,
+    },
+    moreBtn: { padding: 4 },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 6,
+      flexWrap: 'wrap',
+    },
+    metaText: {
+      fontSize: 12,
+      fontFamily: typography.semibold,
+      color: themeColors.muted,
+    },
+    doneChip: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    cardProgressTrack: {
+      marginTop: 8,
+      height: 5,
+      backgroundColor: themeColors.line,
+      borderRadius: radii.pill,
+      overflow: 'hidden',
+    },
+    cardProgressFill: {
+      height: '100%',
+      backgroundColor: themeColors.orange,
+      borderRadius: radii.pill,
+    },
 
-  dashedCreate: {
-    marginTop: spacing.sm,
-    marginHorizontal: spacing.lg,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#C8CDD9',
-    borderRadius: 18,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'transparent',
-  },
-  dashedCreateText: {
-    fontFamily: typography.bold,
-    fontSize: 13,
-    color: colors.muted,
-  },
+    empty: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 48,
+      paddingHorizontal: spacing.xl,
+    },
+    emptyIcon: {
+      width: 72,
+      height: 72,
+      borderRadius: 24,
+      backgroundColor: themeColors.blueSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.md,
+    },
+    emptyTitle: {
+      fontFamily: typography.extrabold,
+      fontSize: 18,
+      color: themeColors.navy,
+      marginBottom: 6,
+    },
+    emptyBody: {
+      fontFamily: typography.medium,
+      fontSize: 13,
+      color: themeColors.muted,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: spacing.lg,
+    },
 
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: spacing.xl,
-  },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 24,
-    backgroundColor: colors.blueSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  emptyTitle: {
-    fontFamily: typography.extrabold,
-    fontSize: 18,
-    color: colors.navy,
-    marginBottom: 6,
-  },
-  emptyBody: {
-    fontFamily: typography.medium,
-    fontSize: 13,
-    color: colors.muted,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: spacing.lg,
-  },
-
-  routeBar: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: FLOATING_TAB_BAR_CLEARANCE,
-    gap: 8,
-  },
-  routeBtn: {
-    backgroundColor: colors.orange,
-    borderRadius: radii.lg,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  routeBtnText: {
-    color: colors.white,
-    fontFamily: typography.bold,
-    fontSize: 15,
-  },
-  routeCancel: { alignItems: 'center', paddingVertical: 4 },
-  routeCancelText: {
-    fontFamily: typography.semibold,
-    fontSize: 13,
-    color: colors.muted,
-  },
-  loadingSkeletons: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    gap: 10,
-  },
-  loadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: 14,
-  },
-  loadingText: { flex: 1, gap: 8 },
-  menuSheet: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-    gap: 4,
-  },
-  menuTitle: {
-    fontFamily: typography.extrabold,
-    color: colors.navy,
-    fontSize: 18,
-    marginBottom: spacing.sm,
-  },
-  menuButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: 12,
-  },
-  menuButtonText: {
-    fontFamily: typography.semibold,
-    color: colors.ink,
-    fontSize: 14,
-  },
-});
+    routeBar: {
+      position: 'absolute',
+      left: spacing.lg,
+      right: spacing.lg,
+      bottom: FLOATING_TAB_BAR_CLEARANCE,
+      gap: 8,
+    },
+    routeBtn: {
+      backgroundColor: themeColors.orange,
+      borderRadius: radii.lg,
+      paddingVertical: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    routeBtnText: {
+      color: themeColors.white,
+      fontFamily: typography.bold,
+      fontSize: 15,
+    },
+    routeCancel: { alignItems: 'center', paddingVertical: 4 },
+    routeCancelText: {
+      fontFamily: typography.semibold,
+      fontSize: 13,
+      color: themeColors.muted,
+    },
+    loadingSkeletons: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+      gap: 10,
+    },
+    loadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: themeColors.card,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: themeColors.line,
+      padding: 14,
+    },
+    loadingText: { flex: 1, gap: 8 },
+    menuSheet: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.xl,
+      gap: 4,
+    },
+    menuTitle: {
+      fontFamily: typography.extrabold,
+      color: themeColors.navy,
+      fontSize: 18,
+      marginBottom: spacing.sm,
+    },
+    menuButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingVertical: 12,
+    },
+    menuButtonText: {
+      fontFamily: typography.semibold,
+      color: themeColors.ink,
+      fontSize: 14,
+    },
+  });
+}

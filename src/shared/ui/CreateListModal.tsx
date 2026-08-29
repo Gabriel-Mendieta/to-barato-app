@@ -8,13 +8,13 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from './BottomSheetCompat';
-import { api, endpoints } from '@/src/shared/api';
 import { colors, typography, useThemeColors } from '@/src/shared/theme';
 import { Button } from './Button';
 import { triggerHaptic } from './haptics';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createListSchema, type CreateListFormValues } from '@/src/features/lists/schema';
+import { useProviderTypes } from '@/src/features/providers/hooks';
 import { useTranslation } from 'react-i18next';
 
 export type TipoProveedorOption = {
@@ -69,11 +69,12 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
   const themeColors = useThemeColors();
   const sheetRef = useRef<BottomSheetModalMethods>(null);
   const nameInputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
-  const [tipos, setTipos] = useState<TipoProveedorOption[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'tipo' | 'nombre'>('tipo');
   const [selected, setSelected] = useState<TipoProveedorOption | null>(null);
+  const tiposQuery = useProviderTypes();
+  const tipos = tiposQuery.data ?? [];
+  const loading = tiposQuery.isPending;
+  const error = tiposQuery.isError ? t('lists.noCategories') : null;
   const {
     control,
     handleSubmit,
@@ -90,32 +91,22 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
     setStep('tipo');
     setSelected(null);
     resetForm({ nombre: '' });
-    setError(null);
   }, [resetForm]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.get<TipoProveedorOption[]>(endpoints.tipoproveedor);
-      setTipos(Array.isArray(data) ? data : []);
-    } catch {
-      setError(t('lists.noCategories'));
-      setTipos([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
-
   useEffect(() => {
+    let animationFrame: number | undefined;
     if (visible) {
-      reset();
-      load();
-      requestAnimationFrame(() => sheetRef.current?.present());
+      animationFrame = requestAnimationFrame(() => {
+        reset();
+        sheetRef.current?.present();
+      });
     } else {
       sheetRef.current?.dismiss();
     }
-  }, [visible, load, reset]);
+    return () => {
+      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+    };
+  }, [visible, reset]);
 
   useEffect(() => {
     if (!visible || step !== 'nombre') return;
@@ -197,7 +188,7 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
           ) : error && step === 'tipo' ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
-              <Pressable onPress={load} hitSlop={8}>
+              <Pressable onPress={() => void tiposQuery.refetch()} hitSlop={8}>
                 <Text style={styles.retry}>{t('shared.retry')}</Text>
               </Pressable>
             </View>

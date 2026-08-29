@@ -7,6 +7,7 @@ export type { TabKey } from './TabBar';
 export { FadeInUp, Stagger } from './Stagger';
 export { Sparkline } from './Sparkline';
 export { CreateListModal } from './CreateListModal';
+export { CreateListButton } from './CreateListButton';
 export { Skeleton, CardSkeleton } from './Skeleton';
 export { EmptyState } from './EmptyState';
 export { BottomSheetModalProvider } from './BottomSheetCompat';

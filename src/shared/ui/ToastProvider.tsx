@@ -8,5 +8,13 @@ export function ToastProvider() {
 }
 
 export function showToast(type: ToastKind, text1: string, text2?: string) {
-  Toast.show({ type, text1, text2, position: 'top', visibilityTime: 2600 });
+  Toast.show({
+    type,
+    text1,
+    text2,
+    position: 'top',
+    autoHide: true,
+    visibilityTime: 2600,
+    onPress: () => Toast.hide(),
+  });
 }

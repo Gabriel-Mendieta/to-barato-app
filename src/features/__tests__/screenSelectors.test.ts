@@ -1,5 +1,5 @@
 import { parseProductId } from '@/src/features/products/screenSelectors';
-import { calculateListSummary } from '@/src/features/lists/screenSelectors';
+import { calculateListProgress, calculateListSummary } from '@/src/features/lists/screenSelectors';
 import {
   acquireSingleFlight,
   parseIncomingProducts,
@@ -9,6 +9,24 @@ import {
 } from '@/src/features/providers/screenSelectors';
 
 describe('selectores de pantallas de productos', () => {
+  it('deriva progreso de tarjeta para listas con items y vacías', () => {
+    expect(calculateListProgress(1, 4)).toEqual({
+      itemCount: 4,
+      done: 2,
+      percentage: 50,
+    });
+    expect(calculateListProgress(2, 0)).toEqual({
+      itemCount: 0,
+      done: 0,
+      percentage: 0,
+    });
+    expect(calculateListProgress(3, -2)).toEqual({
+      itemCount: 0,
+      done: 0,
+      percentage: 0,
+    });
+  });
+
   it('deriva total, progreso y ahorro desde listas y conteos', () => {
     expect(
       calculateListSummary(

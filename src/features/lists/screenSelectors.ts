@@ -8,6 +8,17 @@ export function estimateDone(idLista: number, items: number): number {
   return Math.min(items, Math.max(1, Math.floor((items * seed) / 12)));
 }
 
+export function calculateListProgress(idLista: number, items: number) {
+  const itemCount = Number.isFinite(items) ? Math.max(0, Math.floor(items)) : 0;
+  const done = estimateDone(idLista, itemCount);
+
+  return {
+    itemCount,
+    done,
+    percentage: itemCount ? Math.round((done / itemCount) * 100) : 0,
+  };
+}
+
 export function calculateListSummary(
   listas: readonly Pick<ListDTO, 'IdLista' | 'PrecioTotal'>[],
   itemCounts: Readonly<Record<number, number>>,
@@ -15,7 +26,7 @@ export function calculateListSummary(
   const budgetTotal = listas.reduce((sum, lista) => sum + (Number(lista.PrecioTotal) || 0), 0);
   const totalItems = listas.reduce((sum, lista) => sum + (itemCounts[lista.IdLista] ?? 0), 0);
   const totalDone = listas.reduce(
-    (sum, lista) => sum + estimateDone(lista.IdLista, itemCounts[lista.IdLista] ?? 0),
+    (sum, lista) => sum + calculateListProgress(lista.IdLista, itemCounts[lista.IdLista] ?? 0).done,
     0,
   );
 
