@@ -102,10 +102,12 @@ describe('APIs y query keys de dominios', () => {
     __resetDevModeForTests();
     await setOfflineMode(true);
     const response = await providerById(1);
+    const catalogProducts = await catalogByType(1);
     const product = await detail(1);
     const productPrices = await prices(1);
     const providerProducts = await byProvider(1);
     expect(response.IdProveedor).toBe(1);
+    expect(catalogProducts.length).toBeGreaterThan(0);
     expect(product.IdProducto).toBe(1);
     expect(productPrices.length).toBeGreaterThan(0);
     expect(providerProducts.length).toBeGreaterThan(0);

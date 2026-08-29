@@ -18,7 +18,14 @@ import {
 } from '@/src/shared/ui/BottomSheetCompat';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, endpoints } from '@/src/shared/api';
+import { useAddListItem } from '@/src/features/lists/hooks';
+import {
+  useProductCatalogByType,
+  useProductCategories,
+  useProductUnits,
+} from '@/src/features/products/hooks';
+import type { CategoryDTO, ProductDTO, UnitDTO } from '@/src/shared/api';
+import { firstRouteParam, parseProductId } from '@/src/features/products/screenSelectors';
 import { getUnitAbbrev } from '@/src/shared/products/meta';
 import {
   Screen,
@@ -31,24 +38,6 @@ import {
 } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
-
-type ProductoAPI = {
-  IdProducto: number;
-  Nombre: string;
-  UrlImagen: string | null;
-  IdCategoria?: number;
-  IdUnidadMedida?: number;
-};
-
-type CategoriaAPI = {
-  IdCategoria: number;
-  NombreCategoria: string;
-};
-
-type UnidadMedida = {
-  IdUnidadMedida: number;
-  NombreUnidadMedida: string;
-};
 
 const POPULAR = ['Manzana', 'Pollo Fresco', 'Arroz Premium', 'Leche', 'Aceite'] as const;
 
@@ -101,31 +90,42 @@ function categoryTint(nombre: string, index: number): string {
 export default function AddToListScreen() {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{
-    tipo?: string;
-    listaId?: string;
-    nombre?: string;
-    idProveedor?: string;
+    tipo?: string | string[];
+    listaId?: string | string[];
+    nombre?: string | string[];
+    idProveedor?: string | string[];
   }>();
-  const tipoId = params.tipo ? Number(params.tipo) : null;
-  const listaId = params.listaId ? Number(params.listaId) : null;
-  const idProveedor = params.idProveedor ? Number(params.idProveedor) : null;
-  const listName = params.nombre ?? 'Lista';
+  const tipoId = parseProductId(params.tipo);
+  const listaId = parseProductId(params.listaId);
+  const idProveedor = parseProductId(params.idProveedor);
+  const listName = firstRouteParam(params.nombre) ?? 'Lista';
 
-  const [allProducts, setAllProducts] = useState<ProductoAPI[]>([]);
-  const [categorias, setCategorias] = useState<CategoriaAPI[]>([]);
-  const [unitNames, setUnitNames] = useState<Record<number, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const catalogQuery = useProductCatalogByType(tipoId);
+  const categoriesQuery = useProductCategories();
+  const unitsQuery = useProductUnits();
+  const addItemMutation = useAddListItem();
+
+  const allProducts = useMemo(() => catalogQuery.data ?? [], [catalogQuery.data]);
+  const categorias = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
+  const unitNames = useMemo(
+    () =>
+      Object.fromEntries(
+        (unitsQuery.data ?? []).map((unit: UnitDTO) => [
+          unit.IdUnidadMedida,
+          unit.NombreUnidadMedida,
+        ]),
+      ) as Record<number, string>,
+    [unitsQuery.data],
+  );
   const [query, setQuery] = useState('');
   const [categoryId, setCategoryId] = useState<number | null>(null);
 
-  const [qtyModal, setQtyModal] = useState<ProductoAPI | null>(null);
+  const [qtyModal, setQtyModal] = useState<ProductDTO | null>(null);
   const qtySheetRef = React.useRef<BottomSheetModalMethods>(null);
   const [qty, setQty] = useState(1);
-  const [adding, setAdding] = useState(false);
 
   const unitLabel = useCallback(
-    (p: ProductoAPI) => {
+    (p: ProductDTO) => {
       const id = p.IdUnidadMedida;
       if (id == null) return '';
       const full = unitNames[id];
@@ -136,34 +136,13 @@ export default function AddToListScreen() {
     [unitNames],
   );
 
-  const fetchBase = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [prodResp, catResp, unitResp] = await Promise.all([
-        tipoId
-          ? api.get<ProductoAPI[]>(endpoints.productoTipoProveedor(tipoId))
-          : api.get<ProductoAPI[]>(endpoints.producto),
-        api.get<CategoriaAPI[]>(endpoints.categoria),
-        api.get<UnidadMedida[]>(endpoints.unidadmedida),
-      ]);
-      setAllProducts(Array.isArray(prodResp.data) ? prodResp.data : []);
-      setCategorias(Array.isArray(catResp.data) ? catResp.data : []);
-      const units = Array.isArray(unitResp.data) ? unitResp.data : [];
-      setUnitNames(Object.fromEntries(units.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])));
-    } catch {
-      setError(t('search.productsFailed'));
-    } finally {
-      setLoading(false);
-    }
-  }, [t, tipoId]);
-
   useFocusEffect(
     useCallback(() => {
+      // Al volver a enfocar solo se limpian filtros locales; React Query conserva
+      // y actualiza los datos remotos sin efectos de sincronización adicionales.
       setQuery('');
       setCategoryId(null);
-      fetchBase();
-    }, [fetchBase]),
+    }, []),
   );
 
   const filtered = useMemo(() => {
@@ -180,37 +159,41 @@ export default function AddToListScreen() {
 
   const showBrowse = !query.trim() && categoryId == null;
 
-  const openQty = (p: ProductoAPI) => {
+  const openQty = (p: ProductDTO) => {
     void triggerHaptic('selection');
     setQty(1);
     setQtyModal(p);
     requestAnimationFrame(() => qtySheetRef.current?.present());
   };
 
-  const confirmAdd = async () => {
-    if (!qtyModal || !listaId) {
+  const confirmAdd = () => {
+    if (!qtyModal || listaId == null) {
       showToast('error', t('search.addFailed'), t('search.noActiveList'));
       return;
     }
-    setAdding(true);
-    try {
-      // Sin fijar proveedor/precio aquí: el detalle de lista aplica precios
-      // según el proveedor elegido. PrecioActual '0.00' = sin vínculo.
-      await api.post(endpoints.listaProducto, {
+    if (addItemMutation.isPending) return;
+
+    // Sin fijar proveedor/precio aquí: el detalle de lista aplica precios
+    // según el proveedor elegido. PrecioActual '0.00' = sin vínculo.
+    addItemMutation.mutate(
+      {
         IdLista: listaId,
         IdProducto: qtyModal.IdProducto,
         PrecioActual: '0.00',
         Cantidad: qty,
-      });
-      qtySheetRef.current?.dismiss();
-      void triggerHaptic('success');
-      showToast('success', t('search.productAdded'), `${qtyModal.Nombre} ×${qty}`);
-    } catch {
-      void triggerHaptic('error');
-      showToast('error', t('search.addFailed'), t('search.addTryAgain'));
-    } finally {
-      setAdding(false);
-    }
+      },
+      {
+        onSuccess: () => {
+          qtySheetRef.current?.dismiss();
+          void triggerHaptic('success');
+          showToast('success', t('search.productAdded'), `${qtyModal.Nombre} ×${qty}`);
+        },
+        onError: () => {
+          void triggerHaptic('error');
+          showToast('error', t('search.addFailed'), t('search.addTryAgain'));
+        },
+      },
+    );
   };
 
   const goToList = () => {
@@ -240,7 +223,7 @@ export default function AddToListScreen() {
       'Ofertas',
     ];
     const byName = new Map(categorias.map((c) => [c.NombreCategoria.toLowerCase(), c]));
-    const picked: CategoriaAPI[] = [];
+    const picked: CategoryDTO[] = [];
     for (const label of preferred) {
       const hit = byName.get(label.toLowerCase());
       if (hit) picked.push(hit);
@@ -260,7 +243,17 @@ export default function AddToListScreen() {
     return picked.slice(0, 8);
   }, [categorias]);
 
-  if (loading) {
+  const catalogPending = tipoId != null && catalogQuery.isPending;
+  const isPending = catalogPending || categoriesQuery.isPending || unitsQuery.isPending;
+  const isLoading = catalogQuery.isLoading || categoriesQuery.isLoading || unitsQuery.isLoading;
+  const isError = catalogQuery.isError || categoriesQuery.isError || unitsQuery.isError;
+  const retry = () => {
+    if (tipoId != null) void catalogQuery.refetch();
+    void categoriesQuery.refetch();
+    void unitsQuery.refetch();
+  };
+
+  if (isPending && isLoading) {
     return (
       <Screen edges={['top']} gutters={false}>
         <View style={styles.loadingSkeletons}>
@@ -278,11 +271,11 @@ export default function AddToListScreen() {
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
       <Screen edges={['top']}>
-        <Text style={styles.errorText}>{error}</Text>
-        <Button tone="navy" onPress={fetchBase}>
+        <Text style={styles.errorText}>{t('search.productsFailed')}</Text>
+        <Button tone="navy" onPress={retry}>
           {t('search.retry')}
         </Button>
       </Screen>
@@ -501,7 +494,7 @@ export default function AddToListScreen() {
           <Button
             tone="orange"
             onPress={confirmAdd}
-            loading={adding}
+            loading={addItemMutation.isPending}
             disabled={!listaId}
             testID="add-product-submit"
           >
