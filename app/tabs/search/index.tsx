@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,11 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, endpoints } from '@/src/shared/api';
+import { useProductsByProvider } from '@/src/features/products/hooks';
+import { useProviders } from '@/src/features/providers/hooks';
+import { resolveEffectiveProviderId } from '@/src/features/providers/screenSelectors';
 import {
+  Button,
   Chip,
   EmptyState,
   Field,
@@ -23,57 +26,31 @@ import {
 import { colors, layout, radii, spacing, typography } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
 
-type Proveedor = {
-  IdProveedor: number;
-  Nombre: string;
-  IdTipoProveedor: number;
-};
-
-type ProductoProveedorResponse = {
-  IdProducto: number;
-  IdProveedor: number;
-  Precio: string;
-  PrecioOferta?: string | null;
-  Producto: {
-    Nombre: string;
-    UrlImagen: string | null;
-    Descripcion: string;
-  };
-};
+function parseProviderId(value: string | string[] | undefined): number | null {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (!rawValue?.trim()) return null;
+  const id = Number(rawValue);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 export default function SearchScreen() {
   const { t } = useTranslation();
-  const { proveedorId } = useLocalSearchParams<{ proveedorId?: string }>();
+  const { proveedorId } = useLocalSearchParams<{ proveedorId?: string | string[] }>();
   const { width } = useWindowDimensions();
   const cols = width >= layout.tabletBreakpoint ? 3 : 2;
+  const requestedProviderId = parseProviderId(proveedorId);
 
   const [query, setQuery] = useState('');
-  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
-  const [selectedProv, setSelectedProv] = useState<number | null>(
-    proveedorId ? Number(proveedorId) : null,
+  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
+  const providersQuery = useProviders();
+  const proveedores = providersQuery.data ?? [];
+  const effectiveProviderId = resolveEffectiveProviderId(
+    selectedProviderId,
+    requestedProviderId,
+    proveedores,
   );
-  const [items, setItems] = useState<ProductoProveedorResponse[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    api
-      .get<Proveedor[]>(endpoints.proveedor)
-      .then(({ data }) => {
-        setProveedores(data);
-        if (!selectedProv && data[0]) setSelectedProv(data[0].IdProveedor);
-      })
-      .catch(console.warn);
-  }, []);
-
-  useEffect(() => {
-    if (selectedProv == null) return;
-    setLoading(true);
-    api
-      .get<ProductoProveedorResponse[]>(endpoints.preciosProductosProveedor(selectedProv))
-      .then(({ data }) => setItems(data))
-      .catch(console.warn)
-      .finally(() => setLoading(false));
-  }, [selectedProv]);
+  const productsQuery = useProductsByProvider(effectiveProviderId);
+  const items = useMemo(() => productsQuery.data ?? [], [productsQuery.data]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -107,10 +84,10 @@ export default function SearchScreen() {
         renderItem={({ item }) => (
           <Chip
             tone="navy"
-            selected={selectedProv === item.IdProveedor}
+            selected={effectiveProviderId === item.IdProveedor}
             onPress={() => {
               void triggerHaptic('selection');
-              setSelectedProv(item.IdProveedor);
+              setSelectedProviderId(item.IdProveedor);
             }}
           >
             {item.Nombre}
@@ -118,7 +95,16 @@ export default function SearchScreen() {
         )}
       />
 
-      {loading ? (
+      {providersQuery.isError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{t('search.providersFailed')}</Text>
+          <Button full={false} onPress={() => void providersQuery.refetch()}>
+            {t('search.retry')}
+          </Button>
+        </View>
+      ) : null}
+
+      {providersQuery.isPending || (effectiveProviderId != null && productsQuery.isPending) ? (
         <View style={styles.skeletonList}>
           {[0, 1, 2, 3, 4].map((item) => (
             <View key={item} style={styles.skeletonCard}>
@@ -128,6 +114,19 @@ export default function SearchScreen() {
             </View>
           ))}
         </View>
+      ) : providersQuery.isError && effectiveProviderId == null ? null : productsQuery.isError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.error}>{t('search.productsFailed')}</Text>
+          <Button full={false} onPress={() => void productsQuery.refetch()}>
+            {t('search.retry')}
+          </Button>
+        </View>
+      ) : effectiveProviderId == null ? (
+        <EmptyState
+          icon="storefront-outline"
+          title={t('search.noProviders')}
+          description={t('search.noProvidersBody')}
+        />
       ) : (
         <FlatList
           data={filtered}
@@ -197,6 +196,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.extrabold,
     color: colors.navy,
     marginTop: 4,
+  },
+  error: {
+    color: colors.red,
+    fontFamily: typography.medium,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  errorBox: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+    padding: spacing.md,
   },
   empty: {
     color: colors.muted,

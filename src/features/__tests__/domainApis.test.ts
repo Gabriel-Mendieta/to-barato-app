@@ -7,7 +7,14 @@ import {
   updateItem,
   updateListProvider,
 } from '@/src/features/lists/api';
-import { catalogByType, categories, prices, units } from '@/src/features/products/api';
+import {
+  byProvider,
+  catalogByType,
+  detail,
+  categories,
+  prices,
+  units,
+} from '@/src/features/products/api';
 import { nearby, byId as providerById } from '@/src/features/providers/api';
 import { listKeys, productKeys, providerKeys } from '@/src/shared/api/queryClient';
 
@@ -95,6 +102,12 @@ describe('APIs y query keys de dominios', () => {
     __resetDevModeForTests();
     await setOfflineMode(true);
     const response = await providerById(1);
+    const product = await detail(1);
+    const productPrices = await prices(1);
+    const providerProducts = await byProvider(1);
     expect(response.IdProveedor).toBe(1);
+    expect(product.IdProducto).toBe(1);
+    expect(productPrices.length).toBeGreaterThan(0);
+    expect(providerProducts.length).toBeGreaterThan(0);
   });
 });

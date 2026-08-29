@@ -23,4 +23,7 @@ export const search = {
   listButton: 'Ver lista · {{name}}',
   retry: 'Reintentar',
   productsFailed: 'No se pudieron cargar los productos.',
+  providersFailed: 'No se pudieron cargar los proveedores.',
+  noProviders: 'Sin proveedores',
+  noProvidersBody: 'No hay proveedores disponibles para buscar productos.',
 } as const;
