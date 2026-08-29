@@ -2,7 +2,11 @@ import React from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text } from 'react-native';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import EditProfileScreen, { getEditProfileFormWidth } from '../EditProfile';
+import { darkColors, lightColors } from '@/src/shared/theme/tokens';
+import EditProfileScreen, {
+  getAvatarEditBadgeColors,
+  getEditProfileFormWidth,
+} from '../EditProfile';
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
@@ -129,6 +133,16 @@ beforeEach(() => {
   });
 });
 
+/** Pressable resolves `style` lazily, so tests must handle both shapes. */
+function flattenPressableStyle(element: { props: { style?: unknown } }) {
+  const { style } = element.props;
+  return StyleSheet.flatten(
+    typeof style === 'function'
+      ? (style as (state: { pressed: boolean }) => unknown)({ pressed: false })
+      : style,
+  ) as Record<string, number>;
+}
+
 describe('Editar perfil', () => {
   function getTextContent(children: React.ReactNode): string {
     if (typeof children === 'string' || typeof children === 'number') return String(children);
@@ -168,14 +182,11 @@ describe('Editar perfil', () => {
 
     const avatarWrapper = screen.getByTestId('edit-profile-avatar-wrapper');
     const pencil = within(avatarWrapper).getByTestId('edit-profile-avatar-button');
-    const pencilStyle = StyleSheet.flatten(
-      typeof pencil.props.style === 'function'
-        ? pencil.props.style({ pressed: false })
-        : pencil.props.style,
-    );
-    const pencilIcon = pencil.findByProps({ name: 'create-outline' });
+    const pencilStyle = flattenPressableStyle(pencil);
+    const pencilIcon = pencil.findByProps({ name: 'pencil' });
+    const avatarStyle = StyleSheet.flatten(avatarWrapper.props.style);
 
-    expect(StyleSheet.flatten(avatarWrapper.props.style)).toEqual(
+    expect(avatarStyle).toEqual(
       expect.objectContaining({
         width: 112,
         height: 112,
@@ -204,8 +215,19 @@ describe('Editar perfil', () => {
       }),
     );
     expect(pencilIcon.props).toEqual(
-      expect.objectContaining({ name: 'create-outline', size: 22, color: '#ffffff' }),
+      expect.objectContaining({ name: 'pencil', size: 20, color: '#ffffff' }),
     );
+
+    // The badge must overlap the lower-right quadrant of the avatar instead of
+    // flowing underneath it, which is what happens when the absolute style is lost.
+    const badgeCenterX = avatarStyle.width - pencilStyle.right - pencilStyle.width / 2;
+    const badgeCenterY = avatarStyle.height - pencilStyle.bottom - pencilStyle.height / 2;
+    expect(badgeCenterX).toBeGreaterThan(avatarStyle.width / 2);
+    expect(badgeCenterX).toBeLessThan(avatarStyle.width);
+    expect(badgeCenterY).toBeGreaterThan(avatarStyle.height / 2);
+    expect(badgeCenterY).toBeLessThan(avatarStyle.height);
+    expect(pencilStyle.width).toBeGreaterThanOrEqual(44);
+    expect(pencilStyle.width).toBeLessThanOrEqual(48);
     expect(mockRequestMediaLibraryPermissionsAsync).not.toHaveBeenCalled();
 
     fireEvent.press(pencil);
@@ -217,6 +239,49 @@ describe('Editar perfil', () => {
       quality: 0.8,
       base64: false,
     });
+  });
+
+  it('mantiene el contraste del lápiz en claro y en oscuro', () => {
+    expect(getAvatarEditBadgeColors(lightColors, 'light')).toEqual({
+      background: '#0B2545',
+      border: '#ffffff',
+      icon: '#ffffff',
+    });
+    expect(getAvatarEditBadgeColors(darkColors, 'dark')).toEqual({
+      background: darkColors.navy,
+      border: darkColors.bg,
+      icon: darkColors.bg,
+    });
+    // The icon must never share the badge background, in either scheme.
+    expect(getAvatarEditBadgeColors(darkColors, 'dark').icon).not.toBe(darkColors.navy);
+  });
+
+  it('reproduce el top bar y las etiquetas del ZIP', async () => {
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-name-input');
+
+    const backStyle = flattenPressableStyle(screen.getByTestId('edit-profile-back'));
+    expect(backStyle).toEqual(
+      expect.objectContaining({
+        width: 44,
+        height: 44,
+        borderWidth: 1,
+        backgroundColor: '#ffffff',
+        borderColor: '#E6E9F0',
+      }),
+    );
+
+    const labelStyle = StyleSheet.flatten(screen.getByText('Nombre').props.style);
+    expect(labelStyle).toEqual(
+      expect.objectContaining({ textTransform: 'uppercase', color: '#0B2545' }),
+    );
+
+    const inputStyle = StyleSheet.flatten(
+      screen.getByTestId('edit-profile-email-input').props.style,
+    );
+    expect(inputStyle).toEqual(
+      expect.objectContaining({ borderRadius: 14, backgroundColor: '#ffffff' }),
+    );
   });
 
   it('no cambia el avatar ni rompe el formulario al cancelar la selección', async () => {

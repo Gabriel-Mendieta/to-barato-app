@@ -14,9 +14,11 @@ import {
   View,
   useColorScheme,
   useWindowDimensions,
+  type ColorSchemeName,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -27,6 +29,18 @@ import { editProfileSchema, type EditProfileFormValues } from '@/src/features/pr
 import type { UserDTO } from '@/src/shared/api/dto';
 import { layout, radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 import { Button, showToast, triggerHaptic } from '@/src/shared/ui';
+
+/**
+ * `colors.navy` flips to a light blue in dark mode, so the badge icon and ring
+ * have to flip with it or the pencil turns white-on-light-blue.
+ */
+export function getAvatarEditBadgeColors(
+  palette: { navy: string; white: string; bg: string },
+  colorScheme: ColorSchemeName,
+) {
+  const contrast = colorScheme === 'dark' ? palette.bg : palette.white;
+  return { background: palette.navy, border: contrast, icon: contrast };
+}
 
 export function getEditProfileFormWidth(width: number) {
   const preferredWidth =
@@ -73,7 +87,7 @@ function ProfileField({ label, hint, error, testID, ...inputProps }: ProfileFiel
 
   return (
     <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.ink }]}>{label}</Text>
+      <Text style={[styles.label, { color: colors.navy }]}>{label}</Text>
       <TextInput
         {...inputProps}
         accessibilityLabel={label}
@@ -265,6 +279,7 @@ export default function EditProfileScreen() {
   const fullName = getFullName(userData);
   const initials = getInitials(fullName);
   const avatarUri = selectedAvatarUri ?? userData.UrlPerfil;
+  const badgeColors = getAvatarEditBadgeColors(colors, colorScheme);
 
   return (
     <SafeAreaView
@@ -280,14 +295,16 @@ export default function EditProfileScreen() {
           accessibilityRole="button"
           accessibilityLabel={t('profile.back')}
           onPress={() => router.back()}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.backButton,
+            { backgroundColor: colors.card, borderColor: colors.line },
+            pressed && styles.pressed,
+          ]}
           testID="edit-profile-back"
         >
-          <Ionicons name="chevron-back" size={24} color={colors.navySoft} />
+          <Ionicons name="chevron-back" size={22} color={colors.navy} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.navySoft }]}>
-          {t('profile.editTitle')}
-        </Text>
+        <Text style={[styles.headerTitle, { color: colors.navy }]}>{t('profile.editTitle')}</Text>
         <View style={styles.headerSide} />
       </View>
 
@@ -317,31 +334,32 @@ export default function EditProfileScreen() {
                     onError={() => setAvatarImageFailed(true)}
                   />
                 ) : (
-                  <View
-                    style={[
-                      styles.avatar,
-                      styles.avatarFallback,
-                      { backgroundColor: colors.orange },
-                    ]}
+                  <LinearGradient
+                    colors={['#F2A03D', '#E97C2A']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={[styles.avatar, styles.avatarFallback]}
                     testID="edit-profile-avatar"
                     accessibilityLabel={initials}
                   >
                     <Text style={styles.avatarInitials}>{initials}</Text>
-                  </View>
+                  </LinearGradient>
                 )}
+                {/* Rendered after the avatar so it paints on top of it. */}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('profile.editPhoto')}
                   accessibilityHint={t('profile.editPhotoHint')}
+                  hitSlop={8}
                   onPress={() => void handlePickAvatar()}
                   style={({ pressed }) => [
                     styles.avatarEditButton,
-                    { backgroundColor: colors.navy, borderColor: colors.white },
+                    { backgroundColor: badgeColors.background, borderColor: badgeColors.border },
                     pressed && styles.pressed,
                   ]}
                   testID="edit-profile-avatar-button"
                 >
-                  <Ionicons name="create-outline" size={22} color={colors.white} />
+                  <Ionicons name="pencil" size={20} color={badgeColors.icon} />
                 </Pressable>
               </View>
             </View>
@@ -429,9 +447,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   headerTitle: {
-    fontFamily: typography.bold,
-    fontSize: 24,
-    letterSpacing: -0.4,
+    fontFamily: typography.extrabold,
+    fontSize: 20,
+    letterSpacing: -0.2,
   },
   headerSide: { width: 44, height: 44 },
   backButton: {
@@ -440,6 +458,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radii.md,
+    borderWidth: 1,
+    shadowColor: '#0B2545',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   pressed: { opacity: 0.72 },
   scrollContent: {
@@ -501,13 +525,15 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   form: {
-    gap: spacing.lg,
+    gap: spacing.md,
   },
-  field: { gap: spacing.xs },
+  field: { gap: 6 },
   label: {
-    fontFamily: typography.semibold,
-    fontSize: 14,
-    lineHeight: 18,
+    fontFamily: typography.bold,
+    fontSize: typography.sizes.xs,
+    lineHeight: 14,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   hint: {
     fontFamily: typography.family,
@@ -517,12 +543,17 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 54,
     borderWidth: 1,
-    borderRadius: radii.lg,
+    borderRadius: 14,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    fontFamily: typography.medium,
+    fontFamily: typography.semibold,
     fontSize: 16,
     lineHeight: 22,
+    shadowColor: '#0B2545',
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   error: {
     fontFamily: typography.medium,
