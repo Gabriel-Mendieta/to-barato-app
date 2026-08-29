@@ -15,7 +15,13 @@ import {
   useProductPrices,
   useProductsByProvider,
 } from '@/src/features/products/hooks';
-import { useNearbyBranches, useProvider } from '@/src/features/providers/hooks';
+import {
+  useNearbyBranches,
+  useProvider,
+  useProviderBranches,
+  useProviderTypes,
+  useProviders,
+} from '@/src/features/providers/hooks';
 import { api, endpoints, queryKeys } from '@/src/shared/api';
 
 function createWrapper(client = createQueryClient()) {
@@ -97,6 +103,44 @@ describe('hooks de React Query', () => {
     await waitFor(() => expect(valid.result.current.isSuccess).toBe(true));
     expect(post).toHaveBeenCalledWith(endpoints.sucursalCercana, validPayload);
     expect(invalid.result.current.fetchStatus).toBe('idle');
+  });
+
+  it('usa las queries compartidas para tipos, proveedores y sucursales', async () => {
+    const get = jest.spyOn(api, 'get').mockImplementation((url) => {
+      if (url === endpoints.tipoproveedor) {
+        return Promise.resolve({
+          data: [{ IdTipoProveedor: 1, NombreTipoProveedor: 'Supermercado' }],
+        });
+      }
+      if (url === endpoints.proveedor) {
+        return Promise.resolve({ data: [{ IdProveedor: 1, Nombre: 'Nacional' }] });
+      }
+      return Promise.resolve({
+        data: [
+          {
+            IdSucursal: 101,
+            NombreSucursal: 'Nacional Centro',
+            Latitud: '18.48',
+            Longitud: '-69.93',
+            IdProveedor: 1,
+          },
+        ],
+      });
+    });
+
+    const types = renderHook(() => useProviderTypes(), { wrapper: createWrapper() });
+    const providers = renderHook(() => useProviders(), { wrapper: createWrapper() });
+    const branches = renderHook(() => useProviderBranches(), { wrapper: createWrapper() });
+
+    await waitFor(() => {
+      expect(types.result.current.isSuccess).toBe(true);
+      expect(providers.result.current.isSuccess).toBe(true);
+      expect(branches.result.current.isSuccess).toBe(true);
+    });
+
+    expect(get).toHaveBeenCalledWith(endpoints.tipoproveedor);
+    expect(get).toHaveBeenCalledWith(endpoints.proveedor);
+    expect(get).toHaveBeenCalledWith(endpoints.sucursal);
   });
 
   it('crea una lista e invalida listas, items nuevos y proveedores cercanos', async () => {

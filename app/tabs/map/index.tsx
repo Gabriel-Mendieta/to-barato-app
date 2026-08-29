@@ -1,5 +1,5 @@
-import { api, endpoints } from '@/src/shared/api';
 import {
+  Button,
   Chip,
   EmptyState,
   FadeInUp,
@@ -9,7 +9,14 @@ import {
   showToast,
   triggerHaptic,
 } from '@/src/shared/ui';
-import { colors, getProviderBrand, radii, spacing, typography } from '@/src/shared/theme';
+import {
+  colors,
+  getProviderBrand,
+  radii,
+  spacing,
+  typography,
+  useThemeColors,
+} from '@/src/shared/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
@@ -34,46 +41,24 @@ import {
   BottomSheetView,
 } from '@/src/shared/ui/BottomSheetCompat';
 import { useTranslation } from 'react-i18next';
-
-type TipoProveedor = {
-  IdTipoProveedor: number;
-  NombreTipoProveedor: string;
-};
-
-type Proveedor = {
-  IdProveedor: number;
-  Nombre: string;
-  UrlLogo: string;
-  IdTipoProveedor: number;
-};
-
-type Sucursal = {
-  IdSucursal: number;
-  NombreSucursal: string;
-  Latitud: string;
-  Longitud: string;
-  IdProveedor: number;
-};
-
-type BranchCard = Sucursal & {
-  lat: number;
-  lng: number;
-  distanceKm: number;
-  provider?: Proveedor;
-};
+import {
+  resolveSelectedBranchId,
+  selectMapBranches,
+  type MapBranchCard,
+} from '@/src/features/providers/screenSelectors';
+import {
+  useProviderBranches,
+  useProviderTypes,
+  useProviders,
+} from '@/src/features/providers/hooks';
 
 const CARD_WIDTH = 220;
-
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const R = 6371;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+const FALLBACK_REGION: Region = {
+  latitude: 18.4861,
+  longitude: -69.9312,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
 
 function formatDistance(km: number) {
   if (!Number.isFinite(km)) return '—';
@@ -89,7 +74,7 @@ function pluralTipoLabel(nombre: string) {
   return n.endsWith('s') ? n : `${n}s`;
 }
 
-function getBranchName(b: Sucursal, prov?: Proveedor) {
+function getBranchName(b: MapBranchCard, prov?: MapBranchCard['provider']) {
   if (!prov) return b.NombreSucursal;
   const stripped = b.NombreSucursal.replace(new RegExp(`^\\s*${prov.Nombre}\\s*`, 'i'), '').trim();
   return stripped || b.NombreSucursal;
@@ -97,25 +82,30 @@ function getBranchName(b: Sucursal, prov?: Proveedor) {
 
 export default function MapScreen() {
   const { t } = useTranslation();
+  const themeColors = useThemeColors();
   const mapRef = useRef<MapView>(null);
-  const carouselRef = useRef<FlatList<BranchCard>>(null);
+  const carouselRef = useRef<FlatList<MapBranchCard>>(null);
   const branchSheetRef = useRef<BottomSheetModalMethods>(null);
 
-  const [region, setRegion] = useState<Region | null>(null);
+  const [region, setRegion] = useState<Region>(FALLBACK_REGION);
   const [userCoords, setUserCoords] = useState<{
     latitude: number;
     longitude: number;
   } | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const [tipos, setTipos] = useState<TipoProveedor[]>([]);
-  const [providers, setProviders] = useState<Proveedor[]>([]);
-  const [branches, setBranches] = useState<Sucursal[]>([]);
-
-  const [selectedTipo, setSelectedTipo] = useState<string>('all');
+  const [locationStatus, setLocationStatus] = useState<
+    'loading' | 'ready' | 'denied' | 'unavailable'
+  >('loading');
+  const [selectedTipo, setSelectedTipo] = useState<number | 'all'>('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [markersReady, setMarkersReady] = useState(false);
+
+  const providerTypesQuery = useProviderTypes();
+  const providersQuery = useProviders();
+  const branchesQuery = useProviderBranches();
+  const tipos = useMemo(() => providerTypesQuery.data ?? [], [providerTypesQuery.data]);
+  const providers = useMemo(() => providersQuery.data ?? [], [providersQuery.data]);
+  const branches = useMemo(() => branchesQuery.data ?? [], [branchesQuery.data]);
 
   useEffect(() => {
     (async () => {
@@ -123,13 +113,8 @@ export default function MapScreen() {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           showToast('error', t('providers.locationPermission'), t('providers.locationDeniedBody'));
-          setRegion({
-            latitude: 18.4861,
-            longitude: -69.9312,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          });
-          setLoading(false);
+          setRegion(FALLBACK_REGION);
+          setLocationStatus('denied');
           return;
         }
         const loc = await Location.getCurrentPositionAsync({
@@ -145,79 +130,37 @@ export default function MapScreen() {
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         });
+        setLocationStatus('ready');
       } catch {
-        setRegion({
-          latitude: 18.4861,
-          longitude: -69.9312,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
-      } finally {
-        setLoading(false);
+        setRegion(FALLBACK_REGION);
+        setLocationStatus('unavailable');
+        showToast(
+          'error',
+          t('providers.locationUnavailable'),
+          t('providers.locationUnavailableBody'),
+        );
       }
     })();
   }, [t]);
 
-  useEffect(() => {
-    api
-      .get<TipoProveedor[]>(endpoints.tipoproveedor)
-      .then((res) => setTipos(res.data))
-      .catch(() => undefined);
+  const origin = useMemo(
+    () =>
+      userCoords ?? {
+        latitude: FALLBACK_REGION.latitude,
+        longitude: FALLBACK_REGION.longitude,
+      },
+    [userCoords],
+  );
 
-    api
-      .get<Proveedor[]>(endpoints.proveedor)
-      .then((res) => setProviders(res.data))
-      .catch(() => undefined);
-
-    api
-      .get<Sucursal[]>(endpoints.sucursal)
-      .then((res) => setBranches(res.data))
-      .catch(() => undefined);
-  }, []);
-
-  const origin = userCoords ?? {
-    latitude: region?.latitude ?? 18.4861,
-    longitude: region?.longitude ?? -69.9312,
-  };
-
-  const nearby = useMemo(() => {
-    const provById = new Map(providers.map((p) => [p.IdProveedor, p]));
-    const q = query.trim().toLowerCase();
-
-    const cards: BranchCard[] = [];
-    for (const b of branches) {
-      const prov = provById.get(b.IdProveedor);
-      if (selectedTipo !== 'all' && prov?.IdTipoProveedor !== Number(selectedTipo)) {
-        continue;
-      }
-      if (q) {
-        const hay = `${prov?.Nombre ?? ''} ${b.NombreSucursal}`.toLowerCase();
-        if (!hay.includes(q)) continue;
-      }
-      const lat = parseFloat(b.Latitud);
-      const lng = parseFloat(b.Longitud);
-      if (Number.isNaN(lat) || Number.isNaN(lng)) continue;
-      cards.push({
-        ...b,
-        lat,
-        lng,
-        distanceKm: haversineKm(origin.latitude, origin.longitude, lat, lng),
-        provider: prov,
-      });
-    }
-    cards.sort((a, b) => a.distanceKm - b.distanceKm);
-    return cards;
-  }, [branches, providers, selectedTipo, query, origin.latitude, origin.longitude]);
-
-  useEffect(() => {
-    if (!nearby.length) {
-      setSelectedId(null);
-      return;
-    }
-    setSelectedId((prev) =>
-      prev != null && nearby.some((b) => b.IdSucursal === prev) ? prev : nearby[0].IdSucursal,
-    );
-  }, [nearby]);
+  const nearby = useMemo(
+    () => selectMapBranches(branches, providers, selectedTipo, query, origin),
+    [branches, origin, providers, query, selectedTipo],
+  );
+  const effectiveSelectedId = resolveSelectedBranchId(selectedId, nearby);
+  const selectedBranch = useMemo(
+    () => nearby.find((branch) => branch.IdSucursal === effectiveSelectedId) ?? null,
+    [effectiveSelectedId, nearby],
+  );
 
   const selectBranch = useCallback(
     (id: number, animateMap = true) => {
@@ -261,7 +204,11 @@ export default function MapScreen() {
       ios: `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(label)}`,
       android: `google.navigation:q=${lat},${lng}`,
     });
-    if (url) Linking.openURL(url).catch(console.warn);
+    if (url) {
+      Linking.openURL(url).catch(() =>
+        showToast('error', t('providers.navigationFailed'), t('providers.navigationFailedBody')),
+      );
+    }
   };
 
   const recenter = () => {
@@ -276,9 +223,9 @@ export default function MapScreen() {
     );
   };
 
-  if (loading || region === null) {
+  if (locationStatus === 'loading') {
     return (
-      <Screen edges={['top']} style={styles.centered}>
+      <Screen edges={['top']} style={{ ...styles.centered, backgroundColor: themeColors.bg }}>
         <Skeleton width="88%" height={220} borderRadius={22} />
         <Skeleton width="55%" height={18} style={styles.loadingLine} />
       </Screen>
@@ -286,40 +233,55 @@ export default function MapScreen() {
   }
 
   return (
-    <Screen edges={['top']} gutters={false} style={styles.root}>
+    <Screen
+      edges={['top']}
+      gutters={false}
+      style={{ ...styles.root, backgroundColor: themeColors.bg }}
+    >
       <FadeInUp index={0} step={55} delay={20}>
         <View style={styles.topBar}>
           <Pressable
             onPress={() => router.push('/tabs/home')}
-            style={styles.iconBtn}
+            style={[
+              styles.iconBtn,
+              { backgroundColor: themeColors.card, borderColor: themeColors.line },
+            ]}
             accessibilityLabel={t('shared.back')}
           >
-            <Ionicons name="chevron-back" size={22} color={colors.navy} />
+            <Ionicons name="chevron-back" size={22} color={themeColors.navy} />
           </Pressable>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, { color: themeColors.navy }]} numberOfLines={1}>
             {t('providers.title')}
           </Text>
           <Pressable
             onPress={() => router.push('/tabs/search')}
-            style={styles.iconBtn}
+            style={[
+              styles.iconBtn,
+              { backgroundColor: themeColors.card, borderColor: themeColors.line },
+            ]}
             accessibilityLabel={t('search.title')}
           >
-            <Ionicons name="options-outline" size={20} color={colors.navy} />
+            <Ionicons name="options-outline" size={20} color={themeColors.navy} />
           </Pressable>
         </View>
       </FadeInUp>
 
       <FadeInUp index={1} step={55} delay={20}>
         <View style={styles.searchBlock}>
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={18} color={colors.tabInactive} />
+          <View
+            style={[
+              styles.searchBar,
+              { backgroundColor: themeColors.card, borderColor: themeColors.line },
+            ]}
+          >
+            <Ionicons name="search" size={18} color={themeColors.tabInactive} />
             <TextInput
               value={query}
               onChangeText={setQuery}
               placeholder={t('providers.search')}
               testID="provider-search"
-              placeholderTextColor={colors.muted}
-              style={styles.searchInput}
+              placeholderTextColor={themeColors.muted}
+              style={[styles.searchInput, { color: themeColors.ink }]}
               returnKeyType="search"
               clearButtonMode="while-editing"
             />
@@ -342,10 +304,10 @@ export default function MapScreen() {
               <FilterPill
                 key={t.IdTipoProveedor}
                 label={pluralTipoLabel(t.NombreTipoProveedor)}
-                active={selectedTipo === String(t.IdTipoProveedor)}
+                active={selectedTipo === t.IdTipoProveedor}
                 onPress={() => {
                   void triggerHaptic('selection');
-                  setSelectedTipo(String(t.IdTipoProveedor));
+                  setSelectedTipo(t.IdTipoProveedor);
                 }}
               />
             ))}
@@ -353,13 +315,56 @@ export default function MapScreen() {
         </View>
       </FadeInUp>
 
+      {providersQuery.isPending || providerTypesQuery.isPending ? (
+        <View style={styles.providerLoading}>
+          <Skeleton width="74%" height={14} />
+          <Skeleton width="48%" height={12} />
+        </View>
+      ) : providersQuery.isError ? (
+        <QueryStatus
+          title={t('search.providersFailed')}
+          actionLabel={t('search.retry')}
+          onAction={() => void providersQuery.refetch()}
+        />
+      ) : providersQuery.isSuccess && providers.length === 0 ? (
+        <EmptyState
+          icon="storefront-outline"
+          title={t('providers.noProviders')}
+          description={t('providers.noProvidersBody')}
+        />
+      ) : null}
+      {providerTypesQuery.isError ? (
+        <QueryStatus
+          title={t('providers.typesFailed')}
+          actionLabel={t('search.retry')}
+          onAction={() => void providerTypesQuery.refetch()}
+        />
+      ) : null}
+      {locationStatus === 'denied' || locationStatus === 'unavailable' ? (
+        <View style={styles.locationNotice} accessibilityRole="alert">
+          <Ionicons name="location-outline" size={17} color={themeColors.orangeDeep} />
+          <Text style={[styles.locationNoticeText, { color: themeColors.orangeDeep }]}>
+            {t(
+              locationStatus === 'denied'
+                ? 'providers.locationPermissionBody'
+                : 'providers.locationUnavailableBody',
+            )}
+          </Text>
+        </View>
+      ) : null}
+
       <FadeInUp index={2} step={55} delay={20} style={styles.mapPad}>
-        <View style={styles.mapFrame}>
+        <View
+          style={[
+            styles.mapFrame,
+            { backgroundColor: themeColors.blueSoft, borderColor: themeColors.line },
+          ]}
+        >
           <MapView
             ref={mapRef}
             style={styles.map}
             initialRegion={region}
-            showsUserLocation
+            showsUserLocation={locationStatus === 'ready'}
             showsMyLocationButton={false}
             provider={PROVIDER_DEFAULT}
             mapType={Platform.OS === 'android' ? 'none' : 'standard'}
@@ -373,7 +378,7 @@ export default function MapScreen() {
             {markersReady &&
               nearby.map((b) => {
                 const brand = getProviderBrand(b.IdProveedor);
-                const isSel = selectedId === b.IdSucursal;
+                const isSel = effectiveSelectedId === b.IdSucursal;
                 const name = b.provider?.Nombre ?? 'Tienda';
                 return (
                   <Marker
@@ -410,17 +415,33 @@ export default function MapScreen() {
 
           <Pressable
             onPress={recenter}
-            style={styles.recenterBtn}
+            style={[
+              styles.recenterBtn,
+              { backgroundColor: themeColors.card, borderColor: themeColors.line },
+            ]}
             accessibilityLabel={t('providers.recenter')}
           >
-            <Ionicons name="navigate-outline" size={20} color={colors.navy} />
+            <Ionicons name="navigate-outline" size={20} color={themeColors.navy} />
           </Pressable>
         </View>
       </FadeInUp>
 
       <FadeInUp index={3} step={55} delay={20}>
         <View style={styles.carouselWrap}>
-          {nearby.length === 0 ? (
+          {branchesQuery.isPending ? (
+            <View style={styles.branchLoading}>
+              <Skeleton width="88%" height={18} />
+              <Skeleton width="68%" height={14} />
+            </View>
+          ) : branchesQuery.isError ? (
+            <EmptyState
+              icon="cloud-offline-outline"
+              title={t('providers.branchesFailed')}
+              description={t('search.retry')}
+              actionLabel={t('search.retry')}
+              onAction={() => void branchesQuery.refetch()}
+            />
+          ) : nearby.length === 0 ? (
             <EmptyState
               icon="location-outline"
               title={t('providers.noProviders')}
@@ -451,7 +472,7 @@ export default function MapScreen() {
               }}
               renderItem={({ item }) => {
                 const brand = getProviderBrand(item.IdProveedor);
-                const isSel = selectedId === item.IdSucursal;
+                const isSel = effectiveSelectedId === item.IdSucursal;
                 const name = item.provider?.Nombre ?? 'Proveedor';
                 const branchLabel = getBranchName(item, item.provider);
                 return (
@@ -460,9 +481,10 @@ export default function MapScreen() {
                     style={[
                       styles.card,
                       {
-                        borderColor: isSel ? brand.color : colors.line,
+                        backgroundColor: themeColors.card,
+                        borderColor: isSel ? brand.color : themeColors.line,
                         shadowOpacity: isSel ? 0.18 : 0.04,
-                        shadowColor: isSel ? brand.color : colors.navy,
+                        shadowColor: isSel ? brand.color : themeColors.navy,
                       },
                     ]}
                   >
@@ -481,10 +503,16 @@ export default function MapScreen() {
                         </View>
                       )}
                       <View style={styles.cardMeta}>
-                        <Text style={styles.cardName} numberOfLines={1}>
+                        <Text
+                          style={[styles.cardName, { color: themeColors.navy }]}
+                          numberOfLines={1}
+                        >
                           {name}
                         </Text>
-                        <Text style={styles.cardSub} numberOfLines={1}>
+                        <Text
+                          style={[styles.cardSub, { color: themeColors.muted }]}
+                          numberOfLines={1}
+                        >
                           {formatDistance(item.distanceKm)} · {branchLabel}
                         </Text>
                       </View>
@@ -494,18 +522,24 @@ export default function MapScreen() {
                       <Chip tone="green" size="sm">
                         {t('providers.close')}
                       </Chip>
-                      <View style={styles.verifiedChip}>
-                        <Ionicons name="checkmark-circle" size={11} color={colors.green} />
-                        <Text style={styles.verifiedText}>{t('providers.verified')}</Text>
+                      <View
+                        style={[styles.verifiedChip, { backgroundColor: themeColors.blueSoft }]}
+                      >
+                        <Ionicons name="checkmark-circle" size={11} color={themeColors.green} />
+                        <Text style={[styles.verifiedText, { color: themeColors.muted }]}>
+                          {t('providers.verified')}
+                        </Text>
                       </View>
                     </View>
 
                     <Pressable
-                      style={styles.routeBtn}
+                      style={[styles.routeBtn, { backgroundColor: themeColors.navy }]}
                       onPress={() => openNavigation(item.lat, item.lng, item.NombreSucursal)}
                     >
-                      <Ionicons name="navigate" size={14} color={colors.white} />
-                      <Text style={styles.routeBtnText}>{t('providers.directions')}</Text>
+                      <Ionicons name="navigate" size={14} color={themeColors.white} />
+                      <Text style={[styles.routeBtnText, { color: themeColors.white }]}>
+                        {t('providers.directions')}
+                      </Text>
                     </Pressable>
                   </Pressable>
                 );
@@ -524,11 +558,11 @@ export default function MapScreen() {
         backdropComponent={(props: Record<string, unknown>) => (
           <BottomSheetBackdrop {...props} pressBehavior="close" />
         )}
-        backgroundStyle={{ backgroundColor: colors.card }}
+        backgroundStyle={{ backgroundColor: themeColors.card }}
       >
         <BottomSheetView style={styles.branchSheet}>
           {(() => {
-            const branch = nearby.find((item) => item.IdSucursal === selectedId);
+            const branch = selectedBranch;
             if (!branch) return null;
             const brand = getProviderBrand(branch.IdProveedor);
             const providerName = branch.provider?.Nombre ?? 'Proveedor';
@@ -541,8 +575,10 @@ export default function MapScreen() {
                     </Text>
                   </View>
                   <View style={styles.branchSheetMeta}>
-                    <Text style={styles.branchSheetTitle}>{providerName}</Text>
-                    <Text style={styles.branchSheetSub}>
+                    <Text style={[styles.branchSheetTitle, { color: themeColors.navy }]}>
+                      {providerName}
+                    </Text>
+                    <Text style={[styles.branchSheetSub, { color: themeColors.muted }]}>
                       {getBranchName(branch, branch.provider)} · {formatDistance(branch.distanceKm)}
                     </Text>
                   </View>
@@ -564,6 +600,33 @@ export default function MapScreen() {
   );
 }
 
+function QueryStatus({
+  title,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  const themeColors = useThemeColors();
+
+  return (
+    <View
+      style={[
+        styles.queryStatus,
+        { backgroundColor: themeColors.card, borderColor: themeColors.line },
+      ]}
+      accessibilityRole="alert"
+    >
+      <Text style={[styles.queryStatusText, { color: themeColors.red }]}>{title}</Text>
+      <Button full={false} tone="light" onPress={onAction}>
+        {actionLabel}
+      </Button>
+    </View>
+  );
+}
+
 function FilterPill({
   label,
   active,
@@ -573,15 +636,30 @@ function FilterPill({
   active: boolean;
   onPress: () => void;
 }) {
+  const themeColors = useThemeColors();
+
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.filterPill, active ? styles.filterPillActive : styles.filterPillIdle]}
+      style={[
+        styles.filterPill,
+        active
+          ? [
+              styles.filterPillActive,
+              { backgroundColor: themeColors.navy, borderColor: themeColors.navy },
+            ]
+          : [
+              styles.filterPillIdle,
+              { backgroundColor: themeColors.card, borderColor: themeColors.line },
+            ],
+      ]}
     >
       <Text
         style={[
           styles.filterPillText,
-          active ? styles.filterPillTextActive : styles.filterPillTextIdle,
+          active
+            ? [styles.filterPillTextActive, { color: themeColors.white }]
+            : [styles.filterPillTextIdle, { color: themeColors.ink }],
         ]}
       >
         {label}
@@ -632,6 +710,47 @@ const styles = StyleSheet.create({
   searchBlock: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  queryStatus: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.card,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  queryStatusText: {
+    flex: 1,
+    color: colors.red,
+    fontFamily: typography.semibold,
+    fontSize: 12,
+  },
+  providerLoading: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  locationNotice: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderRadius: radii.md,
+    backgroundColor: colors.orangeSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  locationNoticeText: {
+    flex: 1,
+    color: colors.orangeDeep,
+    fontFamily: typography.medium,
+    fontSize: 11,
   },
   searchBar: {
     flexDirection: 'row',
@@ -762,6 +881,10 @@ const styles = StyleSheet.create({
   carouselWrap: {
     paddingTop: spacing.md,
     paddingBottom: spacing.xs,
+  },
+  branchLoading: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
   },
   carouselContent: {
     paddingHorizontal: spacing.lg,

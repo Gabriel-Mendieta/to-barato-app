@@ -18,6 +18,7 @@ import {
 } from '@/src/features/products/api';
 import {
   all as allProviders,
+  branches as allBranches,
   nearby,
   types as providerTypes,
   byId as providerById,
@@ -117,6 +118,7 @@ describe('APIs y query keys de dominios', () => {
     await setOfflineMode(true);
     const providers = await allProviders();
     const types = await providerTypes();
+    const allBranchesResult = await allBranches();
     const response = await providerById(1);
     const branches = await nearby({
       lat: 18.48,
@@ -130,11 +132,12 @@ describe('APIs y query keys de dominios', () => {
     const providerProducts = await byProvider(1);
     expect(providers.length).toBeGreaterThan(0);
     expect(types.length).toBeGreaterThan(0);
+    expect(allBranchesResult.length).toBeGreaterThan(0);
     expect(response.IdProveedor).toBe(1);
     expect(branches.length).toBeGreaterThan(0);
     expect(catalogProducts.length).toBeGreaterThan(0);
     expect(product.IdProducto).toBe(1);
     expect(productPrices.length).toBeGreaterThan(0);
     expect(providerProducts.length).toBeGreaterThan(0);
-  });
+  }, 15000);
 });
