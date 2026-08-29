@@ -1,0 +1,22 @@
+appId: com.gabrielmendieta.tobaratoapp
+---
+- launchApp:
+    clearState: true
+- tapOn: 'Offline'
+- tapOn:
+    id: 'login-email'
+- inputText: 'maestro@example.com'
+- tapOn:
+    id: 'login-password'
+- inputText: 'dummy-password'
+- tapOn:
+    id: 'login-submit'
+- tapOn: 'Busca un producto...'
+- tapOn:
+    id: 'search-product-input'
+- inputText: 'Arroz'
+- tapOn: 'Nacional'
+- tapOn: 'Jumbo'
+- assertVisible: 'Arroz La Garza 5 lb'
+- tapOn: 'Proveedores'
+- assertVisible: 'Mapa de proveedores'

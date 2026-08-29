@@ -1,0 +1,33 @@
+appId: com.gabrielmendieta.tobaratoapp
+---
+- launchApp:
+    clearState: true
+- tapOn: 'Offline'
+- tapOn:
+    id: 'login-email'
+- inputText: 'maestro@example.com'
+- tapOn:
+    id: 'login-password'
+- inputText: 'dummy-password'
+- tapOn:
+    id: 'login-submit'
+- tapOn: 'Listas'
+- tapOn: 'Crear nueva lista'
+- tapOn: 'Supermercado'
+- tapOn:
+    id: 'create-list-name'
+- eraseText: 30
+- inputText: 'Compras Maestro'
+- tapOn: 'Continuar'
+- tapOn:
+    id: 'list-product-search'
+- inputText: 'Arroz'
+- tapOn:
+    id: 'list-product-1'
+- tapOn:
+    id: 'quantity-increase'
+- tapOn:
+    id: 'quantity-increase'
+- tapOn:
+    id: 'add-product-submit'
+- assertVisible: 'Producto agregado'

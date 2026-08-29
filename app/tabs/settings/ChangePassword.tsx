@@ -25,8 +25,10 @@ import {
   type ChangePasswordFormValues,
 } from '@/src/features/settings/schema';
 import { showToast, triggerHaptic } from '@/src/shared/ui';
+import { useTranslation } from 'react-i18next';
 
 export default function ChangePasswordScreen() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState<boolean>(true);
 
   // Para almacenar el IdUsuario desde SecureStore
@@ -70,7 +72,7 @@ export default function ChangePasswordScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const handleSave = handleSubmit(async ({ currentPassword, newPassword }) => {
     if (!userId) {
-      showToast('error', 'Error interno', 'Vuelve a iniciar sesión.');
+      showToast('error', t('profile.internalError'), t('profile.loginAgain'));
       return;
     }
 
@@ -86,11 +88,11 @@ export default function ChangePasswordScreen() {
       await api.put<{ message?: string }>(endpoints.changePassword, payload);
       // Si todo sale bien, mostrar mensaje y regresar
       void triggerHaptic('success');
-      showToast('success', 'Contraseña actualizada');
+      showToast('success', t('profile.passwordUpdated'));
       router.back();
     } catch (err) {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo cambiar la contraseña', 'Intenta nuevamente.');
+      showToast('error', t('profile.passwordUpdateFailed'), t('profile.tryAgain'));
       setSubmitError(
         getApiErrorMessage(err, 'No se pudo cambiar la contraseña. Intenta nuevamente.'),
       );
@@ -120,14 +122,14 @@ export default function ChangePasswordScreen() {
           >
             <Ionicons name="chevron-back" size={28} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Cambiar Contraseña</Text>
+          <Text style={styles.headerTitle}>{t('profile.passwordTitle')}</Text>
           <View style={{ width: 28 }} />
         </View>
 
         {/* FORMULARIO */}
         <View style={styles.formContainer}>
           {/* Contraseña actual */}
-          <Text style={styles.label}>Contraseña actual</Text>
+          <Text style={styles.label}>{t('profile.currentPassword')}</Text>
           <Controller
             control={control}
             name="currentPassword"
@@ -137,7 +139,7 @@ export default function ChangePasswordScreen() {
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
-                placeholder="Ingresa tu contraseña actual"
+                placeholder={t('profile.currentPasswordPlaceholder')}
                 secureTextEntry
                 autoCapitalize="none"
                 placeholderTextColor="#888"
@@ -151,7 +153,7 @@ export default function ChangePasswordScreen() {
           )}
 
           {/* Nueva contraseña */}
-          <Text style={styles.label}>Nueva contraseña</Text>
+          <Text style={styles.label}>{t('profile.newPassword')}</Text>
           <Controller
             control={control}
             name="newPassword"
@@ -161,7 +163,7 @@ export default function ChangePasswordScreen() {
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
-                placeholder="Ingresa la nueva contraseña"
+                placeholder={t('profile.newPasswordPlaceholder')}
                 secureTextEntry
                 autoCapitalize="none"
                 placeholderTextColor="#888"
@@ -175,7 +177,7 @@ export default function ChangePasswordScreen() {
           )}
 
           {/* Confirmar nueva contraseña */}
-          <Text style={styles.label}>Confirmar nueva contraseña</Text>
+          <Text style={styles.label}>{t('profile.confirmPassword')}</Text>
           <Controller
             control={control}
             name="confirmPassword"
@@ -185,7 +187,7 @@ export default function ChangePasswordScreen() {
                 value={value}
                 onChangeText={onChange}
                 onBlur={onBlur}
-                placeholder="Vuelve a escribir la nueva contraseña"
+                placeholder={t('profile.confirmPasswordPlaceholder')}
                 secureTextEntry
                 autoCapitalize="none"
                 placeholderTextColor="#888"
@@ -213,7 +215,7 @@ export default function ChangePasswordScreen() {
           {isSubmitting ? (
             <ActivityIndicator size="small" color="#FFF" />
           ) : (
-            <Text style={styles.saveButtonText}>Guardar cambios</Text>
+            <Text style={styles.saveButtonText}>{t('profile.saveChanges')}</Text>
           )}
         </TouchableOpacity>
       </KeyboardAvoidingView>

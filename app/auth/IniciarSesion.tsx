@@ -21,8 +21,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Field, Screen, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, spacing, typography } from '@/src/shared/theme';
 import { initDevMode, isOfflineMode, setOfflineMode } from '@/src/shared/dev';
+import { useTranslation } from 'react-i18next';
 
 export default function IniciarSesion() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [password, setPassword] = useState('');
@@ -61,13 +63,13 @@ export default function IniciarSesion() {
     if (!(compatible && registrado)) return;
 
     const resultado = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Iniciar sesión con biometría',
-      fallbackLabel: 'Usar contraseña',
+      promptMessage: t('auth.login.biometricPrompt'),
+      fallbackLabel: t('auth.login.biometricFallback'),
     });
 
     if (!resultado.success) {
       void triggerHaptic('error');
-      showToast('error', 'Autenticación fallida', 'Puedes usar tu contraseña.');
+      showToast('error', t('auth.login.biometricFailed'), t('auth.login.biometricFailedBody'));
       return;
     }
 
@@ -75,14 +77,14 @@ export default function IniciarSesion() {
     if (valid) {
       router.replace('/tabs/home');
     } else {
-      showToast('info', 'Sesión requerida', 'Inicia sesión para activar la biometría.');
+      showToast('info', t('auth.login.sessionRequired'), t('auth.login.sessionRequiredBody'));
     }
   };
 
   const handleLogin = async () => {
     if (!email || !password) {
       void triggerHaptic('error');
-      showToast('error', 'Datos incompletos', 'Debes ingresar correo y contraseña.');
+      showToast('error', t('auth.login.incomplete'), t('auth.login.incompleteBody'));
       return;
     }
     try {
@@ -96,14 +98,14 @@ export default function IniciarSesion() {
       void triggerHaptic('error');
       showToast(
         'error',
-        'Login fallido',
-        getApiErrorMessage(error, loginError ?? 'Credenciales incorrectas'),
+        t('auth.login.loginFailed'),
+        getApiErrorMessage(error, loginError ?? t('auth.login.invalidCredentials')),
       );
     }
   };
 
   const handleGoogleStub = () => {
-    showToast('info', 'Próximamente', 'Continuar con Google estará disponible pronto.');
+    showToast('info', t('auth.login.comingSoon'), t('auth.login.googleComingSoon'));
   };
 
   return (
@@ -128,13 +130,13 @@ export default function IniciarSesion() {
               <Text style={styles.brand}>
                 To'<Text style={styles.brandAccent}>Barato</Text>
               </Text>
-              <Text style={styles.tagline}>Compara, ahorra, y come rico.</Text>
+              <Text style={styles.tagline}>{t('auth.login.tagline')}</Text>
             </View>
 
             <View style={styles.body}>
               {__DEV__ ? (
                 <View style={styles.devBanner}>
-                  <Text style={styles.devLabel}>Modo desarrollo</Text>
+                  <Text style={styles.devLabel}>{t('auth.login.devMode')}</Text>
                   <View style={styles.devToggle}>
                     <Pressable
                       style={[styles.devOption, !offline && styles.devOptionActive]}
@@ -157,36 +159,35 @@ export default function IniciarSesion() {
                       </Text>
                     </Pressable>
                   </View>
-                  <Text style={styles.devHint}>
-                    Offline usa datos mock RD$ con latencia simulada.
-                  </Text>
+                  <Text style={styles.devHint}>{t('auth.login.offlineHint')}</Text>
                 </View>
               ) : null}
 
               <Text style={styles.title}>
-                Ayuda a tu bolsillo{'\n'}
-                <Text style={styles.titleAccent}>con nosotros.</Text>
+                {t('auth.login.title')}
+                {'\n'}
+                <Text style={styles.titleAccent}>{t('auth.login.titleAccent')}</Text>
               </Text>
-              <Text style={styles.subtitle}>
-                Inicia sesión para ver los mejores precios cerca de ti.
-              </Text>
+              <Text style={styles.subtitle}>{t('auth.login.subtitle')}</Text>
 
               <View style={styles.form}>
                 <Field
-                  label="Correo o teléfono"
+                  label={t('auth.login.emailLabel')}
+                  testID="login-email"
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="Ingresa tu correo"
+                  placeholder={t('auth.login.emailPlaceholder')}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
                   textContentType="username"
                 />
                 <Field
-                  label="Contraseña"
+                  label={t('auth.login.passwordLabel')}
+                  testID="login-password"
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="Ingresa tu contraseña"
+                  placeholder={t('auth.login.passwordPlaceholder')}
                   secureTextEntry={!passwordVisible}
                   textContentType="password"
                   trailing={
@@ -195,7 +196,9 @@ export default function IniciarSesion() {
                       hitSlop={8}
                       accessibilityRole="button"
                       accessibilityLabel={
-                        passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                        passwordVisible
+                          ? t('auth.login.hidePassword')
+                          : t('auth.login.showPassword')
                       }
                     >
                       <Ionicons
@@ -211,43 +214,49 @@ export default function IniciarSesion() {
                   onPress={() =>
                     showToast(
                       'info',
-                      'Próximamente',
-                      'La recuperación aún no está disponible en la API.',
+                      t('auth.login.comingSoon'),
+                      t('auth.login.recoveryUnavailable'),
                     )
                   }
                   style={styles.forgot}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+                  <Text style={styles.forgotText}>{t('auth.login.forgotPassword')}</Text>
                 </TouchableOpacity>
 
-                <Button tone="navy" size="lg" onPress={handleLogin} loading={loading}>
-                  Iniciar sesión
+                <Button
+                  tone="navy"
+                  size="lg"
+                  onPress={handleLogin}
+                  loading={loading}
+                  testID="login-submit"
+                >
+                  {t('auth.login.login')}
                 </Button>
 
                 <Button tone="light" onPress={verificarBiometria}>
                   <Ionicons name="finger-print" size={20} color={colors.navy} />
-                  <Text style={styles.secondaryLabel}>Usar biometría</Text>
+                  <Text style={styles.secondaryLabel}>{t('auth.login.biometrics')}</Text>
                 </Button>
 
                 <View style={styles.dividerRow}>
                   <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>o continúa con</Text>
+                  <Text style={styles.dividerText}>{t('auth.login.continueWith')}</Text>
                   <View style={styles.dividerLine} />
                 </View>
 
                 <Button tone="light" onPress={handleGoogleStub}>
                   <Ionicons name="logo-google" size={20} color={colors.ink} />
-                  <Text style={styles.secondaryLabel}>Continuar con Google</Text>
+                  <Text style={styles.secondaryLabel}>{t('auth.login.google')}</Text>
                 </Button>
 
                 <View style={styles.footerRow}>
-                  <Text style={styles.footerText}>¿No tienes cuenta?</Text>
+                  <Text style={styles.footerText}>{t('auth.login.noAccount')}</Text>
                   <TouchableOpacity
                     onPress={() => router.push('/auth/RegisterScreen')}
                     accessibilityRole="button"
                   >
-                    <Text style={styles.link}> Regístrate</Text>
+                    <Text style={styles.link}> {t('auth.login.register')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

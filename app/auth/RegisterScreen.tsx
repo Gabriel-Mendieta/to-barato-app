@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Field, Screen, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 function splitDisplayName(fullName: string) {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -41,6 +42,7 @@ function usernameFrom(email: string, displayName: string) {
 }
 
 export default function RegisterScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [passwordVisible, setPasswordVisible] = useState(false);
   const { requestOtp, loading: sendingOtp, error: otpError } = useRequestOtp();
@@ -71,7 +73,7 @@ export default function RegisterScreen() {
       });
     } else {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo continuar', otpError ?? 'Intenta nuevamente.');
+      showToast('error', t('auth.register.continueError'), otpError ?? t('auth.register.tryAgain'));
     }
   });
 
@@ -107,8 +109,8 @@ export default function RegisterScreen() {
             </View>
 
             <View style={styles.body}>
-              <Text style={styles.title}>Crea tu cuenta gratis.</Text>
-              <Text style={styles.subtitle}>Empieza a comparar precios y ahorrar hoy.</Text>
+              <Text style={styles.title}>{t('auth.register.title')}</Text>
+              <Text style={styles.subtitle}>{t('auth.register.subtitle')}</Text>
 
               <View style={styles.form}>
                 <Controller
@@ -116,14 +118,15 @@ export default function RegisterScreen() {
                   name="name"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Field
-                      label="Nombre"
+                      label={t('auth.register.name')}
+                      testID="register-name"
                       value={value}
                       onChangeText={onChange}
                       onBlur={onBlur}
-                      placeholder="Mario Luciano"
+                      placeholder={t('auth.register.namePlaceholder')}
                       autoCapitalize="words"
                       textContentType="name"
-                      hint="Como aparecerá en tu perfil"
+                      hint={t('auth.register.nameHint')}
                     />
                   )}
                 />
@@ -137,11 +140,12 @@ export default function RegisterScreen() {
                   name="email"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Field
-                      label="Correo electrónico"
+                      label={t('auth.register.email')}
+                      testID="register-email"
                       value={value}
                       onChangeText={onChange}
                       onBlur={onBlur}
-                      placeholder="mario.luciano@gmail.com"
+                      placeholder={t('auth.register.emailPlaceholder')}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -159,11 +163,12 @@ export default function RegisterScreen() {
                   name="password"
                   render={({ field: { onChange, onBlur, value } }) => (
                     <Field
-                      label="Contraseña"
+                      label={t('auth.register.password')}
+                      testID="register-password"
                       value={value}
                       onChangeText={onChange}
                       onBlur={onBlur}
-                      placeholder="••••••••••"
+                      placeholder={t('auth.register.passwordPlaceholder')}
                       secureTextEntry={!passwordVisible}
                       textContentType="newPassword"
                       autoCapitalize="none"
@@ -173,7 +178,9 @@ export default function RegisterScreen() {
                           hitSlop={8}
                           accessibilityRole="button"
                           accessibilityLabel={
-                            passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                            passwordVisible
+                              ? t('auth.login.hidePassword')
+                              : t('auth.login.showPassword')
                           }
                         >
                           <Ionicons
@@ -205,16 +212,16 @@ export default function RegisterScreen() {
                   loading={sendingOtp}
                   disabled={!isValid || sendingOtp}
                 >
-                  Registrarse
+                  {t('auth.register.register')}
                 </Button>
 
                 <View style={styles.footerRow}>
-                  <Text style={styles.footerText}>¿Ya tienes cuenta?</Text>
+                  <Text style={styles.footerText}>{t('auth.register.hasAccount')}</Text>
                   <TouchableOpacity
                     onPress={() => router.push('/auth/IniciarSesion')}
                     accessibilityRole="button"
                   >
-                    <Text style={styles.link}> Iniciar sesión</Text>
+                    <Text style={styles.link}> {t('auth.register.login')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

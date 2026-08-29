@@ -26,6 +26,7 @@ import {
   FLOATING_TAB_BAR_CLEARANCE,
 } from '@/src/shared/ui';
 import { colors, getProviderBrand, radii, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 enum CategoriaLista {
   Supermercado = 'supermercado',
@@ -109,6 +110,7 @@ function effectivePrice(row: PrecioRow | undefined): number | null {
 }
 
 export default function ListDetailScreen() {
+  const { t } = useTranslation();
   const {
     id,
     idProveedor,
@@ -193,10 +195,10 @@ export default function ListDetailScreen() {
         const priced = applyProviderPrices(detalles, proveedorId, matrix);
         setProductos(priced);
       } catch {
-        showToast('error', 'No se pudieron cargar productos', 'Intenta nuevamente.');
+        showToast('error', t('search.productsFailed'), t('search.retry'));
       }
     },
-    [idLista, applyProviderPrices],
+    [idLista, applyProviderPrices, t],
   );
 
   const hydrateMeta = useCallback(async () => {
@@ -367,7 +369,7 @@ export default function ListDetailScreen() {
 
   const openMap = () => {
     if (!branch) {
-      showToast('error', 'Ruta no disponible', 'No se encontró sucursal.');
+      showToast('error', t('lists.routeUnavailable'), t('lists.routeUnavailableBody'));
       return;
     }
     const lat = Number(branch.Latitud);
@@ -421,7 +423,7 @@ export default function ListDetailScreen() {
     try {
       await api.delete(endpoints.listaProductoItem(idLista, item.IdProducto));
     } catch {
-      showToast('info', 'Producto quitado', 'El backend podría no soportar borrado aún.');
+      showToast('info', t('lists.productRemoved'), t('lists.productRemovedBody'));
     }
   };
 
@@ -463,7 +465,7 @@ export default function ListDetailScreen() {
       navigateToIaResult(res.data.respuesta || 'Sin respuesta.');
     } catch {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo obtener respuesta', 'Intenta nuevamente.');
+      showToast('error', t('lists.aiFailed'), t('lists.tryAgain'));
     } finally {
       setSending(false);
     }
@@ -471,11 +473,11 @@ export default function ListDetailScreen() {
 
   const renderRightActions = (item: ListItem) => (
     <View style={styles.swipeUnderlay}>
-      <Text style={styles.swipeLabel}>Eliminar</Text>
+      <Text style={styles.swipeLabel}>{t('lists.delete')}</Text>
       <Pressable
         onPress={() => removeProduct(item)}
         style={styles.swipeTrash}
-        accessibilityLabel={`Eliminar ${item.Nombre}`}
+        accessibilityLabel={`${t('lists.delete')} ${item.Nombre}`}
       >
         <Ionicons name="trash-outline" size={20} color={colors.red} />
       </Pressable>
@@ -509,7 +511,7 @@ export default function ListDetailScreen() {
         <Pressable
           onPress={() => router.replace('/tabs/lista')}
           style={styles.iconBtn}
-          accessibilityLabel="Volver"
+          accessibilityLabel={t('shared.back')}
         >
           <Ionicons name="chevron-back" size={22} color={colors.navy} />
         </Pressable>
@@ -519,7 +521,7 @@ export default function ListDetailScreen() {
         <Pressable
           onPress={goAddProducts}
           style={styles.addBtn}
-          accessibilityLabel="Agregar productos"
+          accessibilityLabel={t('search.addToList')}
         >
           <Ionicons name="add" size={24} color={colors.white} />
         </Pressable>
@@ -527,7 +529,7 @@ export default function ListDetailScreen() {
 
       {providerOptions.length > 0 ? (
         <View style={styles.providerSection}>
-          <Text style={styles.providerLabel}>Proveedor de la lista</Text>
+          <Text style={styles.providerLabel}>{t('lists.listProvider')}</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -562,14 +564,14 @@ export default function ListDetailScreen() {
                       RD$ {opt.total.toFixed(2)}
                     </Text>
                   ) : null}
-                  {isBest ? <Text style={styles.bestBadge}>Mejor precio</Text> : null}
+                  {isBest ? <Text style={styles.bestBadge}>{t('lists.bestPrice')}</Text> : null}
                 </Pressable>
               );
             })}
           </ScrollView>
           {totals.vsCheapest > 0.01 ? (
             <Text style={styles.switchHint}>
-              Cambia de proveedor y ahorra RD$ {totals.vsCheapest.toFixed(2)}
+              {t('lists.switchAndSave', { amount: totals.vsCheapest.toFixed(2) })}
             </Text>
           ) : null}
         </View>
@@ -586,9 +588,9 @@ export default function ListDetailScreen() {
         ListEmptyComponent={
           <EmptyState
             icon="cart-outline"
-            title="Lista vacía"
-            description="Agrega productos con el botón + naranja."
-            actionLabel="Agregar productos"
+            title={t('lists.empty')}
+            description={t('lists.emptyBody')}
+            actionLabel={t('search.addToList')}
             onAction={goAddProducts}
           />
         }
@@ -602,7 +604,7 @@ export default function ListDetailScreen() {
               >
                 <Ionicons name="restaurant-outline" size={18} color="#7A4B0E" />
                 <Text style={styles.actionRecetaText}>
-                  {sending ? 'Generando…' : 'Generar receta'}
+                  {sending ? t('lists.generating') : t('lists.generateRecipe')}
                 </Text>
               </Pressable>
               <Pressable
@@ -611,7 +613,7 @@ export default function ListDetailScreen() {
                 style={[styles.actionRuta, (!branch || loadingBranch) && { opacity: 0.6 }]}
               >
                 <Ionicons name="git-branch-outline" size={18} color="#19426E" />
-                <Text style={styles.actionRutaText}>Ver ruta</Text>
+                <Text style={styles.actionRutaText}>{t('lists.viewRoute')}</Text>
               </Pressable>
             </View>
           ) : null

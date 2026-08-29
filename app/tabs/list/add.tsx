@@ -30,6 +30,7 @@ import {
   triggerHaptic,
 } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 type ProductoAPI = {
   IdProducto: number;
@@ -98,6 +99,7 @@ function categoryTint(nombre: string, index: number): string {
 }
 
 export default function AddToListScreen() {
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{
     tipo?: string;
     listaId?: string;
@@ -150,11 +152,11 @@ export default function AddToListScreen() {
       const units = Array.isArray(unitResp.data) ? unitResp.data : [];
       setUnitNames(Object.fromEntries(units.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])));
     } catch {
-      setError('No se pudieron cargar los productos.');
+      setError(t('search.productsFailed'));
     } finally {
       setLoading(false);
     }
-  }, [tipoId]);
+  }, [t, tipoId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -187,7 +189,7 @@ export default function AddToListScreen() {
 
   const confirmAdd = async () => {
     if (!qtyModal || !listaId) {
-      showToast('error', 'No se pudo agregar', 'No hay una lista activa.');
+      showToast('error', t('search.addFailed'), t('search.noActiveList'));
       return;
     }
     setAdding(true);
@@ -202,10 +204,10 @@ export default function AddToListScreen() {
       });
       qtySheetRef.current?.dismiss();
       void triggerHaptic('success');
-      showToast('success', 'Producto agregado', `${qtyModal.Nombre} ×${qty}`);
+      showToast('success', t('search.productAdded'), `${qtyModal.Nombre} ×${qty}`);
     } catch {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo agregar', 'Intenta nuevamente.');
+      showToast('error', t('search.addFailed'), t('search.addTryAgain'));
     } finally {
       setAdding(false);
     }
@@ -281,7 +283,7 @@ export default function AddToListScreen() {
       <Screen edges={['top']}>
         <Text style={styles.errorText}>{error}</Text>
         <Button tone="navy" onPress={fetchBase}>
-          Reintentar
+          {t('search.retry')}
         </Button>
       </Screen>
     );
@@ -294,7 +296,7 @@ export default function AddToListScreen() {
           onPress={() => router.back()}
           style={styles.backBtn}
           accessibilityRole="button"
-          accessibilityLabel="Volver"
+          accessibilityLabel={t('shared.back')}
         >
           <Ionicons name="chevron-back" size={22} color={colors.navy} />
         </Pressable>
@@ -306,7 +308,8 @@ export default function AddToListScreen() {
               setQuery(t);
               if (t.trim()) setCategoryId(null);
             }}
-            placeholder="Busca un producto"
+            placeholder={t('home.searchPlaceholder')}
+            testID="list-product-search"
             placeholderTextColor={colors.muted}
             style={styles.searchInput}
             autoCapitalize="none"
@@ -316,7 +319,7 @@ export default function AddToListScreen() {
             <Pressable
               onPress={() => setQuery('')}
               hitSlop={8}
-              accessibilityLabel="Limpiar búsqueda"
+              accessibilityLabel={t('search.clearSearch')}
             >
               <Ionicons name="close" size={18} color={colors.muted} />
             </Pressable>
@@ -333,7 +336,7 @@ export default function AddToListScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.sectionTitle}>Búsquedas populares</Text>
+          <Text style={styles.sectionTitle}>{t('search.popular')}</Text>
           <View style={styles.chipWrap}>
             {POPULAR.map((p) => (
               <Pressable
@@ -347,7 +350,7 @@ export default function AddToListScreen() {
             ))}
           </View>
 
-          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Categorías</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>{t('search.categories')}</Text>
           <View style={styles.catGrid}>
             {browseCats.map((c, i) => (
               <Pressable
@@ -398,23 +401,25 @@ export default function AddToListScreen() {
                 </Pressable>
               ) : null}
               <Text style={styles.resultsMeta}>
-                {filtered.length} RESULTADO
-                {filtered.length === 1 ? '' : 'S'}
-                {query.trim() ? ` PARA '${query.trim().toUpperCase()}'` : ''}
+                {t(filtered.length === 1 ? 'search.results_one' : 'search.results_other', {
+                  count: filtered.length,
+                })}
+                {query.trim() ? t('search.resultsFor', { query: query.trim().toUpperCase() }) : ''}
               </Text>
             </View>
           }
           ListEmptyComponent={
             <EmptyState
               icon="search-outline"
-              title="Sin resultados"
-              description="Prueba con otra palabra o explora categorías."
+              title={t('search.noResults')}
+              description={t('search.noResultsBody')}
             />
           }
           renderItem={({ item }) => {
             const unit = unitLabel(item);
             return (
               <Pressable
+                testID={`list-product-${item.IdProducto}`}
                 onPress={() => openQty(item)}
                 style={({ pressed }) => [styles.resultCard, pressed && { opacity: 0.92 }]}
               >
@@ -441,7 +446,7 @@ export default function AddToListScreen() {
       {listaId ? (
         <View style={styles.footerBar}>
           <Button tone="navy" onPress={goToList}>
-            {`Ver lista · ${listName}`}
+            {t('search.listButton', { name: listName })}
           </Button>
         </View>
       ) : null}
@@ -459,7 +464,7 @@ export default function AddToListScreen() {
         backgroundStyle={{ backgroundColor: colors.card }}
       >
         <BottomSheetView style={styles.modalSheet}>
-          <Text style={styles.modalTitle}>Cantidad</Text>
+          <Text style={styles.modalTitle}>{t('search.quantity')}</Text>
           <Text style={styles.modalSub} numberOfLines={2}>
             {qtyModal?.Nombre}
             {qtyModal ? (
@@ -470,32 +475,40 @@ export default function AddToListScreen() {
           </Text>
           <View style={styles.stepper}>
             <Pressable
+              testID="quantity-decrease"
               onPress={() => {
                 void triggerHaptic('selection');
                 setQty((q) => Math.max(1, q - 1));
               }}
               style={styles.stepBtn}
-              accessibilityLabel="Menos"
+              accessibilityLabel={t('search.less')}
             >
               <Ionicons name="remove" size={22} color={colors.navy} />
             </Pressable>
             <Text style={styles.stepValue}>{qty}</Text>
             <Pressable
+              testID="quantity-increase"
               onPress={() => {
                 void triggerHaptic('selection');
                 setQty((q) => q + 1);
               }}
               style={styles.stepBtn}
-              accessibilityLabel="Más"
+              accessibilityLabel={t('search.more')}
             >
               <Ionicons name="add" size={22} color={colors.navy} />
             </Pressable>
           </View>
-          <Button tone="orange" onPress={confirmAdd} loading={adding} disabled={!listaId}>
-            Agregar a la lista
+          <Button
+            tone="orange"
+            onPress={confirmAdd}
+            loading={adding}
+            disabled={!listaId}
+            testID="add-product-submit"
+          >
+            {t('search.addToList')}
           </Button>
           <Button tone="light" onPress={() => qtySheetRef.current?.dismiss()}>
-            Cancelar
+            {t('search.cancel')}
           </Button>
         </BottomSheetView>
       </BottomSheetModal>

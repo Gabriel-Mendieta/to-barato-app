@@ -20,10 +20,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Screen, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 const OTP_LENGTH = 6;
 
 export default function OtpVerificationScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [focusedIndex, setFocusedIndex] = useState(0);
@@ -131,8 +133,8 @@ export default function OtpVerificationScreen() {
       });
     } catch (err) {
       void triggerHaptic('error');
-      showToast('error', 'Código incorrecto', 'Verifica el código e inténtalo de nuevo.');
-      setVerifyError(getApiErrorMessage(err, 'Código incorrecto o expirado. Intenta de nuevo.'));
+      showToast('error', t('auth.otp.incorrect'), t('auth.otp.incorrectBody'));
+      setVerifyError(getApiErrorMessage(err, t('auth.otp.expired')));
     } finally {
       setVerifying(false);
     }
@@ -144,15 +146,15 @@ export default function OtpVerificationScreen() {
     try {
       await requestOtp(formData.email);
       void triggerHaptic('success');
-      showToast('success', 'Código reenviado');
+      showToast('success', t('auth.otp.resend'));
       setTimer(60);
       setOtp(Array(OTP_LENGTH).fill(''));
       inputsRef.current[0]?.focus();
       setFocusedIndex(0);
     } catch (err) {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo reenviar', 'Intenta más tarde.');
-      setResendError(getApiErrorMessage(err, 'No se pudo reenviar. Intenta más tarde.'));
+      showToast('error', t('auth.otp.resendFailed'), t('auth.otp.resendFailedBody'));
+      setResendError(getApiErrorMessage(err, t('auth.otp.resendFailedDetailed')));
     } finally {
       setResending(false);
     }
@@ -194,14 +196,16 @@ export default function OtpVerificationScreen() {
               <Text style={styles.brand}>
                 To'<Text style={styles.brandAccent}>Barato</Text>
               </Text>
-              <Text style={styles.tagline}>Un paso más para crear tu cuenta</Text>
+              <Text style={styles.tagline}>{t('auth.otp.tagline')}</Text>
             </View>
 
             <View style={styles.body}>
-              <Text style={styles.title}>Verifica tu correo</Text>
+              <Text style={styles.title}>{t('auth.otp.title')}</Text>
               <Text style={styles.subtitle}>
-                Ingresa el código de {OTP_LENGTH} dígitos que enviamos a{' '}
-                <Text style={styles.emailHighlight}>{formData.email || 'tu correo'}</Text>
+                {t('auth.otp.subtitle', { length: OTP_LENGTH })}{' '}
+                <Text style={styles.emailHighlight}>
+                  {formData.email || t('auth.otp.yourEmail')}
+                </Text>
               </Text>
 
               <View style={styles.otpRow}>
@@ -227,7 +231,10 @@ export default function OtpVerificationScreen() {
                         focused && styles.otpBoxFocused,
                         digit !== '' && styles.otpBoxFilled,
                       ]}
-                      accessibilityLabel={`Dígito ${i + 1} de ${OTP_LENGTH}`}
+                      accessibilityLabel={t('auth.otp.digit', {
+                        index: i + 1,
+                        length: OTP_LENGTH,
+                      })}
                     />
                   );
                 })}
@@ -242,12 +249,12 @@ export default function OtpVerificationScreen() {
                 loading={verifying}
                 disabled={!codeComplete}
               >
-                Verificar
+                {t('auth.otp.verify')}
               </Button>
 
               <View style={styles.resendBlock}>
                 {timer > 0 ? (
-                  <Text style={styles.timerText}>Reenviar código en {timer}s</Text>
+                  <Text style={styles.timerText}>{t('auth.otp.resendIn', { seconds: timer })}</Text>
                 ) : (
                   <>
                     {resendError.length > 0 ? (
@@ -260,7 +267,7 @@ export default function OtpVerificationScreen() {
                       hitSlop={8}
                     >
                       <Text style={styles.resendLink}>
-                        {resending ? 'Reenviando...' : 'Reenviar código'}
+                        {resending ? t('auth.otp.resending') : t('auth.otp.resend')}
                       </Text>
                     </TouchableOpacity>
                   </>

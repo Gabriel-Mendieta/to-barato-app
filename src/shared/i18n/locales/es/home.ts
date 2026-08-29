@@ -1,0 +1,25 @@
+export const home = {
+  notifications: 'Notificaciones',
+  notificationsUnavailable:
+    'Sheet local (sin API de notificaciones). Los avisos reales llegarán cuando el backend las exponga.',
+  savingsThisMonth: 'TU AHORRO ESTE MES',
+  comparedLastMonth: '+{{percent}}% vs. mes pasado',
+  searchPlaceholder: 'Busca un producto...',
+  voiceSearch: 'Búsqueda por voz',
+  voiceSearchComingSoon: 'La búsqueda por voz estará disponible pronto.',
+  categories: {
+    offers: 'Ofertas',
+    market: 'Mercado',
+    pharmacy: 'Farmacia',
+    hardware: 'Ferretería',
+  },
+  priceDrops: 'Bajadas de precio',
+  today: 'HOY',
+  noPriceDrops: 'Sin bajadas de precio',
+  noPriceDropsBody: 'Cuando encontremos ofertas aparecerán aquí.',
+  nearbyStores: 'Tiendas cerca de ti',
+  seeMap: 'Ver mapa ›',
+  generateRecipe: 'GENERA UNA RECETA',
+  recipeTitle: 'Ideas de receta con tu lista',
+  recipeBody: 'Abre una lista y cocina con lo que tienes',
+} as const;

@@ -21,6 +21,7 @@ import {
   triggerHaptic,
 } from '@/src/shared/ui';
 import { colors, layout, radii, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 type Proveedor = {
   IdProveedor: number;
@@ -41,6 +42,7 @@ type ProductoProveedorResponse = {
 };
 
 export default function SearchScreen() {
+  const { t } = useTranslation();
   const { proveedorId } = useLocalSearchParams<{ proveedorId?: string }>();
   const { width } = useWindowDimensions();
   const cols = width >= layout.tabletBreakpoint ? 3 : 2;
@@ -83,12 +85,13 @@ export default function SearchScreen() {
     <Screen>
       <Pressable onPress={() => router.back()} style={styles.back}>
         <Ionicons name="chevron-back" size={22} color={colors.navy} />
-        <Text style={styles.backText}>Volver</Text>
+        <Text style={styles.backText}>{t('search.back')}</Text>
       </Pressable>
-      <ScreenTitle>Buscar</ScreenTitle>
+      <ScreenTitle>{t('search.title')}</ScreenTitle>
 
       <Field
-        placeholder="Producto (voz = stub, sin STT)"
+        placeholder={t('search.placeholder')}
+        testID="search-product-input"
         value={query}
         onChangeText={setQuery}
         trailing={<Ionicons name="mic-outline" size={20} color={colors.muted} />}
@@ -135,8 +138,8 @@ export default function SearchScreen() {
           ListEmptyComponent={
             <EmptyState
               icon="search-outline"
-              title="Sin resultados"
-              description="Prueba con otro producto o proveedor."
+              title={t('search.noResults')}
+              description={t('search.noResultsBody')}
             />
           }
           renderItem={({ item }) => (

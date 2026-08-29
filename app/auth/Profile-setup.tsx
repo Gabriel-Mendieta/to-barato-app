@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Button, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
@@ -22,8 +22,10 @@ import type { SignUpRequestDTO } from '@/src/features/auth/api';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { profileSetupSchema, type ProfileSetupFormValues } from '@/src/features/auth/schema';
+import { useTranslation } from 'react-i18next';
 
 export default function ProfileSetupScreen() {
+  const { t } = useTranslation();
   // Recupera datos del paso anterior
   const params = useLocalSearchParams<{ data?: string; otp?: string }>();
   const rawData = params.data ?? '';
@@ -51,7 +53,7 @@ export default function ProfileSetupScreen() {
   const dob = useWatch({ control, name: 'dob' });
 
   // picker handler
-  const onChangeDate = (_: any, selected?: Date) => {
+  const onChangeDate = (_: DateTimePickerEvent, selected?: Date) => {
     setShowPicker(false);
     if (selected) setValue('dob', selected, { shouldValidate: true });
   };
@@ -87,7 +89,11 @@ export default function ProfileSetupScreen() {
       router.replace('/tabs/home');
     } else {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo crear la cuenta', error ?? 'Intenta nuevamente.');
+      showToast(
+        'error',
+        t('auth.profileSetup.accountError'),
+        error ?? t('auth.profileSetup.tryAgain'),
+      );
     }
   });
 
@@ -107,7 +113,7 @@ export default function ProfileSetupScreen() {
         contentContainerStyle={{ padding: 20, alignItems: 'center' }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.title}>Completa tu perfil</Text>
+        <Text style={styles.title}>{t('auth.profileSetup.title')}</Text>
 
         {/* Foto */}
         <TouchableOpacity onPress={pickImage} style={styles.photoWrap}>
@@ -115,20 +121,20 @@ export default function ProfileSetupScreen() {
             <Image source={{ uri: photoUri }} style={styles.photo} />
           ) : (
             <View style={styles.photoPlaceholder}>
-              <Text>Seleccionar foto</Text>
+              <Text>{t('auth.profileSetup.selectPhoto')}</Text>
             </View>
           )}
         </TouchableOpacity>
 
         {/* Teléfono */}
         <View style={styles.field}>
-          <Text style={styles.label}>Teléfono</Text>
+          <Text style={styles.label}>{t('auth.profileSetup.phone')}</Text>
           <Controller
             control={control}
             name="phone"
             render={({ field: { onChange, onBlur, value } }) => (
               <TextInput
-                placeholder="809-123-4567"
+                placeholder={t('auth.profileSetup.phonePlaceholder')}
                 keyboardType="phone-pad"
                 value={value}
                 onChangeText={onChange}
@@ -146,7 +152,7 @@ export default function ProfileSetupScreen() {
 
         {/* Fecha de nacimiento */}
         <View style={styles.field}>
-          <Text style={styles.label}>Fecha de nacimiento</Text>
+          <Text style={styles.label}>{t('auth.profileSetup.dateOfBirth')}</Text>
           <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.input}>
             <Text>{dob.toISOString().split('T')[0]}</Text>
           </TouchableOpacity>
@@ -174,7 +180,7 @@ export default function ProfileSetupScreen() {
             disabled={!isValid || isSubmitting || loading}
             loading={loading || isSubmitting}
           >
-            Continuar
+            {t('auth.profileSetup.continue')}
           </Button>
         </View>
 

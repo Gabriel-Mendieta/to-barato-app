@@ -22,6 +22,7 @@ type Props = {
   full?: boolean;
   disabled?: boolean;
   loading?: boolean;
+  testID?: string;
   style?: ViewStyle;
   textStyle?: TextStyle;
 };
@@ -81,6 +82,7 @@ export function Button({
   full = true,
   disabled,
   loading,
+  testID,
   style,
   textStyle,
 }: Props) {
@@ -94,6 +96,7 @@ export function Button({
       accessibilityRole="button"
       onPress={onPress}
       disabled={inactive}
+      testID={testID}
       style={({ pressed }) => [
         full ? styles.full : styles.inline,
         { opacity: inactive ? 0.55 : pressed ? 0.92 : 1 },

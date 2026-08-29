@@ -1,0 +1,14 @@
+appId: com.gabrielmendieta.tobaratoapp
+---
+- launchApp:
+    clearState: true
+- tapOn: 'Offline'
+- tapOn:
+    id: 'login-email'
+- inputText: 'maestro@example.com'
+- tapOn:
+    id: 'login-password'
+- inputText: 'dummy-password'
+- tapOn:
+    id: 'login-submit'
+- assertVisible: 'Inicio'

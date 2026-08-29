@@ -53,15 +53,57 @@ Escanea el QR **con el cliente ToBarato** (app instalada), no con la cámara de 
 
 ## Variables de entorno
 
-| Variable | Descripción | Default |
-| --- | --- | --- |
-| `EXPO_PUBLIC_API_URL` | Base URL de la API (con `/` final) | `https://tobaratoapi.alirizvi.dev/api/` |
+| Variable                         | Descripción                                    | Default                                 |
+| -------------------------------- | ---------------------------------------------- | --------------------------------------- |
+| `EXPO_PUBLIC_API_URL`            | Base URL de la API (con `/` final)             | `https://tobaratoapi.alirizvi.dev/api/` |
+| `EXPO_PUBLIC_SENTRY_DSN`         | DSN opcional de Sentry para staging/producción | vacío                                   |
+| `EXPO_PUBLIC_SENTRY_ENVIRONMENT` | Entorno reportado a Sentry                     | vacío                                   |
 
 La base URL vive en un solo lugar: `src/shared/config/env.ts`.
 Los paths relativos están en `src/shared/api/endpoints.ts`.
 El cliente HTTP único (axios + interceptors Bearer / refresh) está en `src/shared/api/client.ts`.
 
 **No inventes rutas nuevas en el backend**: solo cambia `EXPO_PUBLIC_API_URL` si el host cambia.
+
+### Idiomas
+
+La configuración central vive en `src/shared/i18n/`. El idioma inicial se detecta desde el
+dispositivo y usa español (`es`) como fallback. Los recursos están organizados por dominio y no
+generan llamadas de red. Para agregar otro idioma, añade su árbol de recursos y regístralo en
+`src/shared/i18n/index.ts`.
+
+### Sentry (opcional)
+
+Sentry solo se inicializa cuando `EXPO_PUBLIC_SENTRY_DSN` contiene una URL HTTPS válida. En local y
+modo offline puede permanecer vacío; no se envían eventos inesperados. La configuración desactiva
+PII por defecto y filtra campos sensibles como tokens, contraseñas, códigos OTP y credenciales.
+
+Configura el DSN fuera del repositorio (por ejemplo, variables de entorno del perfil EAS de
+staging/producción) y crea un nuevo build nativo después de cambiar el app config:
+
+```bash
+npx expo prebuild
+npx expo run:ios # o npx expo run:android
+```
+
+El plugin oficial `@sentry/react-native` ya está declarado en `app.json`. No pongas DSN, tokens de
+auth ni credenciales en `.env` versionado. `Sentry.wrap` captura errores del árbol de Expo Router;
+la instrumentación avanzada de navegación puede habilitarse posteriormente si el proyecto necesita
+trazas de navegación.
+
+### Maestro E2E
+
+Los flujos están en `.maestro/` y no agregan Maestro a `package.json`. Instala Maestro siguiendo
+su documentación oficial y ejecuta los YAML contra un development build de la app:
+
+```bash
+maestro test .maestro/login.yaml
+maestro test .maestro/create-list.yaml
+maestro test .maestro/compare-and-navigate.yaml
+```
+
+Los flujos usan el modo **Offline** disponible únicamente en builds de desarrollo y credenciales
+dummy. No se ejecutaron automáticamente en este entorno si Maestro no está instalado.
 
 ## Plataformas
 
@@ -71,13 +113,13 @@ El cliente HTTP único (axios + interceptors Bearer / refresh) está en `src/sha
 
 ## Scripts
 
-| Script | Qué hace |
-| --- | --- |
-| `yarn start` | Metro / Expo |
+| Script                  | Qué hace                                      |
+| ----------------------- | --------------------------------------------- |
+| `yarn start`            | Metro / Expo                                  |
 | `yarn start:dev-client` | Metro para el development client (no Expo Go) |
-| `yarn lint` | ESLint Expo |
-| `yarn typecheck` | `tsc --noEmit` |
-| `yarn test` | Jest + RNTL |
+| `yarn lint`             | ESLint Expo                                   |
+| `yarn typecheck`        | `tsc --noEmit`                                |
+| `yarn test`             | Jest + RNTL                                   |
 
 ## Arquitectura (resumen)
 

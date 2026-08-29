@@ -3,8 +3,10 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { AppTabBar } from '@/src/shared/ui';
 import { colors } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 export default function TabsLayout() {
+  const { t } = useTranslation();
   return (
     <Tabs
       tabBar={(props) => <AppTabBar {...props} />}
@@ -34,7 +36,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="home/index"
         options={{
-          title: 'Inicio',
+          title: t('shared.home'),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
           ),
@@ -43,7 +45,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="lista/index"
         options={{
-          title: 'Listas',
+          title: t('shared.lists'),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'cart' : 'cart-outline'} size={size} color={color} />
           ),
@@ -52,7 +54,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="map/index"
         options={{
-          title: 'Proveedores',
+          title: t('shared.providers'),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'map' : 'map-outline'} size={size} color={color} />
           ),
@@ -61,13 +63,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="perfil/index"
         options={{
-          title: 'Perfil',
+          title: t('shared.profile'),
           tabBarIcon: ({ color, size, focused }) => (
-            <Ionicons
-              name={focused ? 'person' : 'person-outline'}
-              size={size}
-              color={color}
-            />
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={size} color={color} />
           ),
         }}
       />

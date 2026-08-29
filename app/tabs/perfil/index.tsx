@@ -31,6 +31,7 @@ import { MotiView } from 'moti';
 import * as SecureStore from 'expo-secure-store';
 import { colors, typography } from '@/src/shared/theme';
 import { showToast, triggerHaptic } from '@/src/shared/ui';
+import { useTranslation } from 'react-i18next';
 
 // --------------------------------------------------------------------
 // TIPADO de la respuesta GET /usuario/{id}
@@ -51,6 +52,7 @@ type UsuarioResponse = {
 };
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
   const [showNotifications, setShowNotifications] = useState(false);
 
   // Estado para los datos del usuario
@@ -80,14 +82,14 @@ export default function ProfileScreen() {
         // Si el backend devuelve 401/403, el token ya no es válido → borramos todo y mandamos a Login
         await clearSession();
 
-        showToast('error', 'Sesión expirada', 'Inicia sesión nuevamente.');
+        showToast('error', t('profile.sessionExpired'), t('profile.sessionExpiredBody'));
         router.replace('/auth/IniciarSesion');
         return;
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [t]);
 
   const handleLogout = async () => {
     await clearSession();
@@ -96,30 +98,26 @@ export default function ProfileScreen() {
 
   const handleDeleteAccount = () => {
     if (!userData) return;
-    Alert.alert(
-      'Eliminar cuenta',
-      '¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.delete(endpoints.usuario(userData.IdUsuario));
-              // Después de eliminar, limpiamos credenciales y llevamos al login
-              await clearSession();
-              void triggerHaptic('success');
-              showToast('success', 'Cuenta eliminada');
-              router.replace('/auth/IniciarSesion');
-            } catch {
-              void triggerHaptic('error');
-              showToast('error', 'No se pudo eliminar la cuenta', 'Intenta nuevamente.');
-            }
-          },
+    Alert.alert(t('profile.deleteAccount'), t('profile.deleteConfirmation'), [
+      { text: t('shared.cancel'), style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.delete(endpoints.usuario(userData.IdUsuario));
+            // Después de eliminar, limpiamos credenciales y llevamos al login
+            await clearSession();
+            void triggerHaptic('success');
+            showToast('success', t('profile.deleted'));
+            router.replace('/auth/IniciarSesion');
+          } catch {
+            void triggerHaptic('error');
+            showToast('error', t('profile.deleteFailed'), t('profile.tryAgain'));
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   if (loading) {
@@ -164,7 +162,7 @@ export default function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Notificaciones</Text>
+              <Text style={styles.modalTitle}>{t('profile.notifications')}</Text>
               <Pressable onPress={() => setShowNotifications(false)}>
                 <Ionicons name="close" size={24} color="#555" />
               </Pressable>
@@ -173,23 +171,23 @@ export default function ProfileScreen() {
               {[
                 {
                   id: 'n1',
-                  title: 'Ofertas y Promociones',
-                  desc: 'El arroz que buscabas está a RD$50 menos en Supermercado X.',
-                  time: 'Hace 4 horas',
+                  title: t('profile.offers'),
+                  desc: t('profile.offerDescription'),
+                  time: t('profile.fourHoursAgo'),
                   icon: 'info-outline',
                 },
                 {
                   id: 'n2',
-                  title: 'Recordatorio de Lista de Compras',
-                  desc: 'No olvides tu lista de compras para hoy.',
-                  time: 'Hace 1 día',
+                  title: t('profile.reminder'),
+                  desc: t('profile.reminderDescription'),
+                  time: t('profile.oneDayAgo'),
                   icon: 'shopping-cart',
                 },
                 {
                   id: 'n3',
-                  title: 'Actualización de Precios',
-                  desc: 'El precio de la leche en Farmacia Z ha bajado un 15%. ¡Consulta más ofertas similares en la app!',
-                  time: 'Hace 12 días',
+                  title: t('profile.priceUpdate'),
+                  desc: t('profile.priceUpdateDescription'),
+                  time: t('profile.twelveDaysAgo'),
                   icon: 'attach-money',
                 },
               ].map((notif) => (
@@ -209,7 +207,7 @@ export default function ProfileScreen() {
               style={styles.closeButton}
               onPress={() => setShowNotifications(false)}
             >
-              <Text style={styles.closeButtonText}>Cerrar</Text>
+              <Text style={styles.closeButtonText}>{t('profile.close')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -223,7 +221,7 @@ export default function ProfileScreen() {
           transition={{ type: 'timing', duration: 400 }}
           style={styles.profileHeader}
         >
-          <Text style={styles.title}>Perfil</Text>
+          <Text style={styles.title}>{t('profile.title')}</Text>
 
           {userData.UrlPerfil ? (
             <Image source={{ uri: userData.UrlPerfil }} style={styles.avatar} />
@@ -247,7 +245,7 @@ export default function ProfileScreen() {
           >
             <View style={styles.optionLeft}>
               <Ionicons name="settings-outline" size={22} color="#4B5563" />
-              <Text style={styles.optionText}>Editar perfil</Text>
+              <Text style={styles.optionText}>{t('profile.editProfile')}</Text>
             </View>
             <MaterialIcons name="keyboard-arrow-right" size={24} color="#6B7280" />
           </TouchableOpacity>
@@ -259,7 +257,7 @@ export default function ProfileScreen() {
           >
             <View style={styles.optionLeft}>
               <Ionicons name="lock-closed-outline" size={22} color="#4B5563" />
-              <Text style={styles.optionText}>Cambiar contraseña</Text>
+              <Text style={styles.optionText}>{t('profile.changePassword')}</Text>
             </View>
             <MaterialIcons name="keyboard-arrow-right" size={24} color="#6B7280" />
           </TouchableOpacity>
@@ -284,7 +282,7 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount}>
             <View style={styles.optionLeft}>
               <Ionicons name="trash-outline" size={22} color="#D1170F" />
-              <Text style={styles.deleteText}>Eliminar cuenta</Text>
+              <Text style={styles.deleteText}>{t('profile.deleteAccount')}</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -293,7 +291,7 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <View style={styles.optionLeft}>
             <Ionicons name="log-out-outline" size={22} color="#D1170F" />
-            <Text style={styles.logoutText}>Cerrar Sesión</Text>
+            <Text style={styles.logoutText}>{t('profile.logout')}</Text>
           </View>
         </TouchableOpacity>
       </ScrollView>

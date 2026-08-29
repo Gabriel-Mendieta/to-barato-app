@@ -1,7 +1,10 @@
 import './global.css';
 import React, { useEffect } from 'react';
 import { Stack, SplashScreen } from 'expo-router';
+import { I18nextProvider } from 'react-i18next';
 import { initDevMode } from '@/src/shared/dev';
+import i18n from '@/src/shared/i18n';
+import { wrapRootLayout } from '@/src/shared/monitoring/sentry';
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -28,7 +31,7 @@ const SHARED_STACK_OPTIONS = {
   fullScreenGestureEnabled: true,
 };
 
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded, error] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -49,19 +52,23 @@ export default function RootLayout() {
   if (!fontsLoaded && !error) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <BottomSheetModalProvider>
-            <Stack screenOptions={SHARED_STACK_OPTIONS}>
-              <Stack.Screen name="index" />
-              <Stack.Screen name="auth" />
-              <Stack.Screen name="tabs" />
-            </Stack>
-            <ToastProvider />
-          </BottomSheetModalProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+    <I18nextProvider i18n={i18n}>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaProvider>
+            <BottomSheetModalProvider>
+              <Stack screenOptions={SHARED_STACK_OPTIONS}>
+                <Stack.Screen name="index" />
+                <Stack.Screen name="auth" />
+                <Stack.Screen name="tabs" />
+              </Stack>
+              <ToastProvider />
+            </BottomSheetModalProvider>
+          </SafeAreaProvider>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
+    </I18nextProvider>
   );
 }
+
+export default wrapRootLayout(RootLayout);

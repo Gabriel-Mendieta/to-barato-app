@@ -27,6 +27,7 @@ import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
 import { EmptyState, Skeleton, showToast, triggerHaptic } from '@/src/shared/ui';
+import { useTranslation } from 'react-i18next';
 
 ////////////////////////////////////////////////////////////////////////////////
 // TIPOS
@@ -63,6 +64,7 @@ type ProductoProveedorResponse = {
 };
 
 export default function SelectProviderScreen() {
+  const { t } = useTranslation();
   // 1) Deserializamos los productos + cantidades que vienen en params.items
   const params = useLocalSearchParams<{ items?: string }>();
   const raw = params.items ?? '[]';
@@ -91,18 +93,26 @@ export default function SelectProviderScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        showToast('error', 'Sin permiso', 'Necesitamos tu ubicación para buscar sucursales.');
+        showToast(
+          'error',
+          t('providers.locationPermission'),
+          t('providers.locationPermissionBody'),
+        );
         setLoadingLocation(false);
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
     } catch {
-      showToast('error', 'Ubicación no disponible', 'No pudimos obtener tu ubicación.');
+      showToast(
+        'error',
+        t('providers.locationUnavailable'),
+        t('providers.locationUnavailableBody'),
+      );
     } finally {
       setLoadingLocation(false);
     }
-  }, []);
+  }, [t]);
 
   // 4) Cuando location cambia, llamamos a sucursal-cercana
   useEffect(() => {
@@ -125,7 +135,7 @@ export default function SelectProviderScreen() {
         const resp = await api.post<SucursalCercana[]>(endpoints.sucursalCercana, body);
         setSucursales(resp.data);
       } catch {
-        showToast('error', 'No se pudieron cargar sucursales', 'Intenta nuevamente.');
+        showToast('error', t('providers.branchesFailed'), t('search.retry'));
       } finally {
         setLoadingSucursales(false);
       }
@@ -173,7 +183,11 @@ export default function SelectProviderScreen() {
     if (!selectedSucursal) return;
     const provInfo = proveedoresMap[selectedSucursal.IdProveedor];
     if (!provInfo) {
-      showToast('error', 'Proveedor no disponible', 'Espera un momento e inténtalo de nuevo.');
+      showToast(
+        'error',
+        t('providers.providerUnavailable'),
+        t('providers.providerUnavailableBody'),
+      );
       return;
     }
 
@@ -181,7 +195,7 @@ export default function SelectProviderScreen() {
     const stored = await SecureStore.getItemAsync('user_id');
     const userId = stored ? Number(stored) : null;
     if (!userId) {
-      showToast('error', 'Sesión expirada', 'Inicia sesión de nuevo.');
+      showToast('error', t('providers.saveSession'), t('providers.saveSessionBody'));
       return;
     }
 
@@ -220,7 +234,7 @@ export default function SelectProviderScreen() {
 
       router.replace('../../tabs/lista');
     } catch {
-      showToast('error', 'No se pudo guardar', 'Intenta nuevamente.');
+      showToast('error', t('providers.saveFailed'), t('search.retry'));
     }
   };
 
@@ -238,7 +252,7 @@ export default function SelectProviderScreen() {
               </View>
             </View>
           ))}
-          <Text style={{ marginTop: 8 }}>Buscando sucursales…</Text>
+          <Text style={{ marginTop: 8 }}>{t('providers.searchingBranches')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -249,9 +263,9 @@ export default function SelectProviderScreen() {
       <SafeAreaView style={styles.loadingContainer}>
         <EmptyState
           icon="location-outline"
-          title="Sin sucursales cercanas"
-          description="No encontramos proveedores para estos productos."
-          actionLabel="Reintentar"
+          title={t('providers.nearbyBranches')}
+          description={t('providers.nearbyBranchesBody')}
+          actionLabel={t('search.retry')}
           onAction={fetchLocation}
         />
       </SafeAreaView>
@@ -265,7 +279,7 @@ export default function SelectProviderScreen() {
         <TouchableOpacity onPress={() => router.push('../../tabs/list/add')}>
           <Icon name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Elige Sucursal</Text>
+        <Text style={styles.headerTitle}>{t('providers.chooseBranch')}</Text>
         <View style={{ width: 28 }} />
       </View>
 
@@ -291,10 +305,16 @@ export default function SelectProviderScreen() {
                 <View style={[styles.logo, { backgroundColor: '#eee' }]} />
               )}
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.provName}>{prov?.Nombre || 'Cargando…'}</Text>
+                <Text style={styles.provName}>
+                  {prov?.Nombre || t('providers.searchingBranches')}
+                </Text>
                 <Text style={styles.sucursalName}>{item.NombreSucursal}</Text>
-                <Text style={styles.provTotal}>Total: RD${item.Precio.toFixed(2)}</Text>
-                <Text style={styles.distancia}>{item.Distancia.toFixed(2)} km</Text>
+                <Text style={styles.provTotal}>
+                  {t('providers.total')}: RD${item.Precio.toFixed(2)}
+                </Text>
+                <Text style={styles.distancia}>
+                  {t('providers.distance', { distance: item.Distancia.toFixed(2) })}
+                </Text>
               </View>
             </TouchableOpacity>
           );
@@ -315,7 +335,7 @@ export default function SelectProviderScreen() {
           }}
           disabled={!selectedSucursal}
         >
-          <Text style={styles.btnText}>Ir al más cercano</Text>
+          <Text style={styles.btnText}>{t('providers.nearest')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -326,7 +346,7 @@ export default function SelectProviderScreen() {
           }}
           disabled={!selectedSucursal}
         >
-          <Text style={styles.btnTextDark}>Guardar Lista</Text>
+          <Text style={styles.btnTextDark}>{t('providers.saveList')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -344,11 +364,11 @@ export default function SelectProviderScreen() {
         backgroundStyle={{ backgroundColor: colors.card }}
       >
         <BottomSheetView style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>Nombre de tu lista</Text>
+          <Text style={styles.modalTitle}>{t('providers.listName')}</Text>
           <BottomSheetTextInput
             value={listaName}
             onChangeText={setListaName}
-            placeholder="Ej. 'Compras semanales'"
+            placeholder={t('providers.listNamePlaceholder')}
             placeholderTextColor={colors.muted}
             style={styles.modalInput}
             autoFocus
@@ -358,7 +378,7 @@ export default function SelectProviderScreen() {
               style={[styles.modalButton, { backgroundColor: '#DDD' }]}
               onPress={() => nameSheetRef.current?.dismiss()}
             >
-              <Text style={[styles.modalButtonText, { color: '#333' }]}>Cancelar</Text>
+              <Text style={[styles.modalButtonText, { color: '#333' }]}>{t('shared.cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -369,7 +389,7 @@ export default function SelectProviderScreen() {
               onPress={() => {
                 if (!listaName.trim()) {
                   void triggerHaptic('error');
-                  showToast('error', 'Nombre requerido', 'Escribe un nombre para la lista.');
+                  showToast('error', t('providers.requiredName'), t('providers.requiredNameBody'));
                   return;
                 }
                 void triggerHaptic('success');
@@ -378,7 +398,7 @@ export default function SelectProviderScreen() {
               }}
               disabled={listaName.trim().length === 0}
             >
-              <Text style={[styles.modalButtonText, { color: '#FFF' }]}>Guardar</Text>
+              <Text style={[styles.modalButtonText, { color: '#FFF' }]}>{t('providers.save')}</Text>
             </TouchableOpacity>
           </View>
         </BottomSheetView>

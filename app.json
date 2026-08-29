@@ -23,9 +23,7 @@
         "foregroundImage": "./assets/icons/logo.png",
         "backgroundColor": "#001D35"
       },
-      "permissions": [
-        "ACCESS_FINE_LOCATION"
-      ],
+      "permissions": ["ACCESS_FINE_LOCATION"],
       "package": "com.gabrielmendieta.tobaratoapp"
     },
     "web": {
@@ -48,7 +46,9 @@
       "@react-native-community/datetimepicker",
       "expo-font",
       "expo-status-bar",
-      "./plugins/withDisableUserScriptSandboxing.js"
+      "./plugins/withDisableUserScriptSandboxing.js",
+      "expo-localization",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true

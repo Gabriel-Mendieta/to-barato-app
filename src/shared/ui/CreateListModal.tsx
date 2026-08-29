@@ -15,6 +15,7 @@ import { triggerHaptic } from './haptics';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { createListSchema, type CreateListFormValues } from '@/src/features/lists/schema';
+import { useTranslation } from 'react-i18next';
 
 export type TipoProveedorOption = {
   IdTipoProveedor: number;
@@ -64,6 +65,7 @@ type Props = {
 };
 
 export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props) {
+  const { t } = useTranslation();
   const themeColors = useThemeColors();
   const sheetRef = useRef<BottomSheetModalMethods>(null);
   const nameInputRef = useRef<React.ElementRef<typeof BottomSheetTextInput>>(null);
@@ -98,12 +100,12 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
       const { data } = await api.get<TipoProveedorOption[]>(endpoints.tipoproveedor);
       setTipos(Array.isArray(data) ? data : []);
     } catch {
-      setError('No se pudieron cargar las categorías.');
+      setError(t('lists.noCategories'));
       setTipos([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (visible) {
@@ -174,18 +176,20 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
               style={styles.backRow}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Volver a categorías"
+              accessibilityLabel={t('lists.backCategories')}
             >
               <Ionicons name="chevron-back" size={18} color={colors.navy} />
-              <Text style={styles.backText}>Categoría</Text>
+              <Text style={styles.backText}>{t('lists.backCategories')}</Text>
             </Pressable>
           ) : null}
 
-          <Text style={styles.title}>Nueva lista</Text>
+          <Text style={styles.title}>{t('lists.modalTitle')}</Text>
           <Text style={styles.subtitle}>
             {step === 'tipo'
-              ? 'Elige una categoría para empezar.'
-              : `Nombre para tu lista de ${selected?.NombreTipoProveedor ?? ''}.`}
+              ? t('lists.chooseCategory')
+              : t('lists.listNameFor', {
+                  category: selected?.NombreTipoProveedor ?? '',
+                })}
           </Text>
 
           {loading ? (
@@ -194,12 +198,12 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
               <Pressable onPress={load} hitSlop={8}>
-                <Text style={styles.retry}>Reintentar</Text>
+                <Text style={styles.retry}>{t('shared.retry')}</Text>
               </Pressable>
             </View>
           ) : step === 'tipo' ? (
             tipos.length === 0 ? (
-              <Text style={styles.empty}>No hay categorías disponibles.</Text>
+              <Text style={styles.empty}>{t('lists.noCategories')}</Text>
             ) : (
               <View style={styles.grid}>
                 {tipos.map((t, i) => (
@@ -230,17 +234,18 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
             )
           ) : (
             <View style={styles.nameBlock}>
-              <Text style={styles.fieldLabel}>Nombre de la lista</Text>
+              <Text style={styles.fieldLabel}>{t('lists.listNameLabel')}</Text>
               <Controller
                 control={control}
                 name="nombre"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <BottomSheetTextInput
                     ref={nameInputRef}
+                    testID="create-list-name"
                     value={value}
                     onChangeText={onChange}
                     onBlur={onBlur}
-                    placeholder="Ej. Compras de la semana"
+                    placeholder={t('lists.listNamePlaceholder')}
                     placeholderTextColor={colors.muted}
                     style={[styles.nameInput, errors.nombre && styles.nameInputError]}
                     maxLength={60}
@@ -266,11 +271,11 @@ export function CreateListModal({ visible, onClose, onConfirm, onSelect }: Props
               disabled={!canContinue || isSubmitting}
               loading={isSubmitting}
             >
-              Continuar
+              {t('auth.profileSetup.continue')}
             </Button>
           ) : null}
           <Button tone="navy" onPress={() => sheetRef.current?.dismiss()} disabled={isSubmitting}>
-            Cancelar
+            {t('lists.cancel')}
           </Button>
         </View>
       </View>

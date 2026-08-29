@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { typography, useThemeColors } from '../theme';
+import { useTranslation } from 'react-i18next';
 
 export type TabKey = 'home' | 'lista' | 'map' | 'perfil';
 
@@ -82,6 +83,7 @@ type PillProps = {
 
 function TabPill({ active, onPress, onLongPress }: PillProps) {
   const colors = useThemeColors();
+  const { t } = useTranslation();
   return (
     <View
       style={[
@@ -96,6 +98,9 @@ function TabPill({ active, onPress, onLongPress }: PillProps) {
     >
       {TABS.map((tab) => {
         const isActive = tab.key === active;
+        const label = t(
+          `shared.${tab.key === 'home' ? 'home' : tab.key === 'lista' ? 'lists' : tab.key === 'map' ? 'providers' : 'profile'}`,
+        );
         const tint = isActive ? colors.orangeDeep : colors.tabInactive;
         return (
           <Pressable
@@ -105,7 +110,7 @@ function TabPill({ active, onPress, onLongPress }: PillProps) {
             hitSlop={4}
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
-            accessibilityLabel={tab.label}
+            accessibilityLabel={label}
             style={styles.itemPressable}
           >
             {({ pressed }) => (
@@ -130,7 +135,7 @@ function TabPill({ active, onPress, onLongPress }: PillProps) {
                   adjustsFontSizeToFit
                   minimumFontScale={0.85}
                 >
-                  {tab.label}
+                  {label}
                 </Text>
               </View>
             )}

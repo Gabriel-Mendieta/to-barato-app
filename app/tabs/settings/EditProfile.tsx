@@ -26,8 +26,10 @@ import { editProfileSchema, type EditProfileFormValues } from '@/src/features/pr
 import { useCurrentUser, useUpdateUser } from '@/src/features/profile/hooks';
 import type { UserDTO } from '@/src/shared/api/dto';
 import { showToast, triggerHaptic } from '@/src/shared/ui';
+import { useTranslation } from 'react-i18next';
 
 export default function EditProfileScreen() {
+  const { t } = useTranslation();
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
@@ -87,14 +89,14 @@ export default function EditProfileScreen() {
   useEffect(() => {
     if (!userQuery.isError) return;
     void clearSession();
-    showToast('error', 'Sesión expirada', 'Por favor inicia sesión de nuevo.');
+    showToast('error', t('profile.sessionExpired'), t('profile.sessionExpiredBody'));
     router.replace('/auth/IniciarSesion');
-  }, [userQuery.isError]);
+  }, [t, userQuery.isError]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showToast('error', 'Permiso denegado', 'Necesitamos permiso para acceder a fotos.');
+      showToast('error', t('profile.permissionDenied'), t('profile.photoPermissionBody'));
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
@@ -128,7 +130,7 @@ export default function EditProfileScreen() {
       }
 
       if (Object.keys(payload).length === 0) {
-        showToast('info', 'Sin cambios', 'No hubo modificaciones para guardar.');
+        showToast('info', t('profile.noChanges'), t('profile.noChangesBody'));
         return;
       }
 
@@ -142,11 +144,15 @@ export default function EditProfileScreen() {
       });
       setLocalImageUri(null);
       void triggerHaptic('success');
-      showToast('success', 'Perfil actualizado');
+      showToast('success', t('profile.updated'));
       router.back();
     } catch (error) {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo actualizar', getApiErrorMessage(error, 'Intenta nuevamente.'));
+      showToast(
+        'error',
+        t('profile.updateFailed'),
+        getApiErrorMessage(error, t('profile.tryAgain')),
+      );
     }
   });
 
@@ -172,7 +178,7 @@ export default function EditProfileScreen() {
         >
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Editar Perfil</Text>
+        <Text style={styles.headerTitle}>{t('profile.editTitle')}</Text>
         <View style={{ width: 28 }} />
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -197,7 +203,7 @@ export default function EditProfileScreen() {
         </MotiView>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Nombre de usuario</Text>
+          <Text style={styles.label}>{t('profile.username')}</Text>
           <Controller
             control={control}
             name="nombreUsuario"
@@ -217,7 +223,7 @@ export default function EditProfileScreen() {
             </Text>
           )}
 
-          <Text style={styles.label}>Correo electrónico</Text>
+          <Text style={styles.label}>{t('profile.email')}</Text>
           <Controller
             control={control}
             name="correo"
@@ -236,7 +242,7 @@ export default function EditProfileScreen() {
             </Text>
           )}
 
-          <Text style={styles.label}>Teléfono</Text>
+          <Text style={styles.label}>{t('profile.phone')}</Text>
           <Controller
             control={control}
             name="telefono"
@@ -256,7 +262,7 @@ export default function EditProfileScreen() {
             </Text>
           )}
 
-          <Text style={styles.label}>Nombres</Text>
+          <Text style={styles.label}>{t('profile.names')}</Text>
           <Controller
             control={control}
             name="nombres"
@@ -275,7 +281,7 @@ export default function EditProfileScreen() {
             </Text>
           )}
 
-          <Text style={styles.label}>Apellidos</Text>
+          <Text style={styles.label}>{t('profile.surnames')}</Text>
           <Controller
             control={control}
             name="apellidos"
@@ -303,7 +309,7 @@ export default function EditProfileScreen() {
           {submitting ? (
             <ActivityIndicator size="small" color="#FFF" />
           ) : (
-            <Text style={styles.saveText}>Guardar cambios</Text>
+            <Text style={styles.saveText}>{t('profile.saveChanges')}</Text>
           )}
         </TouchableOpacity>
       </ScrollView>

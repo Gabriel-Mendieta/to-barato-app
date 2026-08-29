@@ -33,6 +33,7 @@ import {
   type BottomSheetModalMethods,
   BottomSheetView,
 } from '@/src/shared/ui/BottomSheetCompat';
+import { useTranslation } from 'react-i18next';
 
 type TipoProveedor = {
   IdTipoProveedor: number;
@@ -95,6 +96,7 @@ function getBranchName(b: Sucursal, prov?: Proveedor) {
 }
 
 export default function MapScreen() {
+  const { t } = useTranslation();
   const mapRef = useRef<MapView>(null);
   const carouselRef = useRef<FlatList<BranchCard>>(null);
   const branchSheetRef = useRef<BottomSheetModalMethods>(null);
@@ -120,7 +122,7 @@ export default function MapScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          showToast('error', 'Sin permiso', 'No podemos obtener tu ubicación.');
+          showToast('error', t('providers.locationPermission'), t('providers.locationDeniedBody'));
           setRegion({
             latitude: 18.4861,
             longitude: -69.9312,
@@ -154,7 +156,7 @@ export default function MapScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     api
@@ -290,17 +292,17 @@ export default function MapScreen() {
           <Pressable
             onPress={() => router.push('/tabs/home')}
             style={styles.iconBtn}
-            accessibilityLabel="Volver"
+            accessibilityLabel={t('shared.back')}
           >
             <Ionicons name="chevron-back" size={22} color={colors.navy} />
           </Pressable>
           <Text style={styles.title} numberOfLines={1}>
-            Mapa de proveedores
+            {t('providers.title')}
           </Text>
           <Pressable
             onPress={() => router.push('/tabs/search')}
             style={styles.iconBtn}
-            accessibilityLabel="Buscar"
+            accessibilityLabel={t('search.title')}
           >
             <Ionicons name="options-outline" size={20} color={colors.navy} />
           </Pressable>
@@ -314,7 +316,8 @@ export default function MapScreen() {
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Búsqueda de proveedores"
+              placeholder={t('providers.search')}
+              testID="provider-search"
               placeholderTextColor={colors.muted}
               style={styles.searchInput}
               returnKeyType="search"
@@ -328,7 +331,7 @@ export default function MapScreen() {
             contentContainerStyle={styles.chipRow}
           >
             <FilterPill
-              label="Todos"
+              label={t('providers.all')}
               active={selectedTipo === 'all'}
               onPress={() => {
                 void triggerHaptic('selection');
@@ -408,7 +411,7 @@ export default function MapScreen() {
           <Pressable
             onPress={recenter}
             style={styles.recenterBtn}
-            accessibilityLabel="Centrar en mi ubicación"
+            accessibilityLabel={t('providers.recenter')}
           >
             <Ionicons name="navigate-outline" size={20} color={colors.navy} />
           </Pressable>
@@ -420,8 +423,8 @@ export default function MapScreen() {
           {nearby.length === 0 ? (
             <EmptyState
               icon="location-outline"
-              title="Sin proveedores"
-              description="Prueba con otro filtro o término de búsqueda."
+              title={t('providers.noProviders')}
+              description={t('providers.noProvidersBody')}
             />
           ) : (
             <FlatList
@@ -489,11 +492,11 @@ export default function MapScreen() {
 
                     <View style={styles.cardChips}>
                       <Chip tone="green" size="sm">
-                        Cerca
+                        {t('providers.close')}
                       </Chip>
                       <View style={styles.verifiedChip}>
                         <Ionicons name="checkmark-circle" size={11} color={colors.green} />
-                        <Text style={styles.verifiedText}>Verificado</Text>
+                        <Text style={styles.verifiedText}>{t('providers.verified')}</Text>
                       </View>
                     </View>
 
@@ -502,7 +505,7 @@ export default function MapScreen() {
                       onPress={() => openNavigation(item.lat, item.lng, item.NombreSucursal)}
                     >
                       <Ionicons name="navigate" size={14} color={colors.white} />
-                      <Text style={styles.routeBtnText}>Cómo llegar</Text>
+                      <Text style={styles.routeBtnText}>{t('providers.directions')}</Text>
                     </Pressable>
                   </Pressable>
                 );
@@ -550,7 +553,7 @@ export default function MapScreen() {
                   accessibilityRole="button"
                 >
                   <Ionicons name="navigate" size={14} color={colors.white} />
-                  <Text style={styles.routeBtnText}>Cómo llegar</Text>
+                  <Text style={styles.routeBtnText}>{t('providers.directions')}</Text>
                 </Pressable>
               </>
             );

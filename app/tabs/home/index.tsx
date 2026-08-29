@@ -32,6 +32,7 @@ import {
 } from '@/src/shared/theme';
 import { getProductImageUrl, getUnitAbbrev } from '@/src/shared/products/meta';
 import { getProductoById, SUPERMARKET_PROVIDER_IDS } from '@/src/shared/dev/mocks/data';
+import { useTranslation } from 'react-i18next';
 
 type Proveedor = {
   IdProveedor: number;
@@ -114,6 +115,7 @@ function DealImage({ uri, bg }: { uri: string; bg: string }) {
 }
 
 export default function HomeDashboard() {
+  const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const wide = width >= layout.tabletBreakpoint;
   const cardW = wide ? Math.min(168, width / 4 - 24) : 158;
@@ -182,7 +184,7 @@ export default function HomeDashboard() {
   }, []);
 
   const onMic = () => {
-    showToast('info', 'Próximamente', 'La búsqueda por voz estará disponible pronto.');
+    showToast('info', t('auth.login.comingSoon'), t('home.voiceSearchComingSoon'));
   };
 
   return (
@@ -207,7 +209,7 @@ export default function HomeDashboard() {
             <Pressable
               style={styles.bell}
               onPress={() => setNotifOpen((v) => !v)}
-              accessibilityLabel="Notificaciones"
+              accessibilityLabel={t('home.notifications')}
             >
               <Ionicons name="notifications-outline" size={22} color={colors.navy} />
               <View style={styles.badge} />
@@ -216,11 +218,8 @@ export default function HomeDashboard() {
 
           {notifOpen ? (
             <View style={styles.notifSheet}>
-              <Text style={styles.sectionTitle}>Notificaciones</Text>
-              <Text style={styles.muted}>
-                Sheet local (sin API de notificaciones). Los avisos reales llegarán cuando el
-                backend las exponga.
-              </Text>
+              <Text style={styles.sectionTitle}>{t('home.notifications')}</Text>
+              <Text style={styles.muted}>{t('home.notificationsUnavailable')}</Text>
             </View>
           ) : null}
 
@@ -228,7 +227,7 @@ export default function HomeDashboard() {
           <View style={styles.savingsCard}>
             <View style={styles.savingsLabelRow}>
               <Ionicons name="sparkles" size={14} color={colors.orange} />
-              <Text style={styles.savingsLabel}>TU AHORRO ESTE MES</Text>
+              <Text style={styles.savingsLabel}>{t('home.savingsThisMonth')}</Text>
             </View>
             <Text style={styles.savingsValue}>
               RD$ {money.whole}
@@ -237,7 +236,9 @@ export default function HomeDashboard() {
             <View style={styles.savingsMeta}>
               <View style={styles.pctBadge}>
                 <Ionicons name="trending-down" size={12} color={colors.navy} />
-                <Text style={styles.pctText}>+{savingsStub.compared}% vs. mes pasado</Text>
+                <Text style={styles.pctText}>
+                  {t('home.comparedLastMonth', { percent: savingsStub.compared })}
+                </Text>
               </View>
             </View>
             <Sparkline
@@ -251,9 +252,9 @@ export default function HomeDashboard() {
           <View style={styles.searchBar}>
             <Pressable style={styles.searchMain} onPress={() => router.push('/tabs/search')}>
               <Ionicons name="search" size={20} color={colors.tabInactive} />
-              <Text style={styles.searchPlaceholder}>Busca un producto...</Text>
+              <Text style={styles.searchPlaceholder}>{t('home.searchPlaceholder')}</Text>
             </Pressable>
-            <Pressable onPress={onMic} hitSlop={10} accessibilityLabel="Búsqueda por voz">
+            <Pressable onPress={onMic} hitSlop={10} accessibilityLabel={t('home.voiceSearch')}>
               <Ionicons name="mic-outline" size={20} color={colors.tabInactive} />
             </Pressable>
           </View>
@@ -275,7 +276,15 @@ export default function HomeDashboard() {
                   }}
                   style={[styles.catPill, active && styles.catPillActive]}
                 >
-                  <Text style={[styles.catText, active && styles.catTextActive]}>{c}</Text>
+                  <Text style={[styles.catText, active && styles.catTextActive]}>
+                    {c === 'Ofertas'
+                      ? t('home.categories.offers')
+                      : c === 'Mercado'
+                        ? t('home.categories.market')
+                        : c === 'Farmacia'
+                          ? t('home.categories.pharmacy')
+                          : t('home.categories.hardware')}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -284,10 +293,10 @@ export default function HomeDashboard() {
           {/* Bajadas de precio */}
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Bajadas de precio</Text>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('home.priceDrops')}</Text>
               <View style={styles.hoyBadge}>
                 <Ionicons name="trending-down" size={11} color="#0E7A4B" />
-                <Text style={styles.hoyText}>HOY</Text>
+                <Text style={styles.hoyText}>{t('home.today')}</Text>
               </View>
             </View>
           </View>
@@ -311,8 +320,8 @@ export default function HomeDashboard() {
               {deals.length === 0 ? (
                 <EmptyState
                   icon="trending-down-outline"
-                  title="Sin bajadas de precio"
-                  description="Cuando encontremos ofertas aparecerán aquí."
+                  title={t('home.noPriceDrops')}
+                  description={t('home.noPriceDropsBody')}
                 />
               ) : (
                 deals.map((item) => {
@@ -355,9 +364,9 @@ export default function HomeDashboard() {
 
           {/* Tiendas cerca de ti */}
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Tiendas cerca de ti</Text>
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('home.nearbyStores')}</Text>
             <Pressable onPress={() => router.push('/tabs/map')} style={styles.linkRow}>
-              <Text style={styles.link}>Ver mapa ›</Text>
+              <Text style={styles.link}>{t('home.seeMap')}</Text>
             </Pressable>
           </View>
 
@@ -396,9 +405,9 @@ export default function HomeDashboard() {
               <Text style={{ fontSize: 28 }}>🥗</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.recipeEyebrow}>GENERA UNA RECETA</Text>
-              <Text style={styles.ctaTitle}>Ideas de receta con tu lista</Text>
-              <Text style={styles.recipeMeta}>Abre una lista y cocina con lo que tienes</Text>
+              <Text style={styles.recipeEyebrow}>{t('home.generateRecipe')}</Text>
+              <Text style={styles.ctaTitle}>{t('home.recipeTitle')}</Text>
+              <Text style={styles.recipeMeta}>{t('home.recipeBody')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#A35A0E" />
           </Pressable>

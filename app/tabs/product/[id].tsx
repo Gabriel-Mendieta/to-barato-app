@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { api, endpoints } from '@/src/shared/api';
 import { Button, Chip, EmptyState, Screen, ScreenTitle, Skeleton } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 type PassedInfo = {
   IdProducto: number;
@@ -27,6 +28,7 @@ type PrecioProveedor = {
 };
 
 export default function ProductDetailScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; data?: string }>();
   const productoId = Number(params.id);
@@ -56,7 +58,7 @@ export default function ProductDetailScreen() {
     try {
       setInfo(JSON.parse(decodeURIComponent(raw)));
     } catch {
-      setError('Error al leer datos del producto.');
+      setError(t('product.readError'));
     }
   }, [raw, productoId]);
 
@@ -74,7 +76,7 @@ export default function ProductDetailScreen() {
     return (
       <Screen>
         <Text style={styles.error}>{error}</Text>
-        <Button onPress={() => router.back()}>Volver</Button>
+        <Button onPress={() => router.back()}>{t('product.back')}</Button>
       </Screen>
     );
   }
@@ -94,7 +96,7 @@ export default function ProductDetailScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <Pressable onPress={() => router.back()} style={styles.back}>
           <Ionicons name="chevron-back" size={22} color={colors.navy} />
-          <Text style={styles.backText}>Volver</Text>
+          <Text style={styles.backText}>{t('product.back')}</Text>
         </Pressable>
 
         {info.UrlImagen ? (
@@ -113,7 +115,7 @@ export default function ProductDetailScreen() {
         </Text>
         {info.Descripcion ? <Text style={styles.desc}>{info.Descripcion}</Text> : null}
 
-        <Text style={styles.section}>Precios por proveedor</Text>
+        <Text style={styles.section}>{t('product.pricesByProvider')}</Text>
         {loadingPrices ? (
           <View style={styles.priceSkeletons}>
             {[0, 1, 2].map((item) => (
@@ -131,8 +133,8 @@ export default function ProductDetailScreen() {
             ListEmptyComponent={
               <EmptyState
                 icon="pricetag-outline"
-                title="Sin precios adicionales"
-                description="Todavía no hay precios de otros proveedores."
+                title={t('product.noAdditionalPrices')}
+                description={t('product.noAdditionalPricesBody')}
               />
             }
             renderItem={({ item }) => (

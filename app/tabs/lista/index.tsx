@@ -36,6 +36,7 @@ import {
   triggerHaptic,
 } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
+import { useTranslation } from 'react-i18next';
 
 type Lista = {
   IdUsuario: number;
@@ -129,6 +130,7 @@ function formatMoney(value: number) {
 }
 
 export default function ShoppingListScreen() {
+  const { t } = useTranslation();
   const [listas, setListas] = useState<Lista[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -216,7 +218,7 @@ export default function ShoppingListScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        showToast('error', 'Sin permiso', 'Necesitamos tu ubicación para generar la ruta.');
+        showToast('error', t('lists.noPermission'), t('lists.routePermissionBody'));
         return;
       }
 
@@ -236,7 +238,7 @@ export default function ShoppingListScreen() {
       const rutas = resp.data;
 
       if (!rutas.length) {
-        showToast('info', 'Ruta', 'No se encontraron sucursales para esa selección.');
+        showToast('info', t('lists.route'), t('lists.noBranches'));
         return;
       }
 
@@ -257,7 +259,7 @@ export default function ShoppingListScreen() {
         Linking.openURL(url);
       }
     } catch {
-      showToast('error', 'No se pudo generar la ruta', 'Intenta nuevamente.');
+      showToast('error', t('lists.routeFailed'), t('lists.tryAgain'));
     }
   };
 
@@ -320,26 +322,26 @@ export default function ShoppingListScreen() {
 
       await Share.share({ message });
     } catch {
-      showToast('error', 'No se pudo compartir la lista', 'Intenta nuevamente.');
+      showToast('error', t('lists.shareFailed'), t('lists.tryAgain'));
     }
   };
 
   const confirmDelete = (lista: Lista) => {
     void triggerHaptic('warning');
-    Alert.alert('Eliminar lista', '¿Seguro deseas eliminar esta lista?', [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert(t('lists.deleteList'), t('lists.deleteConfirmation'), [
+      { text: t('lists.cancel'), style: 'cancel' },
       {
-        text: 'Eliminar',
+        text: t('lists.delete'),
         style: 'destructive',
         onPress: async () => {
           try {
             await api.delete(endpoints.listaById(lista.IdLista));
             void triggerHaptic('success');
-            showToast('success', 'Lista eliminada');
+            showToast('success', t('lists.listDeleted'));
             fetchUserLists();
           } catch {
             void triggerHaptic('error');
-            showToast('error', 'No se pudo eliminar', 'Intenta nuevamente.');
+            showToast('error', t('lists.deleteFailed'), t('lists.tryAgain'));
           }
         },
       },
@@ -374,7 +376,7 @@ export default function ShoppingListScreen() {
       const userIdStr = await SecureStore.getItemAsync('user_id');
       const userId = userIdStr ? Number(userIdStr) : null;
       if (!userId) {
-        showToast('error', 'Sesión expirada', 'Inicia sesión de nuevo.');
+        showToast('error', t('lists.sessionExpired'), t('lists.sessionExpiredBody'));
         return;
       }
 
@@ -382,7 +384,7 @@ export default function ShoppingListScreen() {
       const match = (proveedores ?? []).find((p) => p.IdTipoProveedor === tipo.IdTipoProveedor);
       const idProveedor = match?.IdProveedor ?? proveedores?.[0]?.IdProveedor;
       if (!idProveedor) {
-        showToast('error', 'Sin proveedores', 'No hay proveedores para esa categoría.');
+        showToast('error', t('lists.noProviders'), t('lists.noProvidersBody'));
         return;
       }
 
@@ -408,7 +410,7 @@ export default function ShoppingListScreen() {
       });
     } catch {
       void triggerHaptic('error');
-      showToast('error', 'No se pudo crear la lista', 'Intenta nuevamente.');
+      showToast('error', t('lists.createFailed'), t('lists.tryAgain'));
     }
   };
 
@@ -450,19 +452,19 @@ export default function ShoppingListScreen() {
                 onPress={goHome}
                 style={styles.headerBtn}
                 accessibilityRole="button"
-                accessibilityLabel="Volver a Inicio"
+                accessibilityLabel={t('shared.back')}
                 hitSlop={8}
               >
                 <Ionicons name="chevron-back" size={22} color={colors.navy} />
               </Pressable>
               <Text style={styles.title} numberOfLines={1}>
-                Lista de Compras
+                {t('lists.title')}
               </Text>
               <Pressable
                 onPress={() => setNotifOpen((v) => !v)}
                 style={styles.headerBtn}
                 accessibilityRole="button"
-                accessibilityLabel="Notificaciones"
+                accessibilityLabel={t('lists.notifications')}
                 hitSlop={8}
               >
                 <Ionicons name="notifications-outline" size={20} color={colors.navy} />
@@ -471,11 +473,8 @@ export default function ShoppingListScreen() {
 
             {notifOpen ? (
               <View style={styles.notifSheet}>
-                <Text style={styles.notifTitle}>Notificaciones</Text>
-                <Text style={styles.notifBody}>
-                  Sheet local (sin API de notificaciones). Los avisos reales llegarán cuando el
-                  backend esté listo.
-                </Text>
+                <Text style={styles.notifTitle}>{t('lists.notifications')}</Text>
+                <Text style={styles.notifBody}>{t('lists.notificationsUnavailable')}</Text>
               </View>
             ) : null}
 
@@ -483,14 +482,14 @@ export default function ShoppingListScreen() {
               <View style={styles.budgetCard}>
                 <View style={styles.budgetRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.budgetLabel}>Presupuesto estimado</Text>
+                    <Text style={styles.budgetLabel}>{t('lists.estimatedBudget')}</Text>
                     <Text style={styles.budgetValue}>
                       RD$ <Text style={styles.budgetMono}>{money.whole}</Text>
                       <Text style={styles.budgetCents}>.{money.cents}</Text>
                     </Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.budgetSideLabel}>Ahorras</Text>
+                    <Text style={styles.budgetSideLabel}>{t('lists.savings')}</Text>
                     <Text style={styles.budgetSideValue}>
                       RD$ {savingsMoney.whole}.{savingsMoney.cents}
                     </Text>
@@ -511,8 +510,9 @@ export default function ShoppingListScreen() {
 
             {isSelecting ? (
               <Text style={styles.selectHint}>
-                Mantén pulsado para seleccionar · {selectedLists.size} elegida
-                {selectedLists.size === 1 ? '' : 's'}
+                {selectedLists.size === 1
+                  ? t('lists.selectionHint', { count: selectedLists.size })
+                  : t('lists.selectionHintPlural', { count: selectedLists.size })}
               </Text>
             ) : null}
           </Stagger>
@@ -520,9 +520,9 @@ export default function ShoppingListScreen() {
         ListEmptyComponent={
           <EmptyState
             icon="cart-outline"
-            title="Aún no tienes listas"
-            description="Crea tu primera lista de compras y compara precios entre proveedores."
-            actionLabel="Crear nueva lista"
+            title={t('lists.noLists')}
+            description={t('lists.noListsBody')}
+            actionLabel={t('lists.newList')}
             onAction={goCreate}
           />
         }
@@ -559,7 +559,7 @@ export default function ShoppingListScreen() {
                     <Pressable
                       onPress={() => openMenu(item)}
                       hitSlop={12}
-                      accessibilityLabel="Más opciones"
+                      accessibilityLabel={t('lists.listOptions')}
                       style={styles.moreBtn}
                     >
                       <Ionicons name="ellipsis-horizontal" size={18} color={colors.tabInactive} />
@@ -568,11 +568,11 @@ export default function ShoppingListScreen() {
 
                   <View style={styles.metaRow}>
                     <Text style={styles.metaText}>
-                      {count} artículo{count === 1 ? '' : 's'}
+                      {t(count === 1 ? 'lists.articles_one' : 'lists.articles_other', { count })}
                     </Text>
                     {done > 0 ? (
                       <Chip tone="green" size="sm" style={styles.doneChip}>
-                        {done} comprados
+                        {t('lists.purchased', { count: done })}
                       </Chip>
                     ) : null}
                   </View>
@@ -593,7 +593,7 @@ export default function ShoppingListScreen() {
               accessibilityRole="button"
             >
               <Ionicons name="add" size={18} color={colors.muted} />
-              <Text style={styles.dashedCreateText}>Crear nueva lista</Text>
+              <Text style={styles.dashedCreateText}>{t('lists.newList')}</Text>
             </Pressable>
           ) : null
         }
@@ -607,14 +607,16 @@ export default function ShoppingListScreen() {
             accessibilityRole="button"
           >
             <Ionicons name="navigate" size={18} color={colors.white} />
-            <Text style={styles.routeBtnText}>Generar ruta ({selectedLists.size})</Text>
+            <Text style={styles.routeBtnText}>
+              {t('lists.generateRoute', { count: selectedLists.size })}
+            </Text>
           </Pressable>
           <Pressable
             onPress={() => setSelectedLists(new Set())}
             style={styles.routeCancel}
             accessibilityRole="button"
           >
-            <Text style={styles.routeCancelText}>Cancelar</Text>
+            <Text style={styles.routeCancelText}>{t('lists.cancel')}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -638,7 +640,7 @@ export default function ShoppingListScreen() {
       >
         <BottomSheetView style={styles.menuSheet}>
           <Text style={styles.menuTitle} numberOfLines={1}>
-            {menuList?.Nombre ?? 'Opciones de lista'}
+            {menuList?.Nombre ?? t('lists.listOptions')}
           </Text>
           <Pressable
             style={styles.menuButton}
@@ -649,7 +651,7 @@ export default function ShoppingListScreen() {
             }}
           >
             <Ionicons name="share-outline" size={20} color={colors.navy} />
-            <Text style={styles.menuButtonText}>Compartir</Text>
+            <Text style={styles.menuButtonText}>{t('lists.share')}</Text>
           </Pressable>
           <Pressable
             style={styles.menuButton}
@@ -660,7 +662,7 @@ export default function ShoppingListScreen() {
             }}
           >
             <Ionicons name="checkmark-circle-outline" size={20} color={colors.navy} />
-            <Text style={styles.menuButtonText}>Seleccionar para ruta</Text>
+            <Text style={styles.menuButtonText}>{t('lists.selectForRoute')}</Text>
           </Pressable>
           <Pressable
             style={styles.menuButton}
@@ -671,7 +673,7 @@ export default function ShoppingListScreen() {
             }}
           >
             <Ionicons name="trash-outline" size={20} color={colors.red} />
-            <Text style={[styles.menuButtonText, { color: colors.red }]}>Eliminar</Text>
+            <Text style={[styles.menuButtonText, { color: colors.red }]}>{t('lists.delete')}</Text>
           </Pressable>
         </BottomSheetView>
       </BottomSheetModal>
