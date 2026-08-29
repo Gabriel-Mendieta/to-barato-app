@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import {
   useAddListItem,
+  useCreateList,
   useListItems,
   useRemoveListItem,
   useUpdateListItem,
@@ -14,7 +15,7 @@ import {
   useProductPrices,
   useProductsByProvider,
 } from '@/src/features/products/hooks';
-import { useProvider } from '@/src/features/providers/hooks';
+import { useNearbyBranches, useProvider } from '@/src/features/providers/hooks';
 import { api, endpoints, queryKeys } from '@/src/shared/api';
 
 function createWrapper(client = createQueryClient()) {
@@ -69,6 +70,63 @@ describe('hooks de React Query', () => {
     expect(prices.result.current.fetchStatus).toBe('idle');
     expect(productsByProvider.result.current.fetchStatus).toBe('idle');
     expect(provider.result.current.fetchStatus).toBe('idle');
+  });
+
+  it('habilita nearby solo con ubicación, productos y cantidades válidos', async () => {
+    const validPayload = {
+      lat: 18.48,
+      lng: -69.93,
+      ids_productos: [1, 3],
+      lista_cantidad: [1, 2],
+    };
+    const post = jest.spyOn(api, 'post').mockResolvedValue({ data: [] } as never);
+
+    const valid = renderHook(() => useNearbyBranches(validPayload), {
+      wrapper: createWrapper(),
+    });
+    const invalid = renderHook(
+      () =>
+        useNearbyBranches({
+          ...validPayload,
+          ids_productos: [1, 0],
+          lista_cantidad: [1],
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(valid.result.current.isSuccess).toBe(true));
+    expect(post).toHaveBeenCalledWith(endpoints.sucursalCercana, validPayload);
+    expect(invalid.result.current.fetchStatus).toBe('idle');
+  });
+
+  it('crea una lista e invalida listas, items nuevos y proveedores cercanos', async () => {
+    const client = createQueryClient();
+    const invalidateQueries = jest.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
+    const payload = {
+      IdUsuario: 7,
+      IdProveedor: 2,
+      Nombre: 'Compras',
+      PrecioTotal: '120.00',
+    };
+    jest.spyOn(api, 'post').mockResolvedValue({ data: { IdLista: 11 } } as never);
+
+    const { result } = renderHook(() => useCreateList(), {
+      wrapper: createWrapper(client),
+    });
+
+    act(() => result.current.mutate(payload));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(api.post).toHaveBeenCalledWith(endpoints.lista, payload);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.lists.all(payload.IdUsuario),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.lists.items(11),
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.providers.root,
+    });
   });
 
   it('envía el producto y cantidad correctos e invalida las listas al agregar', async () => {

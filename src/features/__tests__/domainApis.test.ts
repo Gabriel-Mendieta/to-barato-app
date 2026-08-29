@@ -3,6 +3,7 @@ import { setOfflineMode, __resetDevModeForTests } from '@/src/shared/dev';
 import {
   addItem,
   all as allLists,
+  create as createList,
   removeItem,
   updateItem,
   updateListProvider,
@@ -15,7 +16,12 @@ import {
   prices,
   units,
 } from '@/src/features/products/api';
-import { nearby, byId as providerById } from '@/src/features/providers/api';
+import {
+  all as allProviders,
+  nearby,
+  types as providerTypes,
+  byId as providerById,
+} from '@/src/features/providers/api';
 import { listKeys, productKeys, providerKeys } from '@/src/shared/api/queryClient';
 
 describe('APIs y query keys de dominios', () => {
@@ -51,12 +57,20 @@ describe('APIs y query keys de dominios', () => {
       PrecioActual: '10.00',
       Cantidad: 2,
     };
+    const createPayload = {
+      IdUsuario: 7,
+      IdProveedor: 3,
+      Nombre: 'Compras',
+      PrecioTotal: '0.00',
+    };
+    await createList(createPayload);
     await addItem(addPayload);
     await updateItem(3, 9, { Cantidad: 4 });
     await removeItem(3, 9);
     await updateListProvider(3, 4);
 
-    expect(api.post).toHaveBeenCalledWith(endpoints.listaProducto, addPayload);
+    expect(api.post).toHaveBeenNthCalledWith(1, endpoints.lista, createPayload);
+    expect(api.post).toHaveBeenNthCalledWith(2, endpoints.listaProducto, addPayload);
     expect(api.put).toHaveBeenNthCalledWith(1, endpoints.listaProductoItem(3, 9), { Cantidad: 4 });
     expect(api.delete).toHaveBeenCalledWith(endpoints.listaProductoItem(3, 9));
     expect(api.put).toHaveBeenNthCalledWith(2, endpoints.listaById(3), {
@@ -101,12 +115,23 @@ describe('APIs y query keys de dominios', () => {
   it('mantiene APIs compatibles con el adaptador offline', async () => {
     __resetDevModeForTests();
     await setOfflineMode(true);
+    const providers = await allProviders();
+    const types = await providerTypes();
     const response = await providerById(1);
+    const branches = await nearby({
+      lat: 18.48,
+      lng: -69.93,
+      ids_productos: [1, 3],
+      lista_cantidad: [1, 2],
+    });
     const catalogProducts = await catalogByType(1);
     const product = await detail(1);
     const productPrices = await prices(1);
     const providerProducts = await byProvider(1);
+    expect(providers.length).toBeGreaterThan(0);
+    expect(types.length).toBeGreaterThan(0);
     expect(response.IdProveedor).toBe(1);
+    expect(branches.length).toBeGreaterThan(0);
     expect(catalogProducts.length).toBeGreaterThan(0);
     expect(product.IdProducto).toBe(1);
     expect(productPrices.length).toBeGreaterThan(0);

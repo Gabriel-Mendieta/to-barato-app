@@ -9,7 +9,7 @@ function isValidId(id: ProviderEntityId | null | undefined): id is ProviderEntit
   return Number.isFinite(numericId) && numericId > 0;
 }
 
-function isValidNearbyPayload(
+export function isValidNearbyPayload(
   payload: NearbyBranchesRequest | null | undefined,
 ): payload is NearbyBranchesRequest {
   return Boolean(
@@ -17,7 +17,11 @@ function isValidNearbyPayload(
     Number.isFinite(payload.lat) &&
     Number.isFinite(payload.lng) &&
     Array.isArray(payload.ids_productos) &&
-    Array.isArray(payload.lista_cantidad),
+    Array.isArray(payload.lista_cantidad) &&
+    payload.ids_productos.length > 0 &&
+    payload.ids_productos.length === payload.lista_cantidad.length &&
+    payload.ids_productos.every((id) => Number.isInteger(id) && id > 0) &&
+    payload.lista_cantidad.every((quantity) => Number.isInteger(quantity) && quantity > 0),
   );
 }
 

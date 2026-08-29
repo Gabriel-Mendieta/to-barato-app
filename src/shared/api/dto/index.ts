@@ -25,6 +25,7 @@ export type {
   UnitDTO,
 } from './catalog';
 export type {
+  ListCreateRequest,
   ListItemAddRequest,
   ListDTO,
   ListItemDTO,

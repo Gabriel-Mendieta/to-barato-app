@@ -9,6 +9,13 @@ export type ListDTO = {
   FechaCreacion: string;
 };
 
+export type ListCreateRequest = {
+  IdUsuario: number;
+  IdProveedor: number;
+  Nombre: string;
+  PrecioTotal: DecimalValue;
+};
+
 export type ListItemDTO = {
   IdLista?: number;
   IdProducto: number;

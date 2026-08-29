@@ -1,5 +1,6 @@
 import { api, endpoints } from '@/src/shared/api';
 import type {
+  ListCreateRequest,
   ListDTO,
   ListItemAddRequest,
   ListItemDTO,
@@ -19,6 +20,11 @@ export async function all(userId: ListEntityId): Promise<ListDTO[]> {
 
 export async function items(listId: ListEntityId): Promise<ListItemDTO[]> {
   const { data } = await api.get<ListItemDTO[]>(endpoints.productosDeLista(listId));
+  return data;
+}
+
+export async function create(payload: ListCreateRequest): Promise<ListDTO> {
+  const { data } = await api.post<ListDTO>(endpoints.lista, payload);
   return data;
 }
 
@@ -67,6 +73,7 @@ export async function updateListProvider(
 export const listsApi = {
   all,
   items,
+  create,
   addItem,
   updateItem,
   removeItem,

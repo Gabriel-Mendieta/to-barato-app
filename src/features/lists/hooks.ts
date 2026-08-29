@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/src/shared/api';
 import type {
+  ListCreateRequest,
   ListDTO,
   ListItemDTO,
   ListItemAddRequest,
@@ -10,6 +11,7 @@ import type {
 import {
   addItem,
   all,
+  create as createList,
   items,
   removeItem,
   updateItem,
@@ -47,6 +49,36 @@ export function useListItems(listId: ListEntityId | null | undefined) {
     },
     enabled,
     networkMode: 'always',
+  });
+}
+
+export function useCreateList() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ListCreateRequest) => {
+      if (
+        !payload ||
+        !isValidId(payload.IdUsuario) ||
+        !isValidId(payload.IdProveedor) ||
+        typeof payload.Nombre !== 'string' ||
+        !payload.Nombre.trim()
+      ) {
+        throw new Error('Los datos de la lista no son válidos.');
+      }
+      return createList(payload);
+    },
+    networkMode: 'always',
+    onSuccess: (list, payload) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.lists.all(payload.IdUsuario),
+      });
+      if (isValidId(list.IdLista)) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.lists.items(list.IdLista),
+        });
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers.root });
+    },
   });
 }
 
