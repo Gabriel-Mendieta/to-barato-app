@@ -1,10 +1,7 @@
 export { env, DEFAULT_API_URL } from '../config/env';
 export { endpoints } from './endpoints';
 export { api } from './client';
-export {
-  getApiErrorMessage,
-  normalizeApiError,
-} from './errors';
+export { getApiErrorMessage, normalizeApiError } from './errors';
 export * from './dto';
 export {
   clearSession,
@@ -15,3 +12,4 @@ export {
   saveSession,
   type SessionTokens,
 } from './session';
+export { queryClient, queryKeys } from './queryClient';

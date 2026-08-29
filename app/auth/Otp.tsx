@@ -1,4 +1,5 @@
-import { api, endpoints, getApiErrorMessage } from '@/src/shared/api';
+import { getApiErrorMessage } from '@/src/shared/api';
+import { requestOtp, verifyOtp } from '@/src/features/auth/api';
 import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
@@ -17,7 +18,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Screen } from '@/src/shared/ui';
+import { Button, Screen, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
 
 const OTP_LENGTH = 6;
@@ -98,10 +99,7 @@ export default function OtpVerificationScreen() {
     }
   };
 
-  const handleKeyPress = (
-    index: number,
-    e: NativeSyntheticEvent<TextInputKeyPressEventData>
-  ) => {
+  const handleKeyPress = (index: number, e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
     // Solo cuando la caja está vacía: ir a la anterior y borrarla.
     // Si hay dígito, onChangeText("") lo limpia.
     if (e.nativeEvent.key !== 'Backspace' || otp[index] !== '' || index === 0) {
@@ -123,9 +121,8 @@ export default function OtpVerificationScreen() {
     setVerifyError('');
     setVerifying(true);
     try {
-      await api.post(endpoints.verificarOtp, null, {
-        params: { email: formData.email, codigo: code },
-      });
+      await verifyOtp({ email: formData.email, codigo: code });
+      void triggerHaptic('success');
       router.replace({
         pathname: '/auth/Profile-setup',
         params: {
@@ -133,9 +130,9 @@ export default function OtpVerificationScreen() {
         },
       });
     } catch (err) {
-      setVerifyError(
-        getApiErrorMessage(err, 'Código incorrecto o expirado. Intenta de nuevo.')
-      );
+      void triggerHaptic('error');
+      showToast('error', 'Código incorrecto', 'Verifica el código e inténtalo de nuevo.');
+      setVerifyError(getApiErrorMessage(err, 'Código incorrecto o expirado. Intenta de nuevo.'));
     } finally {
       setVerifying(false);
     }
@@ -145,14 +142,16 @@ export default function OtpVerificationScreen() {
     setResendError('');
     setResending(true);
     try {
-      await api.post(endpoints.solicitarOtp, null, {
-        params: { email: formData.email },
-      });
+      await requestOtp(formData.email);
+      void triggerHaptic('success');
+      showToast('success', 'Código reenviado');
       setTimer(60);
       setOtp(Array(OTP_LENGTH).fill(''));
       inputsRef.current[0]?.focus();
       setFocusedIndex(0);
     } catch (err) {
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo reenviar', 'Intenta más tarde.');
       setResendError(getApiErrorMessage(err, 'No se pudo reenviar. Intenta más tarde.'));
     } finally {
       setResending(false);
@@ -202,9 +201,7 @@ export default function OtpVerificationScreen() {
               <Text style={styles.title}>Verifica tu correo</Text>
               <Text style={styles.subtitle}>
                 Ingresa el código de {OTP_LENGTH} dígitos que enviamos a{' '}
-                <Text style={styles.emailHighlight}>
-                  {formData.email || 'tu correo'}
-                </Text>
+                <Text style={styles.emailHighlight}>{formData.email || 'tu correo'}</Text>
               </Text>
 
               <View style={styles.otpRow}>
@@ -236,9 +233,7 @@ export default function OtpVerificationScreen() {
                 })}
               </View>
 
-              {verifyError.length > 0 ? (
-                <Text style={styles.errorText}>{verifyError}</Text>
-              ) : null}
+              {verifyError.length > 0 ? <Text style={styles.errorText}>{verifyError}</Text> : null}
 
               <Button
                 tone="navy"
@@ -252,9 +247,7 @@ export default function OtpVerificationScreen() {
 
               <View style={styles.resendBlock}>
                 {timer > 0 ? (
-                  <Text style={styles.timerText}>
-                    Reenviar código en {timer}s
-                  </Text>
+                  <Text style={styles.timerText}>Reenviar código en {timer}s</Text>
                 ) : (
                   <>
                     {resendError.length > 0 ? (

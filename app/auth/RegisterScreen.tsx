@@ -1,4 +1,7 @@
-import { api, endpoints, getApiErrorMessage } from '@/src/shared/api';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useRequestOtp } from '@/src/features/auth/hooks';
+import { registerSchema, type RegisterFormValues } from '@/src/features/auth/schema';
 import React, { useState } from 'react';
 import {
   View,
@@ -16,12 +19,8 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Field, Screen } from '@/src/shared/ui';
+import { Button, Field, Screen, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, spacing, typography } from '@/src/shared/theme';
-
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/** Mínimo 6, 1 mayúscula, 1 número y 1 carácter especial */
-const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{6,}$/;
 
 function splitDisplayName(fullName: string) {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -43,44 +42,38 @@ function usernameFrom(email: string, displayName: string) {
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [otpError, setOtpError] = useState('');
+  const { requestOtp, loading: sendingOtp, error: otpError } = useRequestOtp();
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isValid },
+  } = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
+    mode: 'onChange',
+    defaultValues: { name: '', email: '', password: '' },
+  });
 
-  const isEmailValid = emailRegex.test(email);
-  const isPasswordValid = passwordRegex.test(password);
-  const canSubmit =
-    name.trim().length > 0 && isEmailValid && isPasswordValid;
-
-  const handleRegister = async () => {
-    if (!canSubmit) return;
-    setOtpError('');
-    setSendingOtp(true);
-
+  const handleRegister = handleSubmit(async ({ name, email, password }) => {
     const { firstName, lastName } = splitDisplayName(name);
     const username = usernameFrom(email, name);
 
-    try {
-      await api.post(endpoints.solicitarOtp, null, { params: { email } });
+    const response = await requestOtp(email);
+    if (response) {
+      void triggerHaptic('success');
       router.push({
         pathname: '/auth/Otp',
         params: {
           data: encodeURIComponent(
-            JSON.stringify({ firstName, lastName, username, email, password })
+            JSON.stringify({ firstName, lastName, username, email, password }),
           ),
         },
       });
-    } catch (err) {
-      setOtpError(
-        getApiErrorMessage(err, 'No se pudo enviar el OTP. Por favor, inténtalo de nuevo.')
-      );
-    } finally {
-      setSendingOtp(false);
+    } else {
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo continuar', otpError ?? 'Intenta nuevamente.');
     }
-  };
+  });
 
   return (
     <Screen edges={['top', 'bottom']} gutters>
@@ -115,68 +108,94 @@ export default function RegisterScreen() {
 
             <View style={styles.body}>
               <Text style={styles.title}>Crea tu cuenta gratis.</Text>
-              <Text style={styles.subtitle}>
-                Empieza a comparar precios y ahorrar hoy.
-              </Text>
+              <Text style={styles.subtitle}>Empieza a comparar precios y ahorrar hoy.</Text>
 
               <View style={styles.form}>
-                <Field
-                  label="Nombre"
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Mario Luciano"
-                  autoCapitalize="words"
-                  textContentType="name"
-                  hint="Como aparecerá en tu perfil"
+                <Controller
+                  control={control}
+                  name="name"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Field
+                      label="Nombre"
+                      value={value}
+                      onChangeText={onChange}
+                      onBlur={onBlur}
+                      placeholder="Mario Luciano"
+                      autoCapitalize="words"
+                      textContentType="name"
+                      hint="Como aparecerá en tu perfil"
+                    />
+                  )}
                 />
-                <Field
-                  label="Correo electrónico"
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="mario.luciano@gmail.com"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textContentType="emailAddress"
-                />
-                {!isEmailValid && email.length > 0 ? (
-                  <Text style={styles.errorText}>Formato de correo inválido</Text>
+                {errors.name ? (
+                  <Text style={styles.errorText} accessibilityRole="alert">
+                    {errors.name.message}
+                  </Text>
                 ) : null}
-
-                <Field
-                  label="Contraseña"
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="••••••••••"
-                  secureTextEntry={!passwordVisible}
-                  textContentType="newPassword"
-                  autoCapitalize="none"
-                  trailing={
-                    <Pressable
-                      onPress={() => setPasswordVisible((v) => !v)}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'
-                      }
-                    >
-                      <Ionicons
-                        name={passwordVisible ? 'eye' : 'eye-off'}
-                        size={20}
-                        color={colors.muted}
-                      />
-                    </Pressable>
-                  }
+                <Controller
+                  control={control}
+                  name="email"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Field
+                      label="Correo electrónico"
+                      value={value}
+                      onChangeText={onChange}
+                      onBlur={onBlur}
+                      placeholder="mario.luciano@gmail.com"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="emailAddress"
+                    />
+                  )}
                 />
-                {password.length > 0 && !isPasswordValid ? (
-                  <Text style={styles.errorText}>
-                    La contraseña debe tener al menos 6 caracteres, incluir una
-                    mayúscula, un número y un carácter especial.
+                {errors.email ? (
+                  <Text style={styles.errorText} accessibilityRole="alert">
+                    {errors.email.message}
+                  </Text>
+                ) : null}
+                <Controller
+                  control={control}
+                  name="password"
+                  render={({ field: { onChange, onBlur, value } }) => (
+                    <Field
+                      label="Contraseña"
+                      value={value}
+                      onChangeText={onChange}
+                      onBlur={onBlur}
+                      placeholder="••••••••••"
+                      secureTextEntry={!passwordVisible}
+                      textContentType="newPassword"
+                      autoCapitalize="none"
+                      trailing={
+                        <Pressable
+                          onPress={() => setPasswordVisible((v) => !v)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                          }
+                        >
+                          <Ionicons
+                            name={passwordVisible ? 'eye' : 'eye-off'}
+                            size={20}
+                            color={colors.muted}
+                          />
+                        </Pressable>
+                      }
+                    />
+                  )}
+                />
+                {errors.password ? (
+                  <Text style={styles.errorText} accessibilityRole="alert">
+                    {errors.password.message}
                   </Text>
                 ) : null}
 
-                {otpError.length > 0 ? (
-                  <Text style={styles.errorText}>{otpError}</Text>
+                {otpError ? (
+                  <Text style={styles.errorText} accessibilityRole="alert">
+                    {otpError}
+                  </Text>
                 ) : null}
 
                 <Button
@@ -184,7 +203,7 @@ export default function RegisterScreen() {
                   size="lg"
                   onPress={handleRegister}
                   loading={sendingOtp}
-                  disabled={!canSubmit}
+                  disabled={!isValid || sendingOtp}
                 >
                   Registrarse
                 </Button>

@@ -1,20 +1,12 @@
-import {
-  api,
-  endpoints,
-  clearSession,
-  getAccessToken,
-  getUserId,
-  getApiErrorMessage,
-  saveSession,
-} from '@/src/shared/api';
-import type { LoginResponse } from '@/src/shared/api/dto';
+import { validateStoredSession } from '@/src/features/auth/api';
+import { useLogin } from '@/src/features/auth/hooks';
+import { getApiErrorMessage } from '@/src/shared/api';
 import React, { useEffect, useState } from 'react';
 import {
   View,
   ScrollView,
   Text,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
@@ -26,22 +18,9 @@ import { router } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Field, Screen } from '@/src/shared/ui';
+import { Button, Field, Screen, showToast, triggerHaptic } from '@/src/shared/ui';
 import { colors, spacing, typography } from '@/src/shared/theme';
 import { initDevMode, isOfflineMode, setOfflineMode } from '@/src/shared/dev';
-
-async function validateSessionOrClear(): Promise<boolean> {
-  const storedToken = await getAccessToken();
-  const storedUserId = await getUserId();
-  if (!storedToken || !storedUserId) return false;
-  try {
-    await api.get(endpoints.usuario(storedUserId));
-    return true;
-  } catch {
-    await clearSession();
-    return false;
-  }
-}
 
 export default function IniciarSesion() {
   const insets = useSafeAreaInsets();
@@ -49,8 +28,8 @@ export default function IniciarSesion() {
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   const [checkingToken, setCheckingToken] = useState(true);
-  const [loading, setLoading] = useState(false);
   const [offline, setOffline] = useState(false);
+  const { login, loading, error: loginError } = useLogin();
 
   useEffect(() => {
     if (__DEV__) {
@@ -65,7 +44,7 @@ export default function IniciarSesion() {
 
   useEffect(() => {
     (async () => {
-      const valid = await validateSessionOrClear();
+      const valid = await validateStoredSession();
       if (valid) {
         router.replace('/tabs/home');
         return;
@@ -87,55 +66,44 @@ export default function IniciarSesion() {
     });
 
     if (!resultado.success) {
-      Alert.alert('Autenticación fallida', 'Puedes usar tu contraseña.');
+      void triggerHaptic('error');
+      showToast('error', 'Autenticación fallida', 'Puedes usar tu contraseña.');
       return;
     }
 
-    const valid = await validateSessionOrClear();
+    const valid = await validateStoredSession();
     if (valid) {
       router.replace('/tabs/home');
     } else {
-      Alert.alert(
-        'Sesión requerida',
-        'Inicia sesión con tu correo y contraseña para activar la biometría.'
-      );
+      showToast('info', 'Sesión requerida', 'Inicia sesión para activar la biometría.');
     }
   };
 
   const handleLogin = async () => {
     if (!email || !password) {
-      return Alert.alert('Error', 'Debes ingresar correo y contraseña');
+      void triggerHaptic('error');
+      showToast('error', 'Datos incompletos', 'Debes ingresar correo y contraseña.');
+      return;
     }
-    setLoading(true);
     try {
-      const resp = await api.post<LoginResponse>(endpoints.login, {
+      await login({
         Correo: email,
         Clave: password,
       });
-
-      const {
-        tokens: { access_token, refresh_token },
-        usuario,
-      } = resp.data;
-
-      await saveSession({
-        accessToken: access_token,
-        refreshToken: refresh_token,
-        userId: usuario.id.toString(),
-      });
+      void triggerHaptic('success');
       router.replace('/tabs/home');
-    } catch (err) {
-      Alert.alert('Login fallido', getApiErrorMessage(err, 'Credenciales incorrectas'));
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      void triggerHaptic('error');
+      showToast(
+        'error',
+        'Login fallido',
+        getApiErrorMessage(error, loginError ?? 'Credenciales incorrectas'),
+      );
     }
   };
 
   const handleGoogleStub = () => {
-    Alert.alert(
-      'Próximamente',
-      'Continuar con Google estará disponible pronto.'
-    );
+    showToast('info', 'Próximamente', 'Continuar con Google estará disponible pronto.');
   };
 
   return (
@@ -241,9 +209,10 @@ export default function IniciarSesion() {
 
                 <TouchableOpacity
                   onPress={() =>
-                    Alert.alert(
+                    showToast(
+                      'info',
                       'Próximamente',
-                      'Recuperación de contraseña aún no está disponible en la API.'
+                      'La recuperación aún no está disponible en la API.',
                     )
                   }
                   style={styles.forgot}

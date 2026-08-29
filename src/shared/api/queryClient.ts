@@ -1,0 +1,27 @@
+import { QueryClient } from '@tanstack/react-query';
+import { ApiError } from './errors';
+
+export const queryKeys = {
+  user: (id: string | number) => ['user', String(id)] as const,
+};
+
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      networkMode: 'always',
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        if (error instanceof ApiError && error.status != null && error.status < 500) {
+          return false;
+        }
+        return failureCount < 1;
+      },
+    },
+    mutations: {
+      networkMode: 'always',
+      retry: 0,
+    },
+  },
+});

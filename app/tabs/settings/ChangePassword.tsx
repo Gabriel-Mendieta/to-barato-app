@@ -1,254 +1,300 @@
 // Archivo: app/settings/ChangePassword.tsx
 
+import { api, endpoints, clearSession, getApiErrorMessage } from '@/src/shared/api';
+import React, { useState, useEffect } from 'react';
 import {
-    api,
-    endpoints,
-    clearSession,
-    getApiErrorMessage,
-} from '@/src/shared/api';
-import React, { useState, useEffect } from "react";
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StatusBar,
+  Platform,
+  StyleSheet,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
+import { colors, typography } from '@/src/shared/theme';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
-    View,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    StatusBar,
-    Platform,
-    StyleSheet,
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import * as SecureStore from "expo-secure-store";
+  changePasswordSchema,
+  type ChangePasswordFormValues,
+} from '@/src/features/settings/schema';
+import { showToast, triggerHaptic } from '@/src/shared/ui';
 
 export default function ChangePasswordScreen() {
-    const [loading, setLoading] = useState<boolean>(true);
-    const [submitting, setSubmitting] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-    // Campos de formulario
-    const [currentPassword, setCurrentPassword] = useState("");
-    const [newPassword, setNewPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
+  // Para almacenar el IdUsuario desde SecureStore
+  const [userId, setUserId] = useState<number | null>(null);
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isValid, isSubmitting },
+  } = useForm<ChangePasswordFormValues>({
+    resolver: zodResolver(changePasswordSchema),
+    mode: 'onChange',
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+  });
 
-    // Para almacenar el IdUsuario desde SecureStore
-    const [userId, setUserId] = useState<number | null>(null);
-
-    useEffect(() => {
-        (async () => {
-            try {
-                // Leer token y user_id de SecureStore
-                const token = await SecureStore.getItemAsync("access_token");
-                const idStr = await SecureStore.getItemAsync("user_id");
-                if (!token || !idStr) {
-                    // Si falta, redirigir a login
-                    await clearSession();
-                    router.replace("/auth/IniciarSesion");
-                    return;
-                }
-                // Fijar header de autorización
-                // Convertir Id a número
-                setUserId(Number(idStr));
-            } catch {
-            } finally {
-                setLoading(false);
-            }
-        })();
-    }, []);
-
-    const handleSave = async () => {
-        // Validaciones básicas
-        if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
-            Alert.alert("Campos incompletos", "Por favor, completa todos los campos.");
-            return;
+  useEffect(() => {
+    (async () => {
+      try {
+        // Leer token y user_id de SecureStore
+        const token = await SecureStore.getItemAsync('access_token');
+        const idStr = await SecureStore.getItemAsync('user_id');
+        if (!token || !idStr) {
+          // Si falta, redirigir a login
+          await clearSession();
+          router.replace('/auth/IniciarSesion');
+          return;
         }
-        if (newPassword !== confirmPassword) {
-            Alert.alert("Error", "La nueva contraseña y su confirmación no coinciden.");
-            return;
-        }
-        if (newPassword.length < 6) {
-            Alert.alert("Contraseña débil", "La nueva contraseña debe tener al menos 6 caracteres.");
-            return;
-        }
-        if (!userId) {
-            Alert.alert("Error interno", "No se pudo determinar tu usuario. Vuelve a iniciar sesión.");
-            return;
-        }
+        // Fijar header de autorización
+        // Convertir Id a número
+        setUserId(Number(idStr));
+      } catch {
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-        setSubmitting(true);
-        try {
-            // Preparar payload
-            const payload = {
-                IdUsuario: userId,
-                Clave: currentPassword,
-                ClaveNueva: newPassword,
-            };
-            // Enviar PUT a /change-password
-            await api.put<{ message?: string }>(
-                endpoints.changePassword,
-                payload
-            );
-            // Si todo sale bien, mostrar mensaje y regresar
-            Alert.alert("¡Éxito!", "Contraseña cambiada correctamente.", [
-                { text: "OK", onPress: () => router.back() },
-            ]);
-        } catch (err) {
-            Alert.alert(
-                "Error",
-                getApiErrorMessage(err, "No se pudo cambiar la contraseña. Intenta nuevamente.")
-            );
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#33618D" />
-            </SafeAreaView>
-        );
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const handleSave = handleSubmit(async ({ currentPassword, newPassword }) => {
+    if (!userId) {
+      showToast('error', 'Error interno', 'Vuelve a iniciar sesión.');
+      return;
     }
 
+    setSubmitError(null);
+    try {
+      // Preparar payload
+      const payload = {
+        IdUsuario: userId,
+        Clave: currentPassword,
+        ClaveNueva: newPassword,
+      };
+      // Enviar PUT a /change-password
+      await api.put<{ message?: string }>(endpoints.changePassword, payload);
+      // Si todo sale bien, mostrar mensaje y regresar
+      void triggerHaptic('success');
+      showToast('success', 'Contraseña actualizada');
+      router.back();
+    } catch (err) {
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo cambiar la contraseña', 'Intenta nuevamente.');
+      setSubmitError(
+        getApiErrorMessage(err, 'No se pudo cambiar la contraseña. Intenta nuevamente.'),
+      );
+    }
+  });
+
+  if (loading) {
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-            <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                style={{ flex: 1 }}
-            >
-                {/* HEADER */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => router.push('../../tabs/perfil')} style={styles.backButton}>
-                        <Ionicons name="chevron-back" size={28} color="#fff" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Cambiar Contraseña</Text>
-                    <View style={{ width: 28 }} />
-                </View>
-
-                {/* FORMULARIO */}
-                <View style={styles.formContainer}>
-                    {/* Contraseña actual */}
-                    <Text style={styles.label}>Contraseña actual</Text>
-                    <TextInput
-                        style={styles.input}                   // -> mismo estilo que Editar Perfil
-                        value={currentPassword}
-                        onChangeText={setCurrentPassword}
-                        placeholder="Ingresa tu contraseña actual"
-                        secureTextEntry
-                        autoCapitalize="none"
-                        placeholderTextColor="#888"
-                    />
-
-                    {/* Nueva contraseña */}
-                    <Text style={styles.label}>Nueva contraseña</Text>
-                    <TextInput
-                        style={styles.input}                   // -> mismo estilo que Editar Perfil
-                        value={newPassword}
-                        onChangeText={setNewPassword}
-                        placeholder="Ingresa la nueva contraseña"
-                        secureTextEntry
-                        autoCapitalize="none"
-                        placeholderTextColor="#888"
-                    />
-
-                    {/* Confirmar nueva contraseña */}
-                    <Text style={styles.label}>Confirmar nueva contraseña</Text>
-                    <TextInput
-                        style={styles.input}                   // -> mismo estilo que Editar Perfil
-                        value={confirmPassword}
-                        onChangeText={setConfirmPassword}
-                        placeholder="Vuelve a escribir la nueva contraseña"
-                        secureTextEntry
-                        autoCapitalize="none"
-                        placeholderTextColor="#888"
-                    />
-                </View>
-
-                {/* BOTÓN GUARDAR */}
-                <TouchableOpacity
-                    style={[styles.saveButton, submitting && styles.saveButtonDisabled]}
-                    onPress={handleSave}
-                    disabled={submitting}
-                >
-                    {submitting ? (
-                        <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                        <Text style={styles.saveButtonText}>Guardar cambios</Text>
-                    )}
-                </TouchableOpacity>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.navy} />
+      </SafeAreaView>
     );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.navy} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        {/* HEADER */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => router.push('../../tabs/perfil')}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={28} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Cambiar Contraseña</Text>
+          <View style={{ width: 28 }} />
+        </View>
+
+        {/* FORMULARIO */}
+        <View style={styles.formContainer}>
+          {/* Contraseña actual */}
+          <Text style={styles.label}>Contraseña actual</Text>
+          <Controller
+            control={control}
+            name="currentPassword"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.currentPassword && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="Ingresa tu contraseña actual"
+                secureTextEntry
+                autoCapitalize="none"
+                placeholderTextColor="#888"
+              />
+            )}
+          />
+          {errors.currentPassword && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.currentPassword.message}
+            </Text>
+          )}
+
+          {/* Nueva contraseña */}
+          <Text style={styles.label}>Nueva contraseña</Text>
+          <Controller
+            control={control}
+            name="newPassword"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.newPassword && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="Ingresa la nueva contraseña"
+                secureTextEntry
+                autoCapitalize="none"
+                placeholderTextColor="#888"
+              />
+            )}
+          />
+          {errors.newPassword && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.newPassword.message}
+            </Text>
+          )}
+
+          {/* Confirmar nueva contraseña */}
+          <Text style={styles.label}>Confirmar nueva contraseña</Text>
+          <Controller
+            control={control}
+            name="confirmPassword"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.confirmPassword && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                placeholder="Vuelve a escribir la nueva contraseña"
+                secureTextEntry
+                autoCapitalize="none"
+                placeholderTextColor="#888"
+              />
+            )}
+          />
+          {errors.confirmPassword && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.confirmPassword.message}
+            </Text>
+          )}
+          {submitError && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {submitError}
+            </Text>
+          )}
+        </View>
+
+        {/* BOTÓN GUARDAR */}
+        <TouchableOpacity
+          style={[styles.saveButton, isSubmitting && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          disabled={isSubmitting || !isValid || !userId}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Text style={styles.saveButtonText}>Guardar cambios</Text>
+          )}
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#F8F9FF",
-    },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+  },
 
-    container: {
-        flex: 1,
-        backgroundColor: "#F8F9FF",
-    },
-    header: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#001D35",
-        paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 16,
-        paddingBottom: 12,
-        paddingHorizontal: 16,
-        justifyContent: "space-between",
-    },
-    backButton: {
-        width: 28,
-    },
-    headerTitle: {
-        color: "#FFF",
-        fontSize: 20,
-        fontWeight: "500",
-    },
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.navy,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+  },
+  backButton: {
+    width: 28,
+  },
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '500',
+  },
 
-    formContainer: {
-        marginTop: 24,
-        paddingHorizontal: 16,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: "500",
-        color: "#101418",
-        marginBottom: 4,
-        marginTop: 12,
-    },
-    input: {
-        backgroundColor: "#F3F4F6",     // Color de fondo gris claro
-        borderRadius: 8,                // Bordes redondeados iguales a Editar Perfil
-        paddingHorizontal: 12,          // Padding horizontal igual
-        paddingVertical: 10,            // Padding vertical igual
-        fontSize: 16,                   // Tamaño de fuente igual
-        color: "#101418",               // Mismo color de texto
-    },
+  formContainer: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.ink,
+    marginBottom: 4,
+    marginTop: 12,
+  },
+  input: {
+    backgroundColor: '#F3F4F6', // Color de fondo gris claro
+    borderRadius: 8, // Bordes redondeados iguales a Editar Perfil
+    paddingHorizontal: 12, // Padding horizontal igual
+    paddingVertical: 10, // Padding vertical igual
+    fontSize: 16, // Tamaño de fuente igual
+    color: colors.ink, // Mismo color de texto
+  },
+  inputError: {
+    borderWidth: 1,
+    borderColor: colors.red,
+  },
+  inlineError: {
+    color: colors.red,
+    fontSize: 12,
+    marginTop: 4,
+  },
 
-    saveButton: {
-        marginTop: 32,
-        marginHorizontal: 32,
-        backgroundColor: "#33618D",
-        borderRadius: 8,
-        paddingVertical: 14,
-        alignItems: "center",
-        elevation: 3,
-    },
-    saveButtonDisabled: {
-        opacity: 0.6,
-    },
-    saveButtonText: {
-        color: "#FFF",
-        fontSize: 16,
-        fontWeight: "600",
-    },
+  saveButton: {
+    marginTop: 32,
+    marginHorizontal: 32,
+    backgroundColor: colors.navy,
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    elevation: 3,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontFamily: typography.semibold,
+  },
 });

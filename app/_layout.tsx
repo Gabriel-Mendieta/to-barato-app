@@ -12,6 +12,8 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/src/shared/api';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,9 +33,6 @@ export default function RootLayout() {
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
-    'Lexend-Black': require('../assets/fonts/Lexend-Black.ttf'),
-    'Lexend-Light': require('../assets/fonts/Lexend-Light.ttf'),
-    'Lexend-Medium': require('../assets/fonts/Lexend-Medium.ttf'),
   });
 
   useEffect(() => {
@@ -48,14 +47,16 @@ export default function RootLayout() {
   if (!fontsLoaded && !error) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <Stack screenOptions={SHARED_STACK_OPTIONS}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="auth" />
-          <Stack.Screen name="tabs" />
-        </Stack>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <QueryClientProvider client={queryClient}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <Stack screenOptions={SHARED_STACK_OPTIONS}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="auth" />
+            <Stack.Screen name="tabs" />
+          </Stack>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </QueryClientProvider>
   );
 }

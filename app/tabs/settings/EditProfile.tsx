@@ -1,299 +1,387 @@
 // app/settings/EditProfile.tsx
 
-import {api, endpoints, clearSession, getAccessToken, getUserId, saveSession, hasStoredSession} from '@/src/shared/api';
+import { clearSession, getAccessToken, getUserId, getApiErrorMessage } from '@/src/shared/api';
 import React, { useEffect, useState } from 'react';
 import {
-    View,
-    Text,
-    Image,
-    ScrollView,
-    TouchableOpacity,
-    StatusBar,
-    Platform,
-    StyleSheet,
-    TextInput,
-    ActivityIndicator,
-    Alert,
+  View,
+  Text,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  StatusBar,
+  Platform,
+  StyleSheet,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { MotiView } from 'moti';
-import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
-
-type UsuarioResponse = {
-    IdTipoUsuario: number;
-    NombreUsuario: string;
-    Correo: string;
-    Telefono: string;
-    Clave: string;
-    Nombres: string;
-    Apellidos: string;
-    Estado: boolean;
-    UrlPerfil: string;
-    FechaNacimiento: string;
-    IdUsuario: number;
-    FechaCreacion: string;
-};
+import { colors, typography } from '@/src/shared/theme';
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { editProfileSchema, type EditProfileFormValues } from '@/src/features/profile/schema';
+import { useCurrentUser, useUpdateUser } from '@/src/features/profile/hooks';
+import type { UserDTO } from '@/src/shared/api/dto';
+import { showToast, triggerHaptic } from '@/src/shared/ui';
 
 export default function EditProfileScreen() {
-    const [userData, setUserData] = useState<UsuarioResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [localImageUri, setLocalImageUri] = useState<string | null>(null);
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors, isDirty, isSubmitting },
+  } = useForm<EditProfileFormValues>({
+    resolver: zodResolver(editProfileSchema),
+    mode: 'onChange',
+    defaultValues: {
+      nombreUsuario: '',
+      correo: '',
+      telefono: '',
+      nombres: '',
+      apellidos: '',
+    },
+  });
+  const userQuery = useCurrentUser(sessionUserId);
+  const updateUserMutation = useUpdateUser(sessionUserId);
+  const userData = userQuery.data;
+  const loading = checkingSession || userQuery.isPending;
+  const submitting = isSubmitting || updateUserMutation.isPending;
 
-    const [localImageUri, setLocalImageUri] = useState<string | null>(null);
-
-    const [nombreUsuario, setNombreUsuario] = useState('');
-    const [correo, setCorreo] = useState('');
-    const [telefono, setTelefono] = useState('');
-    const [nombres, setNombres] = useState('');
-    const [apellidos, setApellidos] = useState('');
-
-    useEffect(() => {
-        (async () => {
-            try {
-                const token = await SecureStore.getItemAsync('access_token');
-                const userId = await SecureStore.getItemAsync('user_id');
-                if (!token || !userId) {
-                    await clearSession();
-                    router.replace('/auth/IniciarSesion');
-                    return;
-                }
-
-                const res = await api.get<UsuarioResponse>(
-                    endpoints.usuario(userId)
-                );
-                setUserData(res.data);
-
-                setNombreUsuario(res.data.NombreUsuario);
-                setCorreo(res.data.Correo);
-                setTelefono(res.data.Telefono);
-                setNombres(res.data.Nombres);
-                setApellidos(res.data.Apellidos);
-            } catch {
-                await clearSession();
-                Alert.alert('Sesión expirada', 'Por favor inicia sesión de nuevo.', [
-                    { text: 'Ok', onPress: () => router.replace('/auth/IniciarSesion') },
-                ]);
-            } finally {
-                setLoading(false);
-            }
-        })();
-    }, []);
-
-    const pickImage = async () => {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-            Alert.alert('Permiso denegado', 'Necesitamos permiso para acceder a fotos.');
-            return;
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const userId = await getUserId();
+        if (!token || !userId) {
+          await clearSession();
+          router.replace('/auth/IniciarSesion');
+          return;
         }
-        const res = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.7,
-            allowsEditing: true,
-        });
-        if (!res.canceled) {
-            setLocalImageUri(res.assets[0].uri);
-        }
-    };
+        setSessionUserId(userId);
+      } catch {
+        await clearSession();
+        router.replace('/auth/IniciarSesion');
+      } finally {
+        setCheckingSession(false);
+      }
+    })();
+  }, []);
 
-    const handleSave = async () => {
-        if (!userData) return;
-        setSubmitting(true);
+  useEffect(() => {
+    if (!userData) return;
+    reset({
+      nombreUsuario: userData.NombreUsuario,
+      correo: userData.Correo,
+      telefono: userData.Telefono,
+      nombres: userData.Nombres,
+      apellidos: userData.Apellidos,
+    });
+  }, [reset, userData]);
 
-        try {
-            const userId = userData.IdUsuario;
-            const payload: any = {};
+  useEffect(() => {
+    if (!userQuery.isError) return;
+    void clearSession();
+    showToast('error', 'Sesión expirada', 'Por favor inicia sesión de nuevo.');
+    router.replace('/auth/IniciarSesion');
+  }, [userQuery.isError]);
 
-            if (nombreUsuario.trim() !== userData.NombreUsuario) payload.NombreUsuario = nombreUsuario.trim();
-            // correo es solo lectura
-            if (telefono.trim() !== userData.Telefono) payload.Telefono = telefono.trim();
-            if (nombres.trim() !== userData.Nombres) payload.Nombres = nombres.trim();
-            if (apellidos.trim() !== userData.Apellidos) payload.Apellidos = apellidos.trim();
-
-            if (localImageUri) {
-                payload.UrlPerfil = localImageUri;
-            }
-
-            if (Object.keys(payload).length === 0) {
-                Alert.alert('Sin cambios', 'No hubo modificaciones para guardar.');
-                setSubmitting(false);
-                return;
-            }
-
-            const resPut = await api.put<UsuarioResponse>(
-                endpoints.usuario(userId),
-                payload
-            );
-            setUserData(resPut.data);
-            setLocalImageUri(null);
-            Alert.alert('¡Éxito!', 'Tu perfil fue actualizado correctamente.');
-            router.back();
-        } catch {
-            Alert.alert('Error', 'No se pudo actualizar tu perfil. Intenta nuevamente.');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    if (loading) {
-        return (
-            <SafeAreaView style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#33618D" />
-            </SafeAreaView>
-        );
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showToast('error', 'Permiso denegado', 'Necesitamos permiso para acceder a fotos.');
+      return;
     }
-    if (!userData) return null;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsEditing: true,
+    });
+    if (!res.canceled) {
+      void triggerHaptic('selection');
+      setLocalImageUri(res.assets[0].uri);
+    }
+  };
 
-    const fullName = `${userData.Nombres} ${userData.Apellidos}`;
+  const handleSave = handleSubmit(async (values) => {
+    if (!userData) return;
 
+    try {
+      const payload: Partial<
+        Pick<UserDTO, 'NombreUsuario' | 'Telefono' | 'Nombres' | 'Apellidos' | 'UrlPerfil'>
+      > = {};
+
+      if (values.nombreUsuario !== userData.NombreUsuario)
+        payload.NombreUsuario = values.nombreUsuario;
+      // correo es solo lectura
+      if (values.telefono !== userData.Telefono) payload.Telefono = values.telefono;
+      if (values.nombres !== userData.Nombres) payload.Nombres = values.nombres;
+      if (values.apellidos !== userData.Apellidos) payload.Apellidos = values.apellidos;
+
+      if (localImageUri) {
+        payload.UrlPerfil = localImageUri;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        showToast('info', 'Sin cambios', 'No hubo modificaciones para guardar.');
+        return;
+      }
+
+      const updated = await updateUserMutation.mutateAsync(payload);
+      reset({
+        nombreUsuario: updated.NombreUsuario,
+        correo: updated.Correo,
+        telefono: updated.Telefono,
+        nombres: updated.Nombres,
+        apellidos: updated.Apellidos,
+      });
+      setLocalImageUri(null);
+      void triggerHaptic('success');
+      showToast('success', 'Perfil actualizado');
+      router.back();
+    } catch (error) {
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo actualizar', getApiErrorMessage(error, 'Intenta nuevamente.'));
+    }
+  });
+
+  if (loading) {
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-            {/* HEADER */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.push('../../tabs/perfil')} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={28} color="#fff" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Editar Perfil</Text>
-                <View style={{ width: 28 }} />
-            </View>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                <MotiView
-                    from={{ opacity: 0, translateY: 20 }}
-                    animate={{ opacity: 1, translateY: 0 }}
-                    transition={{ type: 'timing', duration: 400 }}
-                    style={styles.profileHeader}
-                >
-                    <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
-                        <Image
-                            source={{
-                                uri: localImageUri ?? userData.UrlPerfil,
-                            }}
-                            style={styles.avatar}
-                        />
-                        <View style={styles.editIcon}>
-                            <MaterialIcons name="edit" size={20} color="#FFF" />
-                        </View>
-                    </TouchableOpacity>
-                    <Text style={styles.name}>{fullName}</Text>
-                </MotiView>
-
-                <View style={styles.form}>
-                    <Text style={styles.label}>Nombre de usuario</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={nombreUsuario}
-                        onChangeText={setNombreUsuario}
-                        autoCapitalize="none"
-                    />
-
-                    <Text style={styles.label}>Correo electrónico</Text>
-                    <TextInput
-                        style={[styles.input, styles.readOnly]}
-                        value={correo}
-                        editable={false}
-                        selectTextOnFocus={false}
-                    />
-
-                    <Text style={styles.label}>Teléfono</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={telefono}
-                        onChangeText={setTelefono}
-                        keyboardType="phone-pad"
-                    />
-
-                    <Text style={styles.label}>Nombres</Text>
-                    <TextInput style={styles.input} value={nombres} onChangeText={setNombres} />
-
-                    <Text style={styles.label}>Apellidos</Text>
-                    <TextInput style={styles.input} value={apellidos} onChangeText={setApellidos} />
-                </View>
-
-                <TouchableOpacity
-                    style={[styles.saveBtn, submitting && styles.saveBtnDisabled]}
-                    onPress={handleSave}
-                    disabled={submitting}
-                >
-                    {submitting ? (
-                        <ActivityIndicator size="small" color="#FFF" />
-                    ) : (
-                        <Text style={styles.saveText}>Guardar cambios</Text>
-                    )}
-                </TouchableOpacity>
-            </ScrollView>
-        </SafeAreaView>
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.navy} />
+      </SafeAreaView>
     );
+  }
+  if (!userData) return null;
+
+  const fullName = `${userData.Nombres} ${userData.Apellidos}`;
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.navy} />
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.push('../../tabs/perfil')}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={28} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Editar Perfil</Text>
+        <View style={{ width: 28 }} />
+      </View>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <MotiView
+          from={{ opacity: 0, translateY: 20 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ type: 'timing', duration: 400 }}
+          style={styles.profileHeader}
+        >
+          <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
+            <Image
+              source={{
+                uri: localImageUri ?? userData.UrlPerfil ?? undefined,
+              }}
+              style={styles.avatar}
+            />
+            <View style={styles.editIcon}>
+              <MaterialIcons name="edit" size={20} color="#FFF" />
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.name}>{fullName}</Text>
+        </MotiView>
+
+        <View style={styles.form}>
+          <Text style={styles.label}>Nombre de usuario</Text>
+          <Controller
+            control={control}
+            name="nombreUsuario"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.nombreUsuario && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                autoCapitalize="none"
+              />
+            )}
+          />
+          {errors.nombreUsuario && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.nombreUsuario.message}
+            </Text>
+          )}
+
+          <Text style={styles.label}>Correo electrónico</Text>
+          <Controller
+            control={control}
+            name="correo"
+            render={({ field: { value } }) => (
+              <TextInput
+                style={[styles.input, styles.readOnly]}
+                value={value}
+                editable={false}
+                selectTextOnFocus={false}
+              />
+            )}
+          />
+          {errors.correo && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.correo.message}
+            </Text>
+          )}
+
+          <Text style={styles.label}>Teléfono</Text>
+          <Controller
+            control={control}
+            name="telefono"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.telefono && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                keyboardType="phone-pad"
+              />
+            )}
+          />
+          {errors.telefono && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.telefono.message}
+            </Text>
+          )}
+
+          <Text style={styles.label}>Nombres</Text>
+          <Controller
+            control={control}
+            name="nombres"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.nombres && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+              />
+            )}
+          />
+          {errors.nombres && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.nombres.message}
+            </Text>
+          )}
+
+          <Text style={styles.label}>Apellidos</Text>
+          <Controller
+            control={control}
+            name="apellidos"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <TextInput
+                style={[styles.input, errors.apellidos && styles.inputError]}
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+              />
+            )}
+          />
+          {errors.apellidos && (
+            <Text style={styles.inlineError} accessibilityRole="alert">
+              {errors.apellidos.message}
+            </Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.saveBtn, submitting && styles.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={submitting || (!isDirty && !localImageUri)}
+        >
+          {submitting ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Text style={styles.saveText}>Guardar cambios</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    header: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#001D35",
-        paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 16,
-        paddingBottom: 12,
-        paddingHorizontal: 16,
-        justifyContent: "space-between",
-    },
-    headerTitle: {
-        color: "#FFF",
-        fontSize: 20,
-        fontWeight: "500",
-    },
-    backButton: {
-        width: 28,
-    },
-    safeArea: {
-        flex: 1,
-        backgroundColor: '#F8F9FF',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-    },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    scrollContent: { paddingBottom: 40 },
-    profileHeader: { alignItems: 'center', paddingVertical: 24, backgroundColor: '#FFF' },
-    title: { fontSize: 24, fontWeight: '700', color: '#101418', marginBottom: 12 },
-    avatarContainer: { position: 'relative', marginBottom: 12 },
-    avatar: { width: 112, height: 112, borderRadius: 56, backgroundColor: '#EEE' },
-    editIcon: {
-        position: 'absolute',
-        bottom: 0,
-        right: 0,
-        backgroundColor: '#33618D',
-        borderRadius: 12,
-        padding: 4,
-    },
-    name: { fontSize: 20, fontWeight: '600', color: '#101418' },
-    form: {
-        marginTop: 12,
-        backgroundColor: '#FFF',
-        marginHorizontal: 16,
-        borderRadius: 8,
-        padding: 16,
-        elevation: 2,
-    },
-    label: { fontSize: 14, fontWeight: '500', color: '#101418', marginTop: 12 },
-    input: {
-        backgroundColor: '#F3F4F6',
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 16,
-        color: '#101418',
-    },
-    readOnly: { backgroundColor: '#ECECEC' },
-    saveBtn: {
-        marginTop: 24,
-        marginHorizontal: 32,
-        backgroundColor: '#33618D',
-        borderRadius: 8,
-        paddingVertical: 14,
-        alignItems: 'center',
-        elevation: 3,
-    },
-    saveBtnDisabled: { opacity: 0.6 },
-    saveText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.navy,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+  },
+  headerTitle: {
+    color: colors.white,
+    fontSize: 20,
+    fontWeight: '500',
+  },
+  backButton: {
+    width: 28,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { paddingBottom: 40 },
+  profileHeader: { alignItems: 'center', paddingVertical: 24, backgroundColor: colors.card },
+  title: { fontSize: 24, fontFamily: typography.bold, color: colors.ink, marginBottom: 12 },
+  avatarContainer: { position: 'relative', marginBottom: 12 },
+  avatar: { width: 112, height: 112, borderRadius: 56, backgroundColor: '#EEE' },
+  editIcon: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.navy,
+    borderRadius: 12,
+    padding: 4,
+  },
+  name: { fontSize: 20, fontFamily: typography.semibold, color: colors.ink },
+  form: {
+    marginTop: 12,
+    backgroundColor: colors.card,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    padding: 16,
+    elevation: 2,
+  },
+  label: { fontSize: 14, fontFamily: typography.medium, color: colors.ink, marginTop: 12 },
+  input: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: colors.ink,
+  },
+  inputError: { borderWidth: 1, borderColor: colors.red },
+  readOnly: { backgroundColor: '#ECECEC' },
+  inlineError: {
+    color: colors.red,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  saveBtn: {
+    marginTop: 24,
+    marginHorizontal: 32,
+    backgroundColor: colors.navy,
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+    elevation: 3,
+  },
+  saveBtnDisabled: { opacity: 0.6 },
+  saveText: { color: colors.white, fontSize: 16, fontFamily: typography.semibold },
 });
