@@ -1,24 +1,20 @@
 import { api, endpoints } from '@/src/shared/api';
 import {
   Chip,
+  EmptyState,
   FadeInUp,
   FLOATING_TAB_BAR_CLEARANCE,
   Screen,
+  Skeleton,
+  showToast,
+  triggerHaptic,
 } from '@/src/shared/ui';
-import {
-  colors,
-  getProviderBrand,
-  radii,
-  spacing,
-  typography,
-} from '@/src/shared/theme';
+import { colors, getProviderBrand, radii, spacing, typography } from '@/src/shared/theme';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Linking,
@@ -30,12 +26,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, {
-  Marker,
-  PROVIDER_DEFAULT,
-  Region,
-  UrlTile,
-} from 'react-native-maps';
+import MapView, { Marker, PROVIDER_DEFAULT, Region, UrlTile } from 'react-native-maps';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  type BottomSheetModalMethods,
+  BottomSheetView,
+} from '@/src/shared/ui/BottomSheetCompat';
 
 type TipoProveedor = {
   IdTipoProveedor: number;
@@ -66,12 +63,7 @@ type BranchCard = Sucursal & {
 
 const CARD_WIDTH = 220;
 
-function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const R = 6371;
   const dLat = toRad(lat2 - lat1);
@@ -98,16 +90,14 @@ function pluralTipoLabel(nombre: string) {
 
 function getBranchName(b: Sucursal, prov?: Proveedor) {
   if (!prov) return b.NombreSucursal;
-  const stripped = b.NombreSucursal.replace(
-    new RegExp(`^\\s*${prov.Nombre}\\s*`, 'i'),
-    ''
-  ).trim();
+  const stripped = b.NombreSucursal.replace(new RegExp(`^\\s*${prov.Nombre}\\s*`, 'i'), '').trim();
   return stripped || b.NombreSucursal;
 }
 
 export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   const carouselRef = useRef<FlatList<BranchCard>>(null);
+  const branchSheetRef = useRef<BottomSheetModalMethods>(null);
 
   const [region, setRegion] = useState<Region | null>(null);
   const [userCoords, setUserCoords] = useState<{
@@ -130,7 +120,7 @@ export default function MapScreen() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert('Sin permiso', 'No podemos obtener tu ubicación');
+          showToast('error', 'Sin permiso', 'No podemos obtener tu ubicación.');
           setRegion({
             latitude: 18.4861,
             longitude: -69.9312,
@@ -223,14 +213,13 @@ export default function MapScreen() {
       return;
     }
     setSelectedId((prev) =>
-      prev != null && nearby.some((b) => b.IdSucursal === prev)
-        ? prev
-        : nearby[0].IdSucursal
+      prev != null && nearby.some((b) => b.IdSucursal === prev) ? prev : nearby[0].IdSucursal,
     );
   }, [nearby]);
 
   const selectBranch = useCallback(
     (id: number, animateMap = true) => {
+      void triggerHaptic('selection');
       setSelectedId(id);
       const card = nearby.find((b) => b.IdSucursal === id);
       if (!card) return;
@@ -242,7 +231,7 @@ export default function MapScreen() {
             latitudeDelta: 0.03,
             longitudeDelta: 0.03,
           },
-          350
+          350,
         );
       }
       const idx = nearby.findIndex((b) => b.IdSucursal === id);
@@ -254,7 +243,15 @@ export default function MapScreen() {
         });
       }
     },
-    [nearby]
+    [nearby],
+  );
+
+  const openBranchDetail = useCallback(
+    (id: number) => {
+      selectBranch(id);
+      requestAnimationFrame(() => branchSheetRef.current?.present());
+    },
+    [selectBranch],
   );
 
   const openNavigation = (lat: number, lng: number, label: string) => {
@@ -273,14 +270,15 @@ export default function MapScreen() {
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
       },
-      400
+      400,
     );
   };
 
   if (loading || region === null) {
     return (
       <Screen edges={['top']} style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.navy} />
+        <Skeleton width="88%" height={220} borderRadius={22} />
+        <Skeleton width="55%" height={18} style={styles.loadingLine} />
       </Screen>
     );
   }
@@ -332,14 +330,20 @@ export default function MapScreen() {
             <FilterPill
               label="Todos"
               active={selectedTipo === 'all'}
-              onPress={() => setSelectedTipo('all')}
+              onPress={() => {
+                void triggerHaptic('selection');
+                setSelectedTipo('all');
+              }}
             />
             {tipos.map((t) => (
               <FilterPill
                 key={t.IdTipoProveedor}
                 label={pluralTipoLabel(t.NombreTipoProveedor)}
                 active={selectedTipo === String(t.IdTipoProveedor)}
-                onPress={() => setSelectedTipo(String(t.IdTipoProveedor))}
+                onPress={() => {
+                  void triggerHaptic('selection');
+                  setSelectedTipo(String(t.IdTipoProveedor));
+                }}
               />
             ))}
           </ScrollView>
@@ -372,7 +376,7 @@ export default function MapScreen() {
                   <Marker
                     key={b.IdSucursal}
                     coordinate={{ latitude: b.lat, longitude: b.lng }}
-                    onPress={() => selectBranch(b.IdSucursal, false)}
+                    onPress={() => openBranchDetail(b.IdSucursal)}
                     tracksViewChanges={false}
                     anchor={{ x: 0.5, y: 1 }}
                   >
@@ -394,9 +398,7 @@ export default function MapScreen() {
                           {name}
                         </Text>
                       </View>
-                      <View
-                        style={[styles.pinTail, { borderTopColor: brand.color }]}
-                      />
+                      <View style={[styles.pinTail, { borderTopColor: brand.color }]} />
                     </View>
                   </Marker>
                 );
@@ -416,11 +418,11 @@ export default function MapScreen() {
       <FadeInUp index={3} step={55} delay={20}>
         <View style={styles.carouselWrap}>
           {nearby.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>
-                No hay sucursales cerca con este filtro.
-              </Text>
-            </View>
+            <EmptyState
+              icon="location-outline"
+              title="Sin proveedores"
+              description="Prueba con otro filtro o término de búsqueda."
+            />
           ) : (
             <FlatList
               ref={carouselRef}
@@ -451,7 +453,7 @@ export default function MapScreen() {
                 const branchLabel = getBranchName(item, item.provider);
                 return (
                   <Pressable
-                    onPress={() => selectBranch(item.IdSucursal)}
+                    onPress={() => openBranchDetail(item.IdSucursal)}
                     style={[
                       styles.card,
                       {
@@ -469,12 +471,8 @@ export default function MapScreen() {
                           resizeMode="contain"
                         />
                       ) : (
-                        <View
-                          style={[styles.avatar, { backgroundColor: brand.bg }]}
-                        >
-                          <Text
-                            style={[styles.avatarLetter, { color: brand.color }]}
-                          >
+                        <View style={[styles.avatar, { backgroundColor: brand.bg }]}>
+                          <Text style={[styles.avatarLetter, { color: brand.color }]}>
                             {name.charAt(0)}
                           </Text>
                         </View>
@@ -494,20 +492,14 @@ export default function MapScreen() {
                         Cerca
                       </Chip>
                       <View style={styles.verifiedChip}>
-                        <Ionicons
-                          name="checkmark-circle"
-                          size={11}
-                          color={colors.green}
-                        />
+                        <Ionicons name="checkmark-circle" size={11} color={colors.green} />
                         <Text style={styles.verifiedText}>Verificado</Text>
                       </View>
                     </View>
 
                     <Pressable
                       style={styles.routeBtn}
-                      onPress={() =>
-                        openNavigation(item.lat, item.lng, item.NombreSucursal)
-                      }
+                      onPress={() => openNavigation(item.lat, item.lng, item.NombreSucursal)}
                     >
                       <Ionicons name="navigate" size={14} color={colors.white} />
                       <Text style={styles.routeBtnText}>Cómo llegar</Text>
@@ -519,6 +511,52 @@ export default function MapScreen() {
           )}
         </View>
       </FadeInUp>
+
+      <BottomSheetModal
+        ref={branchSheetRef}
+        index={0}
+        snapPoints={['34%']}
+        enablePanDownToClose
+        keyboardBehavior="interactive"
+        backdropComponent={(props: Record<string, unknown>) => (
+          <BottomSheetBackdrop {...props} pressBehavior="close" />
+        )}
+        backgroundStyle={{ backgroundColor: colors.card }}
+      >
+        <BottomSheetView style={styles.branchSheet}>
+          {(() => {
+            const branch = nearby.find((item) => item.IdSucursal === selectedId);
+            if (!branch) return null;
+            const brand = getProviderBrand(branch.IdProveedor);
+            const providerName = branch.provider?.Nombre ?? 'Proveedor';
+            return (
+              <>
+                <View style={styles.branchSheetHeader}>
+                  <View style={[styles.avatar, { backgroundColor: brand.bg }]}>
+                    <Text style={[styles.avatarLetter, { color: brand.color }]}>
+                      {providerName.charAt(0)}
+                    </Text>
+                  </View>
+                  <View style={styles.branchSheetMeta}>
+                    <Text style={styles.branchSheetTitle}>{providerName}</Text>
+                    <Text style={styles.branchSheetSub}>
+                      {getBranchName(branch, branch.provider)} · {formatDistance(branch.distanceKm)}
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
+                  style={styles.routeBtn}
+                  onPress={() => openNavigation(branch.lat, branch.lng, branch.NombreSucursal)}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="navigate" size={14} color={colors.white} />
+                  <Text style={styles.routeBtnText}>Cómo llegar</Text>
+                </Pressable>
+              </>
+            );
+          })()}
+        </BottomSheetView>
+      </BottomSheetModal>
     </Screen>
   );
 }
@@ -535,10 +573,7 @@ function FilterPill({
   return (
     <Pressable
       onPress={onPress}
-      style={[
-        styles.filterPill,
-        active ? styles.filterPillActive : styles.filterPillIdle,
-      ]}
+      style={[styles.filterPill, active ? styles.filterPillActive : styles.filterPillIdle]}
     >
       <Text
         style={[
@@ -564,6 +599,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.bg,
   },
+  loadingLine: { marginTop: spacing.lg },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -741,6 +777,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.muted,
     textAlign: 'center',
+  },
+  branchSheet: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 28,
+    gap: spacing.lg,
+  },
+  branchSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  branchSheetMeta: { flex: 1 },
+  branchSheetTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 18,
+    color: colors.navy,
+  },
+  branchSheetSub: {
+    fontFamily: typography.medium,
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 4,
   },
 
   card: {

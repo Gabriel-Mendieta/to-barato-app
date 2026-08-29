@@ -1,18 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  Image,
-  ScrollView,
-  ActivityIndicator,
-  StyleSheet,
-  Pressable,
-  FlatList,
-} from 'react-native';
+import { View, Text, Image, ScrollView, StyleSheet, Pressable, FlatList } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, endpoints } from '@/src/shared/api';
-import { Button, Chip, Screen, ScreenTitle } from '@/src/shared/ui';
+import { Button, Chip, EmptyState, Screen, ScreenTitle, Skeleton } from '@/src/shared/ui';
 import { colors, radii, spacing, typography } from '@/src/shared/theme';
 
 type PassedInfo = {
@@ -91,7 +82,9 @@ export default function ProductDetailScreen() {
   if (!info) {
     return (
       <Screen>
-        <ActivityIndicator color={colors.navy} />
+        <Skeleton width="100%" height={200} borderRadius={radii.xl} />
+        <Skeleton width="70%" height={24} style={styles.skeletonLine} />
+        <Skeleton width="35%" height={18} style={styles.skeletonLine} />
       </Screen>
     );
   }
@@ -116,31 +109,36 @@ export default function ProductDetailScreen() {
         {info.Categoria ? <Chip tone="navy">{info.Categoria}</Chip> : null}
         <Text style={styles.price}>
           RD$ {info.Precio}
-          {info.Unidad ? (
-            <Text style={styles.unit}> / {info.Unidad}</Text>
-          ) : null}
+          {info.Unidad ? <Text style={styles.unit}> / {info.Unidad}</Text> : null}
         </Text>
-        {info.Descripcion ? (
-          <Text style={styles.desc}>{info.Descripcion}</Text>
-        ) : null}
+        {info.Descripcion ? <Text style={styles.desc}>{info.Descripcion}</Text> : null}
 
         <Text style={styles.section}>Precios por proveedor</Text>
         {loadingPrices ? (
-          <ActivityIndicator color={colors.navy} />
+          <View style={styles.priceSkeletons}>
+            {[0, 1, 2].map((item) => (
+              <View key={item} style={styles.priceSkeletonRow}>
+                <Skeleton width="44%" height={14} />
+                <Skeleton width="24%" height={14} />
+              </View>
+            ))}
+          </View>
         ) : (
           <FlatList
             data={prices}
             scrollEnabled={false}
             keyExtractor={(p) => String(p.IdProveedor)}
             ListEmptyComponent={
-              <Text style={styles.desc}>Sin precios adicionales.</Text>
+              <EmptyState
+                icon="pricetag-outline"
+                title="Sin precios adicionales"
+                description="Todavía no hay precios de otros proveedores."
+              />
             }
             renderItem={({ item }) => (
               <View style={styles.priceRow}>
                 <Text style={styles.prov}>{item.NombreProveedor}</Text>
-                <Text style={styles.priceSm}>
-                  RD$ {item.PrecioOferta ?? item.Precio}
-                </Text>
+                <Text style={styles.priceSm}>RD$ {item.PrecioOferta ?? item.Precio}</Text>
               </View>
             )}
           />
@@ -207,5 +205,14 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontFamily: typography.medium,
     marginBottom: spacing.md,
+  },
+  skeletonLine: { marginTop: spacing.md },
+  priceSkeletons: { gap: 12 },
+  priceSkeletonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
   },
 });

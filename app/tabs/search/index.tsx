@@ -6,13 +6,20 @@ import {
   Image,
   Pressable,
   StyleSheet,
-  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, endpoints } from '@/src/shared/api';
-import { Chip, Field, Screen, ScreenTitle } from '@/src/shared/ui';
+import {
+  Chip,
+  EmptyState,
+  Field,
+  Screen,
+  ScreenTitle,
+  Skeleton,
+  triggerHaptic,
+} from '@/src/shared/ui';
 import { colors, layout, radii, spacing, typography } from '@/src/shared/theme';
 
 type Proveedor = {
@@ -41,7 +48,7 @@ export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [selectedProv, setSelectedProv] = useState<number | null>(
-    proveedorId ? Number(proveedorId) : null
+    proveedorId ? Number(proveedorId) : null,
   );
   const [items, setItems] = useState<ProductoProveedorResponse[]>([]);
   const [loading, setLoading] = useState(false);
@@ -60,9 +67,7 @@ export default function SearchScreen() {
     if (selectedProv == null) return;
     setLoading(true);
     api
-      .get<ProductoProveedorResponse[]>(
-        endpoints.preciosProductosProveedor(selectedProv)
-      )
+      .get<ProductoProveedorResponse[]>(endpoints.preciosProductosProveedor(selectedProv))
       .then(({ data }) => setItems(data))
       .catch(console.warn)
       .finally(() => setLoading(false));
@@ -86,9 +91,7 @@ export default function SearchScreen() {
         placeholder="Producto (voz = stub, sin STT)"
         value={query}
         onChangeText={setQuery}
-        trailing={
-          <Ionicons name="mic-outline" size={20} color={colors.muted} />
-        }
+        trailing={<Ionicons name="mic-outline" size={20} color={colors.muted} />}
       />
 
       <FlatList
@@ -102,7 +105,10 @@ export default function SearchScreen() {
           <Chip
             tone="navy"
             selected={selectedProv === item.IdProveedor}
-            onPress={() => setSelectedProv(item.IdProveedor)}
+            onPress={() => {
+              void triggerHaptic('selection');
+              setSelectedProv(item.IdProveedor);
+            }}
           >
             {item.Nombre}
           </Chip>
@@ -110,7 +116,15 @@ export default function SearchScreen() {
       />
 
       {loading ? (
-        <ActivityIndicator color={colors.navy} />
+        <View style={styles.skeletonList}>
+          {[0, 1, 2, 3, 4].map((item) => (
+            <View key={item} style={styles.skeletonCard}>
+              <Skeleton width="100%" height={100} borderRadius={radii.md} />
+              <Skeleton width="78%" height={14} />
+              <Skeleton width="42%" height={12} />
+            </View>
+          ))}
+        </View>
       ) : (
         <FlatList
           data={filtered}
@@ -118,20 +132,20 @@ export default function SearchScreen() {
           numColumns={cols}
           keyExtractor={(item) => `${item.IdProducto}-${item.IdProveedor}`}
           contentContainerStyle={{ paddingBottom: 100, gap: 12 }}
-          columnWrapperStyle={{ gap: 12 }}
           ListEmptyComponent={
-            <Text style={styles.empty}>Sin resultados para esta búsqueda.</Text>
+            <EmptyState
+              icon="search-outline"
+              title="Sin resultados"
+              description="Prueba con otro producto o proveedor."
+            />
           }
           renderItem={({ item }) => (
             <Pressable
-              style={[styles.card, { flex: 1 / cols }]}
+              style={[styles.card, { flex: 1 / cols, marginHorizontal: 6 }]}
               onPress={() => router.push(`/tabs/product/${item.IdProducto}`)}
             >
               {item.Producto.UrlImagen ? (
-                <Image
-                  source={{ uri: item.Producto.UrlImagen }}
-                  style={styles.img}
-                />
+                <Image source={{ uri: item.Producto.UrlImagen }} style={styles.img} />
               ) : (
                 <View style={[styles.img, styles.imgPh]}>
                   <Ionicons name="cube-outline" size={24} color={colors.muted} />
@@ -140,9 +154,7 @@ export default function SearchScreen() {
               <Text numberOfLines={2} style={styles.name}>
                 {item.Producto.Nombre}
               </Text>
-              <Text style={styles.price}>
-                RD$ {item.PrecioOferta ?? item.Precio}
-              </Text>
+              <Text style={styles.price}>RD$ {item.PrecioOferta ?? item.Precio}</Text>
             </Pressable>
           )}
         />
@@ -188,5 +200,14 @@ const styles = StyleSheet.create({
     fontFamily: typography.family,
     textAlign: 'center',
     marginTop: 40,
+  },
+  skeletonList: { flex: 1, gap: 10 },
+  skeletonCard: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
 });

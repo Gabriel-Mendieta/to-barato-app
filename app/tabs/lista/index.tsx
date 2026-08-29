@@ -1,15 +1,10 @@
-import {
-  api,
-  endpoints,
-  clearSession,
-} from '@/src/shared/api';
+import { api, endpoints, clearSession } from '@/src/shared/api';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   FlatList,
   Pressable,
-  ActivityIndicator,
   StyleSheet,
   RefreshControl,
   Alert,
@@ -19,6 +14,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetView,
+  type BottomSheetModalMethods,
+} from '@/src/shared/ui/BottomSheetCompat';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 import {
@@ -29,13 +30,12 @@ import {
   FLOATING_TAB_BAR_CLEARANCE,
   CreateListModal,
   type CreateListPayload,
+  EmptyState,
+  Skeleton,
+  showToast,
+  triggerHaptic,
 } from '@/src/shared/ui';
-import {
-  colors,
-  radii,
-  spacing,
-  typography,
-} from '@/src/shared/theme';
+import { colors, radii, spacing, typography } from '@/src/shared/theme';
 
 type Lista = {
   IdUsuario: number;
@@ -108,10 +108,7 @@ const VISUAL_FALLBACK: ListVisual[] = [
 ];
 
 function listVisual(lista: Lista, index: number): ListVisual {
-  return (
-    VISUAL_BY_PROVIDER[lista.IdProveedor] ??
-    VISUAL_FALLBACK[index % VISUAL_FALLBACK.length]
-  );
+  return VISUAL_BY_PROVIDER[lista.IdProveedor] ?? VISUAL_FALLBACK[index % VISUAL_FALLBACK.length];
 }
 
 /** Offline stub for “comprados” until the API exposes checked items. */
@@ -139,6 +136,8 @@ export default function ShoppingListScreen() {
   const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
   const [notifOpen, setNotifOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [menuList, setMenuList] = useState<Lista | null>(null);
+  const menuSheetRef = React.useRef<BottomSheetModalMethods>(null);
 
   const fetchUserLists = useCallback(async () => {
     try {
@@ -159,14 +158,12 @@ export default function ShoppingListScreen() {
       await Promise.all(
         propias.map(async (l) => {
           try {
-            const r = await api.get<unknown[]>(
-              endpoints.productosDeLista(l.IdLista)
-            );
+            const r = await api.get<unknown[]>(endpoints.productosDeLista(l.IdLista));
             counts[l.IdLista] = r.data.length;
           } catch {
             counts[l.IdLista] = 0;
           }
-        })
+        }),
       );
       setItemCounts(counts);
     } catch {
@@ -198,25 +195,18 @@ export default function ShoppingListScreen() {
   };
 
   const budgetTotal = useMemo(
-    () =>
-      listas.reduce((sum, l) => sum + (parseFloat(l.PrecioTotal) || 0), 0),
-    [listas]
+    () => listas.reduce((sum, l) => sum + (parseFloat(l.PrecioTotal) || 0), 0),
+    [listas],
   );
   const totalItems = useMemo(
     () => Object.values(itemCounts).reduce((a, b) => a + b, 0),
-    [itemCounts]
+    [itemCounts],
   );
   const totalDone = useMemo(
-    () =>
-      listas.reduce(
-        (sum, l) => sum + estimateDone(l.IdLista, itemCounts[l.IdLista] || 0),
-        0
-      ),
-    [listas, itemCounts]
+    () => listas.reduce((sum, l) => sum + estimateDone(l.IdLista, itemCounts[l.IdLista] || 0), 0),
+    [listas, itemCounts],
   );
-  const budgetPct = totalItems
-    ? Math.round((totalDone / totalItems) * 100)
-    : 0;
+  const budgetPct = totalItems ? Math.round((totalDone / totalItems) * 100) : 0;
   // Design stub (~20.8% of sample budget) until real savings exist.
   const savings = Math.round(budgetTotal * 0.208 * 100) / 100;
   const money = formatMoney(budgetTotal);
@@ -226,10 +216,7 @@ export default function ShoppingListScreen() {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert(
-          'Sin permiso',
-          'Necesitamos tu ubicación para generar la ruta.'
-        );
+        showToast('error', 'Sin permiso', 'Necesitamos tu ubicación para generar la ruta.');
         return;
       }
 
@@ -239,21 +226,17 @@ export default function ShoppingListScreen() {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
 
-      const provIds = listas
-        .filter((l) => selectedLists.has(l.IdLista))
-        .map((l) => l.IdProveedor);
+      const provIds = listas.filter((l) => selectedLists.has(l.IdLista)).map((l) => l.IdProveedor);
 
-      const resp = await api.post<RutaSucursal[]>(
-        endpoints.rutaMultiplesListas,
-        { lat, lng, ids_proveedores: provIds }
-      );
+      const resp = await api.post<RutaSucursal[]>(endpoints.rutaMultiplesListas, {
+        lat,
+        lng,
+        ids_proveedores: provIds,
+      });
       const rutas = resp.data;
 
       if (!rutas.length) {
-        Alert.alert(
-          'Ruta',
-          'No se encontraron sucursales para esa selección.'
-        );
+        showToast('info', 'Ruta', 'No se encontraron sucursales para esa selección.');
         return;
       }
 
@@ -274,43 +257,37 @@ export default function ShoppingListScreen() {
         Linking.openURL(url);
       }
     } catch {
-      Alert.alert('Error', 'No se pudo generar la ruta. Intenta nuevamente.');
+      showToast('error', 'No se pudo generar la ruta', 'Intenta nuevamente.');
     }
   };
 
   const shareList = async (lista: Lista) => {
     try {
-      const respProd = await api.get<ProductoEnLista[]>(
-        endpoints.productosDeLista(lista.IdLista)
-      );
+      const respProd = await api.get<ProductoEnLista[]>(endpoints.productosDeLista(lista.IdLista));
       const prodsEnLista = respProd.data;
 
       const detalles = await Promise.all(
         prodsEnLista.map(async (pl) => {
-          const r = await api.get<ProductoAPI>(
-            endpoints.productoById(pl.IdProducto)
-          );
+          const r = await api.get<ProductoAPI>(endpoints.productoById(pl.IdProducto));
           return {
             ...pl,
             Nombre: r.data.Nombre,
             IdUnidadMedida: r.data.IdUnidadMedida,
           };
-        })
+        }),
       );
 
       const rUnidades = await api.get<UnidadMedida[]>(endpoints.unidadmedida);
       const unidadesMap = Object.fromEntries(
-        rUnidades.data.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])
+        rUnidades.data.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida]),
       );
 
-      const rProv = await api.get<
-        ProveedorInfo & { IdTipoProveedor: number }
-      >(endpoints.proveedorById(lista.IdProveedor));
+      const rProv = await api.get<ProveedorInfo & { IdTipoProveedor: number }>(
+        endpoints.proveedorById(lista.IdProveedor),
+      );
       const prov = rProv.data;
       const rTipos = await api.get<TipoProveedor[]>(endpoints.tipoproveedor);
-      const tipo = rTipos.data.find(
-        (t) => t.IdTipoProveedor === prov.IdTipoProveedor
-      );
+      const tipo = rTipos.data.find((t) => t.IdTipoProveedor === prov.IdTipoProveedor);
 
       let sucursalNombre = 'N/A';
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -324,13 +301,8 @@ export default function ShoppingListScreen() {
           ids_productos: detalles.map((d) => d.IdProducto),
           lista_cantidad: detalles.map((d) => d.Cantidad),
         };
-        const rSuc = await api.post<RutaSucursal[]>(
-          endpoints.sucursalCercana,
-          body
-        );
-        const found = rSuc.data.find(
-          (b) => b.IdProveedor === lista.IdProveedor
-        );
+        const rSuc = await api.post<RutaSucursal[]>(endpoints.sucursalCercana, body);
+        const found = rSuc.data.find((b) => b.IdProveedor === lista.IdProveedor);
         if (found) sucursalNombre = found.NombreSucursal;
       }
 
@@ -340,19 +312,20 @@ export default function ShoppingListScreen() {
       message += `Productos:\n`;
       detalles.forEach((d) => {
         const unidad = unidadesMap[d.IdUnidadMedida] ?? '';
-        message += `• ${d.Nombre} x${d.Cantidad} ${unidad} RD$${parseFloat(
-          d.PrecioActual
-        ).toFixed(2)}\n`;
+        message += `• ${d.Nombre} x${d.Cantidad} ${unidad} RD$${parseFloat(d.PrecioActual).toFixed(
+          2,
+        )}\n`;
       });
       message += `\nPrecio total: RD$${parseFloat(lista.PrecioTotal).toFixed(2)}`;
 
       await Share.share({ message });
     } catch {
-      Alert.alert('Error', 'No se pudo compartir la lista.');
+      showToast('error', 'No se pudo compartir la lista', 'Intenta nuevamente.');
     }
   };
 
   const confirmDelete = (lista: Lista) => {
+    void triggerHaptic('warning');
     Alert.alert('Eliminar lista', '¿Seguro deseas eliminar esta lista?', [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -361,9 +334,12 @@ export default function ShoppingListScreen() {
         onPress: async () => {
           try {
             await api.delete(endpoints.listaById(lista.IdLista));
+            void triggerHaptic('success');
+            showToast('success', 'Lista eliminada');
             fetchUserLists();
           } catch {
-            Alert.alert('Error', 'No se pudo eliminar.');
+            void triggerHaptic('error');
+            showToast('error', 'No se pudo eliminar', 'Intenta nuevamente.');
           }
         },
       },
@@ -371,22 +347,9 @@ export default function ShoppingListScreen() {
   };
 
   const openMenu = (lista: Lista) => {
-    Alert.alert(lista.Nombre, undefined, [
-      {
-        text: 'Compartir',
-        onPress: () => shareList(lista),
-      },
-      {
-        text: 'Seleccionar para ruta',
-        onPress: () => toggleSelection(lista.IdLista),
-      },
-      {
-        text: 'Eliminar',
-        style: 'destructive',
-        onPress: () => confirmDelete(lista),
-      },
-      { text: 'Cancelar', style: 'cancel' },
-    ]);
+    void triggerHaptic('selection');
+    setMenuList(lista);
+    requestAnimationFrame(() => menuSheetRef.current?.present());
   };
 
   const openList = (item: Lista) => {
@@ -411,35 +374,29 @@ export default function ShoppingListScreen() {
       const userIdStr = await SecureStore.getItemAsync('user_id');
       const userId = userIdStr ? Number(userIdStr) : null;
       if (!userId) {
-        Alert.alert('Error', 'Inicia sesión de nuevo.');
+        showToast('error', 'Sesión expirada', 'Inicia sesión de nuevo.');
         return;
       }
 
-      const { data: proveedores } = await api.get<ProveedorInfo[]>(
-        endpoints.proveedor
-      );
-      const match = (proveedores ?? []).find(
-        (p) => p.IdTipoProveedor === tipo.IdTipoProveedor
-      );
+      const { data: proveedores } = await api.get<ProveedorInfo[]>(endpoints.proveedor);
+      const match = (proveedores ?? []).find((p) => p.IdTipoProveedor === tipo.IdTipoProveedor);
       const idProveedor = match?.IdProveedor ?? proveedores?.[0]?.IdProveedor;
       if (!idProveedor) {
-        Alert.alert('Error', 'No hay proveedores para esa categoría.');
+        showToast('error', 'Sin proveedores', 'No hay proveedores para esa categoría.');
         return;
       }
 
-      const { data: lista } = await api.post<{ IdLista: number }>(
-        endpoints.lista,
-        {
-          IdUsuario: userId,
-          IdProveedor: idProveedor,
-          Nombre: nombre.trim(),
-          PrecioTotal: '0.00',
-        }
-      );
+      const { data: lista } = await api.post<{ IdLista: number }>(endpoints.lista, {
+        IdUsuario: userId,
+        IdProveedor: idProveedor,
+        Nombre: nombre.trim(),
+        PrecioTotal: '0.00',
+      });
       const listaId = lista?.IdLista;
       if (!listaId) throw new Error('Sin IdLista');
 
       setCreateOpen(false);
+      void triggerHaptic('success');
       router.push({
         pathname: '/tabs/list/add',
         params: {
@@ -450,7 +407,8 @@ export default function ShoppingListScreen() {
         },
       });
     } catch {
-      Alert.alert('Error', 'No se pudo crear la lista.');
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo crear la lista', 'Intenta nuevamente.');
     }
   };
 
@@ -459,11 +417,17 @@ export default function ShoppingListScreen() {
   if (loading && !refreshing) {
     return (
       <Screen edges={['top']} style={{ paddingBottom: 0 }}>
-        <ActivityIndicator
-          size="large"
-          color={colors.navy}
-          style={{ marginTop: 48 }}
-        />
+        <View style={styles.loadingSkeletons}>
+          {[0, 1, 2, 3].map((item) => (
+            <View key={item} style={styles.loadingRow}>
+              <Skeleton width={48} height={48} borderRadius={15} />
+              <View style={styles.loadingText}>
+                <Skeleton width="70%" height={15} />
+                <Skeleton width="45%" height={11} />
+              </View>
+            </View>
+          ))}
+        </View>
       </Screen>
     );
   }
@@ -474,9 +438,7 @@ export default function ShoppingListScreen() {
         data={listas}
         keyExtractor={(l) => l.IdLista.toString()}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={{
           paddingBottom: FLOATING_TAB_BAR_CLEARANCE + (isSelecting ? 56 : 0),
           flexGrow: 1,
@@ -503,11 +465,7 @@ export default function ShoppingListScreen() {
                 accessibilityLabel="Notificaciones"
                 hitSlop={8}
               >
-                <Ionicons
-                  name="notifications-outline"
-                  size={20}
-                  color={colors.navy}
-                />
+                <Ionicons name="notifications-outline" size={20} color={colors.navy} />
               </Pressable>
             </View>
 
@@ -515,8 +473,8 @@ export default function ShoppingListScreen() {
               <View style={styles.notifSheet}>
                 <Text style={styles.notifTitle}>Notificaciones</Text>
                 <Text style={styles.notifBody}>
-                  Sheet local (sin API de notificaciones). Los avisos reales
-                  llegarán cuando el backend esté listo.
+                  Sheet local (sin API de notificaciones). Los avisos reales llegarán cuando el
+                  backend esté listo.
                 </Text>
               </View>
             ) : null}
@@ -527,8 +485,7 @@ export default function ShoppingListScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.budgetLabel}>Presupuesto estimado</Text>
                     <Text style={styles.budgetValue}>
-                      RD${' '}
-                      <Text style={styles.budgetMono}>{money.whole}</Text>
+                      RD$ <Text style={styles.budgetMono}>{money.whole}</Text>
                       <Text style={styles.budgetCents}>.{money.cents}</Text>
                     </Text>
                   </View>
@@ -542,10 +499,7 @@ export default function ShoppingListScreen() {
                 <View style={styles.progressRow}>
                   <View style={styles.progressTrack}>
                     <View
-                      style={[
-                        styles.progressFill,
-                        { width: `${Math.min(100, budgetPct)}%` },
-                      ]}
+                      style={[styles.progressFill, { width: `${Math.min(100, budgetPct)}%` }]}
                     />
                   </View>
                   <Text style={styles.progressMeta}>
@@ -564,24 +518,13 @@ export default function ShoppingListScreen() {
           </Stagger>
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons name="cart-outline" size={36} color={colors.muted} />
-            </View>
-            <Text style={styles.emptyTitle}>Aún no tienes listas</Text>
-            <Text style={styles.emptyBody}>
-              Crea tu primera lista de compras y compara precios entre
-              proveedores.
-            </Text>
-            <Pressable
-              onPress={goCreate}
-              style={styles.dashedCreate}
-              accessibilityRole="button"
-            >
-              <Ionicons name="add" size={18} color={colors.muted} />
-              <Text style={styles.dashedCreateText}>Crear nueva lista</Text>
-            </Pressable>
-          </View>
+          <EmptyState
+            icon="cart-outline"
+            title="Aún no tienes listas"
+            description="Crea tu primera lista de compras y compara precios entre proveedores."
+            actionLabel="Crear nueva lista"
+            onAction={goCreate}
+          />
         }
         renderItem={({ item, index }) => {
           const count = itemCounts[item.IdLista] || 0;
@@ -619,11 +562,7 @@ export default function ShoppingListScreen() {
                       accessibilityLabel="Más opciones"
                       style={styles.moreBtn}
                     >
-                      <Ionicons
-                        name="ellipsis-horizontal"
-                        size={18}
-                        color={colors.tabInactive}
-                      />
+                      <Ionicons name="ellipsis-horizontal" size={18} color={colors.tabInactive} />
                     </Pressable>
                   </View>
 
@@ -639,12 +578,7 @@ export default function ShoppingListScreen() {
                   </View>
 
                   <View style={styles.cardProgressTrack}>
-                    <View
-                      style={[
-                        styles.cardProgressFill,
-                        { width: `${Math.min(100, pct)}%` },
-                      ]}
-                    />
+                    <View style={[styles.cardProgressFill, { width: `${Math.min(100, pct)}%` }]} />
                   </View>
                 </View>
               </Pressable>
@@ -673,9 +607,7 @@ export default function ShoppingListScreen() {
             accessibilityRole="button"
           >
             <Ionicons name="navigate" size={18} color={colors.white} />
-            <Text style={styles.routeBtnText}>
-              Generar ruta ({selectedLists.size})
-            </Text>
+            <Text style={styles.routeBtnText}>Generar ruta ({selectedLists.size})</Text>
           </Pressable>
           <Pressable
             onPress={() => setSelectedLists(new Set())}
@@ -692,6 +624,57 @@ export default function ShoppingListScreen() {
         onClose={() => setCreateOpen(false)}
         onConfirm={onConfirmCreate}
       />
+
+      <BottomSheetModal
+        ref={menuSheetRef}
+        index={0}
+        snapPoints={['34%']}
+        enablePanDownToClose
+        onDismiss={() => setMenuList(null)}
+        backdropComponent={(props: Record<string, unknown>) => (
+          <BottomSheetBackdrop {...props} pressBehavior="close" />
+        )}
+        backgroundStyle={{ backgroundColor: colors.card }}
+      >
+        <BottomSheetView style={styles.menuSheet}>
+          <Text style={styles.menuTitle} numberOfLines={1}>
+            {menuList?.Nombre ?? 'Opciones de lista'}
+          </Text>
+          <Pressable
+            style={styles.menuButton}
+            onPress={() => {
+              const selected = menuList;
+              menuSheetRef.current?.dismiss();
+              if (selected) void shareList(selected);
+            }}
+          >
+            <Ionicons name="share-outline" size={20} color={colors.navy} />
+            <Text style={styles.menuButtonText}>Compartir</Text>
+          </Pressable>
+          <Pressable
+            style={styles.menuButton}
+            onPress={() => {
+              const selected = menuList;
+              menuSheetRef.current?.dismiss();
+              if (selected) toggleSelection(selected.IdLista);
+            }}
+          >
+            <Ionicons name="checkmark-circle-outline" size={20} color={colors.navy} />
+            <Text style={styles.menuButtonText}>Seleccionar para ruta</Text>
+          </Pressable>
+          <Pressable
+            style={styles.menuButton}
+            onPress={() => {
+              const selected = menuList;
+              menuSheetRef.current?.dismiss();
+              if (selected) confirmDelete(selected);
+            }}
+          >
+            <Ionicons name="trash-outline" size={20} color={colors.red} />
+            <Text style={[styles.menuButtonText, { color: colors.red }]}>Eliminar</Text>
+          </Pressable>
+        </BottomSheetView>
+      </BottomSheetModal>
     </Screen>
   );
 }
@@ -845,7 +828,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#EEF0F5',
+    borderColor: colors.line,
     shadowColor: colors.navy,
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -986,5 +969,43 @@ const styles = StyleSheet.create({
     fontFamily: typography.semibold,
     fontSize: 13,
     color: colors.muted,
+  },
+  loadingSkeletons: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    gap: 10,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: 14,
+  },
+  loadingText: { flex: 1, gap: 8 },
+  menuSheet: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: 4,
+  },
+  menuTitle: {
+    fontFamily: typography.extrabold,
+    color: colors.navy,
+    fontSize: 18,
+    marginBottom: spacing.sm,
+  },
+  menuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: 12,
+  },
+  menuButtonText: {
+    fontFamily: typography.semibold,
+    color: colors.ink,
+    fontSize: 14,
   },
 });

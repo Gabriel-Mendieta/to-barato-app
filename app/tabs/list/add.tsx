@@ -1,10 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
   Image,
-  Modal,
+  FlatList,
   Platform,
   Pressable,
   ScrollView,
@@ -13,6 +10,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  type BottomSheetModalMethods,
+  BottomSheetView,
+} from '@/src/shared/ui/BottomSheetCompat';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api, endpoints } from '@/src/shared/api';
@@ -21,13 +24,12 @@ import {
   Screen,
   FLOATING_TAB_BAR_CLEARANCE,
   Button,
+  EmptyState,
+  showToast,
+  Skeleton,
+  triggerHaptic,
 } from '@/src/shared/ui';
-import {
-  colors,
-  radii,
-  spacing,
-  typography,
-} from '@/src/shared/theme';
+import { colors, radii, spacing, typography } from '@/src/shared/theme';
 
 type ProductoAPI = {
   IdProducto: number;
@@ -47,13 +49,7 @@ type UnidadMedida = {
   NombreUnidadMedida: string;
 };
 
-const POPULAR = [
-  'Manzana',
-  'Pollo Fresco',
-  'Arroz Premium',
-  'Leche',
-  'Aceite',
-] as const;
+const POPULAR = ['Manzana', 'Pollo Fresco', 'Arroz Premium', 'Leche', 'Aceite'] as const;
 
 const CATEGORY_EMOJI: Record<string, string> = {
   frutas: '🍎',
@@ -122,6 +118,7 @@ export default function AddToListScreen() {
   const [categoryId, setCategoryId] = useState<number | null>(null);
 
   const [qtyModal, setQtyModal] = useState<ProductoAPI | null>(null);
+  const qtySheetRef = React.useRef<BottomSheetModalMethods>(null);
   const [qty, setQty] = useState(1);
   const [adding, setAdding] = useState(false);
 
@@ -134,7 +131,7 @@ export default function AddToListScreen() {
       const abbr = getUnitAbbrev(id).replace(/^\//, '');
       return abbr || '';
     },
-    [unitNames]
+    [unitNames],
   );
 
   const fetchBase = useCallback(async () => {
@@ -151,11 +148,7 @@ export default function AddToListScreen() {
       setAllProducts(Array.isArray(prodResp.data) ? prodResp.data : []);
       setCategorias(Array.isArray(catResp.data) ? catResp.data : []);
       const units = Array.isArray(unitResp.data) ? unitResp.data : [];
-      setUnitNames(
-        Object.fromEntries(
-          units.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])
-        )
-      );
+      setUnitNames(Object.fromEntries(units.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])));
     } catch {
       setError('No se pudieron cargar los productos.');
     } finally {
@@ -168,7 +161,7 @@ export default function AddToListScreen() {
       setQuery('');
       setCategoryId(null);
       fetchBase();
-    }, [fetchBase])
+    }, [fetchBase]),
   );
 
   const filtered = useMemo(() => {
@@ -186,13 +179,15 @@ export default function AddToListScreen() {
   const showBrowse = !query.trim() && categoryId == null;
 
   const openQty = (p: ProductoAPI) => {
+    void triggerHaptic('selection');
     setQty(1);
     setQtyModal(p);
+    requestAnimationFrame(() => qtySheetRef.current?.present());
   };
 
   const confirmAdd = async () => {
     if (!qtyModal || !listaId) {
-      Alert.alert('Error', 'No hay una lista activa para agregar.');
+      showToast('error', 'No se pudo agregar', 'No hay una lista activa.');
       return;
     }
     setAdding(true);
@@ -205,10 +200,12 @@ export default function AddToListScreen() {
         PrecioActual: '0.00',
         Cantidad: qty,
       });
-      setQtyModal(null);
-      Alert.alert('Agregado', `${qtyModal.Nombre} ×${qty} en la lista.`);
+      qtySheetRef.current?.dismiss();
+      void triggerHaptic('success');
+      showToast('success', 'Producto agregado', `${qtyModal.Nombre} ×${qty}`);
     } catch {
-      Alert.alert('Error', 'No se pudo agregar el producto.');
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo agregar', 'Intenta nuevamente.');
     } finally {
       setAdding(false);
     }
@@ -240,9 +237,7 @@ export default function AddToListScreen() {
       'Despensa',
       'Ofertas',
     ];
-    const byName = new Map(
-      categorias.map((c) => [c.NombreCategoria.toLowerCase(), c])
-    );
+    const byName = new Map(categorias.map((c) => [c.NombreCategoria.toLowerCase(), c]));
     const picked: CategoriaAPI[] = [];
     for (const label of preferred) {
       const hit = byName.get(label.toLowerCase());
@@ -266,11 +261,17 @@ export default function AddToListScreen() {
   if (loading) {
     return (
       <Screen edges={['top']} gutters={false}>
-        <ActivityIndicator
-          size="large"
-          color={colors.navy}
-          style={{ marginTop: 48 }}
-        />
+        <View style={styles.loadingSkeletons}>
+          {[0, 1, 2, 3, 4].map((item) => (
+            <View key={item} style={styles.loadingRow}>
+              <Skeleton width={52} height={52} borderRadius={12} />
+              <View style={styles.loadingText}>
+                <Skeleton width="75%" height={14} />
+                <Skeleton width="40%" height={11} />
+              </View>
+            </View>
+          ))}
+        </View>
       </Screen>
     );
   }
@@ -346,9 +347,7 @@ export default function AddToListScreen() {
             ))}
           </View>
 
-          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>
-            Categorías
-          </Text>
+          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Categorías</Text>
           <View style={styles.catGrid}>
             {browseCats.map((c, i) => (
               <Pressable
@@ -364,14 +363,9 @@ export default function AddToListScreen() {
                 style={styles.catCard}
               >
                 <View
-                  style={[
-                    styles.catIcon,
-                    { backgroundColor: categoryTint(c.NombreCategoria, i) },
-                  ]}
+                  style={[styles.catIcon, { backgroundColor: categoryTint(c.NombreCategoria, i) }]}
                 >
-                  <Text style={styles.catEmoji}>
-                    {categoryEmoji(c.NombreCategoria)}
-                  </Text>
+                  <Text style={styles.catEmoji}>{categoryEmoji(c.NombreCategoria)}</Text>
                 </View>
                 <Text style={styles.catLabel} numberOfLines={1}>
                   {c.NombreCategoria.length > 7
@@ -395,50 +389,37 @@ export default function AddToListScreen() {
           ListHeaderComponent={
             <View style={styles.resultsHeader}>
               {categoryId != null ? (
-                <Pressable
-                  onPress={() => setCategoryId(null)}
-                  style={styles.clearCat}
-                >
+                <Pressable onPress={() => setCategoryId(null)} style={styles.clearCat}>
                   <Ionicons name="close-circle" size={16} color={colors.muted} />
                   <Text style={styles.clearCatText}>
-                    {categorias.find((c) => c.IdCategoria === categoryId)
-                      ?.NombreCategoria ?? 'Categoría'}
+                    {categorias.find((c) => c.IdCategoria === categoryId)?.NombreCategoria ??
+                      'Categoría'}
                   </Text>
                 </Pressable>
               ) : null}
               <Text style={styles.resultsMeta}>
                 {filtered.length} RESULTADO
                 {filtered.length === 1 ? '' : 'S'}
-                {query.trim()
-                  ? ` PARA '${query.trim().toUpperCase()}'`
-                  : ''}
+                {query.trim() ? ` PARA '${query.trim().toUpperCase()}'` : ''}
               </Text>
             </View>
           }
           ListEmptyComponent={
-            <View style={styles.emptyBox}>
-              <Text style={{ fontSize: 38 }}>🔍</Text>
-              <Text style={styles.emptyTitle}>Sin resultados</Text>
-              <Text style={styles.emptyBody}>
-                Prueba con otra palabra o explora categorías.
-              </Text>
-            </View>
+            <EmptyState
+              icon="search-outline"
+              title="Sin resultados"
+              description="Prueba con otra palabra o explora categorías."
+            />
           }
           renderItem={({ item }) => {
             const unit = unitLabel(item);
             return (
               <Pressable
                 onPress={() => openQty(item)}
-                style={({ pressed }) => [
-                  styles.resultCard,
-                  pressed && { opacity: 0.92 },
-                ]}
+                style={({ pressed }) => [styles.resultCard, pressed && { opacity: 0.92 }]}
               >
                 {item.UrlImagen ? (
-                  <Image
-                    source={{ uri: item.UrlImagen }}
-                    style={styles.thumb}
-                  />
+                  <Image source={{ uri: item.UrlImagen }} style={styles.thumb} />
                 ) : (
                   <View style={[styles.thumb, styles.thumbPlaceholder]}>
                     <Text style={{ fontSize: 22 }}>🛒</Text>
@@ -448,15 +429,9 @@ export default function AddToListScreen() {
                   <Text style={styles.resultName} numberOfLines={2}>
                     {item.Nombre}
                   </Text>
-                  {unit ? (
-                    <Text style={styles.unitText}>{unit}</Text>
-                  ) : null}
+                  {unit ? <Text style={styles.unitText}>{unit}</Text> : null}
                 </View>
-                <Ionicons
-                  name="add-circle"
-                  size={28}
-                  color={colors.orange}
-                />
+                <Ionicons name="add-circle" size={28} color={colors.orange} />
               </Pressable>
             );
           }}
@@ -471,60 +446,59 @@ export default function AddToListScreen() {
         </View>
       ) : null}
 
-      <Modal
-        visible={!!qtyModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setQtyModal(null)}
+      <BottomSheetModal
+        ref={qtySheetRef}
+        index={0}
+        snapPoints={['42%']}
+        enablePanDownToClose
+        onDismiss={() => setQtyModal(null)}
+        keyboardBehavior="interactive"
+        backdropComponent={(props: Record<string, unknown>) => (
+          <BottomSheetBackdrop {...props} pressBehavior="close" />
+        )}
+        backgroundStyle={{ backgroundColor: colors.card }}
       >
-        <View style={styles.modalBackdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setQtyModal(null)}
-          />
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Cantidad</Text>
-            <Text style={styles.modalSub} numberOfLines={2}>
-              {qtyModal?.Nombre}
-              {qtyModal ? (
-                unitLabel(qtyModal) ? (
-                  <Text style={styles.modalUnit}>
-                    {` · ${unitLabel(qtyModal)}`}
-                  </Text>
-                ) : null
-              ) : null}
-            </Text>
-            <View style={styles.stepper}>
-              <Pressable
-                onPress={() => setQty((q) => Math.max(1, q - 1))}
-                style={styles.stepBtn}
-                accessibilityLabel="Menos"
-              >
-                <Ionicons name="remove" size={22} color={colors.navy} />
-              </Pressable>
-              <Text style={styles.stepValue}>{qty}</Text>
-              <Pressable
-                onPress={() => setQty((q) => q + 1)}
-                style={styles.stepBtn}
-                accessibilityLabel="Más"
-              >
-                <Ionicons name="add" size={22} color={colors.navy} />
-              </Pressable>
-            </View>
-            <Button
-              tone="orange"
-              onPress={confirmAdd}
-              loading={adding}
-              disabled={!listaId}
+        <BottomSheetView style={styles.modalSheet}>
+          <Text style={styles.modalTitle}>Cantidad</Text>
+          <Text style={styles.modalSub} numberOfLines={2}>
+            {qtyModal?.Nombre}
+            {qtyModal ? (
+              unitLabel(qtyModal) ? (
+                <Text style={styles.modalUnit}>{` · ${unitLabel(qtyModal)}`}</Text>
+              ) : null
+            ) : null}
+          </Text>
+          <View style={styles.stepper}>
+            <Pressable
+              onPress={() => {
+                void triggerHaptic('selection');
+                setQty((q) => Math.max(1, q - 1));
+              }}
+              style={styles.stepBtn}
+              accessibilityLabel="Menos"
             >
-              Agregar a la lista
-            </Button>
-            <Button tone="light" onPress={() => setQtyModal(null)}>
-              Cancelar
-            </Button>
+              <Ionicons name="remove" size={22} color={colors.navy} />
+            </Pressable>
+            <Text style={styles.stepValue}>{qty}</Text>
+            <Pressable
+              onPress={() => {
+                void triggerHaptic('selection');
+                setQty((q) => q + 1);
+              }}
+              style={styles.stepBtn}
+              accessibilityLabel="Más"
+            >
+              <Ionicons name="add" size={22} color={colors.navy} />
+            </Pressable>
           </View>
-        </View>
-      </Modal>
+          <Button tone="orange" onPress={confirmAdd} loading={adding} disabled={!listaId}>
+            Agregar a la lista
+          </Button>
+          <Button tone="light" onPress={() => qtySheetRef.current?.dismiss()}>
+            Cancelar
+          </Button>
+        </BottomSheetView>
+      </BottomSheetModal>
     </Screen>
   );
 }
@@ -655,7 +629,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#EEF0F5',
+    borderColor: colors.line,
     ...Platform.select({
       ios: {
         shadowColor: 'rgba(11,37,69,0.06)',
@@ -774,4 +748,20 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     textAlign: 'center',
   },
+  loadingSkeletons: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    gap: 10,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: spacing.md,
+  },
+  loadingText: { flex: 1, gap: 8 },
 });

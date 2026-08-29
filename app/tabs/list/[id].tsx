@@ -1,8 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
   Image,
   Linking,
   Platform,
@@ -11,24 +8,24 @@ import {
   StyleSheet,
   Text,
   View,
+  FlatList,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import { api, endpoints } from '@/src/shared/api';
 import { getUnitAbbrev } from '@/src/shared/products/meta';
 import {
   Screen,
+  EmptyState,
+  Skeleton,
+  showToast,
+  triggerHaptic,
   FLOATING_TAB_BAR_CLEARANCE,
 } from '@/src/shared/ui';
-import {
-  colors,
-  getProviderBrand,
-  radii,
-  spacing,
-  typography,
-} from '@/src/shared/theme';
+import { colors, getProviderBrand, radii, spacing, typography } from '@/src/shared/theme';
 
 enum CategoriaLista {
   Supermercado = 'supermercado',
@@ -127,16 +124,11 @@ export default function ListDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [productos, setProductos] = useState<ListItem[]>([]);
   const [listName, setListName] = useState(nombreParam ?? 'Lista');
-  const [resolvedProveedorId, setResolvedProveedorId] =
-    useState(proveedorIdParam);
+  const [resolvedProveedorId, setResolvedProveedorId] = useState(proveedorIdParam);
   const [tipoId, setTipoId] = useState<number | null>(null);
   const [providers, setProviders] = useState<Proveedor[]>([]);
-  const [priceByProduct, setPriceByProduct] = useState<
-    Record<number, PrecioRow[]>
-  >({});
-  const [categoria, setCategoria] = useState<CategoriaLista>(
-    CategoriaLista.Otro
-  );
+  const [priceByProduct, setPriceByProduct] = useState<Record<number, PrecioRow[]>>({});
+  const [categoria, setCategoria] = useState<CategoriaLista>(CategoriaLista.Otro);
   const [branch, setBranch] = useState<SucursalCercana | null>(null);
   const [loadingBranch, setLoadingBranch] = useState(false);
   const [sending, setSending] = useState(false);
@@ -144,21 +136,15 @@ export default function ListDetailScreen() {
   const swipeRefs = useRef<Record<number, Swipeable | null>>({});
 
   const applyProviderPrices = useCallback(
-    (
-      items: ListItem[],
-      proveedorId: number,
-      matrix: Record<number, PrecioRow[]>
-    ): ListItem[] => {
+    (items: ListItem[], proveedorId: number, matrix: Record<number, PrecioRow[]>): ListItem[] => {
       if (!proveedorId) return items;
       return items.map((item) => {
         const rows = matrix[item.IdProducto] ?? [];
         const match = rows.find((r) => r.IdProveedor === proveedorId);
         const price = effectivePrice(match);
         const base = match ? Number(match.Precio) : null;
-        const nextPrice =
-          price != null ? price.toFixed(2) : item.PrecioActual;
-        const was =
-          base != null && price != null && base > price ? base : null;
+        const nextPrice = price != null ? price.toFixed(2) : item.PrecioActual;
+        const was = base != null && price != null && base > price ? base : null;
         return {
           ...item,
           PrecioActual: nextPrice,
@@ -166,57 +152,52 @@ export default function ListDetailScreen() {
         };
       });
     },
-    []
+    [],
   );
 
-  const fetchProducts = useCallback(async (proveedorId: number) => {
-    try {
-      const resp = await api.get<ProductoEnLista[]>(
-        endpoints.productosDeLista(idLista)
-      );
-      const rows = Array.isArray(resp.data) ? resp.data : [];
+  const fetchProducts = useCallback(
+    async (proveedorId: number) => {
+      try {
+        const resp = await api.get<ProductoEnLista[]>(endpoints.productosDeLista(idLista));
+        const rows = Array.isArray(resp.data) ? resp.data : [];
 
-      const matrix: Record<number, PrecioRow[]> = {};
-      await Promise.all(
-        rows.map(async (pl) => {
-          try {
-            const precios = await api.get<PrecioRow[]>(
-              endpoints.preciosProductos(pl.IdProducto)
-            );
-            matrix[pl.IdProducto] = Array.isArray(precios.data)
-              ? precios.data
-              : [];
-          } catch {
-            matrix[pl.IdProducto] = [];
-          }
-        })
-      );
-      setPriceByProduct(matrix);
+        const matrix: Record<number, PrecioRow[]> = {};
+        await Promise.all(
+          rows.map(async (pl) => {
+            try {
+              const precios = await api.get<PrecioRow[]>(endpoints.preciosProductos(pl.IdProducto));
+              matrix[pl.IdProducto] = Array.isArray(precios.data) ? precios.data : [];
+            } catch {
+              matrix[pl.IdProducto] = [];
+            }
+          }),
+        );
+        setPriceByProduct(matrix);
 
-      const detalles = await Promise.all(
-        rows.map(async (pl) => {
-          const prod = await api.get<ProductoAPI>(
-            endpoints.productoById(pl.IdProducto)
-          );
-          const unitId = prod.data.IdUnidadMedida;
-          const unit = unitId != null ? getUnitAbbrev(unitId).replace(/^\//, '') : '';
-          return {
-            ...prod.data,
-            PrecioActual: pl.PrecioActual,
-            Cantidad: pl.Cantidad,
-            checked: false,
-            wasPrice: null as number | null,
-            unit,
-          } as ListItem;
-        })
-      );
+        const detalles = await Promise.all(
+          rows.map(async (pl) => {
+            const prod = await api.get<ProductoAPI>(endpoints.productoById(pl.IdProducto));
+            const unitId = prod.data.IdUnidadMedida;
+            const unit = unitId != null ? getUnitAbbrev(unitId).replace(/^\//, '') : '';
+            return {
+              ...prod.data,
+              PrecioActual: pl.PrecioActual,
+              Cantidad: pl.Cantidad,
+              checked: false,
+              wasPrice: null as number | null,
+              unit,
+            } as ListItem;
+          }),
+        );
 
-      const priced = applyProviderPrices(detalles, proveedorId, matrix);
-      setProductos(priced);
-    } catch {
-      Alert.alert('Error', 'No se pudieron cargar los productos.');
-    }
-  }, [idLista, applyProviderPrices]);
+        const priced = applyProviderPrices(detalles, proveedorId, matrix);
+        setProductos(priced);
+      } catch {
+        showToast('error', 'No se pudieron cargar productos', 'Intenta nuevamente.');
+      }
+    },
+    [idLista, applyProviderPrices],
+  );
 
   const hydrateMeta = useCallback(async () => {
     try {
@@ -236,23 +217,16 @@ export default function ListDetailScreen() {
         const provRes = await api.get<Proveedor>(endpoints.proveedorById(pid));
         tId = provRes.data.IdTipoProveedor;
         setTipoId(tId);
-        const tiposRes = await api.get<TipoProveedor[]>(
-          endpoints.tipoproveedor
-        );
+        const tiposRes = await api.get<TipoProveedor[]>(endpoints.tipoproveedor);
         const tipoObj = tiposRes.data.find((t) => t.IdTipoProveedor === tId);
         const nombre = tipoObj?.NombreTipoProveedor.toLowerCase() || '';
-        if (nombre.includes('supermerc'))
-          setCategoria(CategoriaLista.Supermercado);
-        else if (nombre.includes('ferreter'))
-          setCategoria(CategoriaLista.Ferreteria);
-        else if (nombre.includes('farmac'))
-          setCategoria(CategoriaLista.Farmacia);
+        if (nombre.includes('supermerc')) setCategoria(CategoriaLista.Supermercado);
+        else if (nombre.includes('ferreter')) setCategoria(CategoriaLista.Ferreteria);
+        else if (nombre.includes('farmac')) setCategoria(CategoriaLista.Farmacia);
       }
 
       const list = Array.isArray(allProveedores) ? allProveedores : [];
-      const sameTipo = tId
-        ? list.filter((p) => p.IdTipoProveedor === tId)
-        : list;
+      const sameTipo = tId ? list.filter((p) => p.IdTipoProveedor === tId) : list;
       setProviders(sameTipo.length ? sameTipo : list);
       return pid;
     } catch {
@@ -273,7 +247,7 @@ export default function ListDetailScreen() {
       return () => {
         active = false;
       };
-    }, [fetchProducts, hydrateMeta])
+    }, [fetchProducts, hydrateMeta]),
   );
 
   const providerOptions: ProviderOption[] = useMemo(() => {
@@ -310,15 +284,13 @@ export default function ListDetailScreen() {
   }, [productos, providers, priceByProduct, resolvedProveedorId]);
 
   const cheapestTotal = providerOptions[0]?.total ?? 0;
-  const selectedOption = providerOptions.find(
-    (o) => o.IdProveedor === resolvedProveedorId
-  );
+  const selectedOption = providerOptions.find((o) => o.IdProveedor === resolvedProveedorId);
   const selectedProviderName =
-    providers.find((p) => p.IdProveedor === resolvedProveedorId)?.Nombre ??
-    null;
+    providers.find((p) => p.IdProveedor === resolvedProveedorId)?.Nombre ?? null;
 
   const selectProvider = async (nextId: number) => {
     if (nextId === resolvedProveedorId || switchingProv) return;
+    void triggerHaptic('selection');
     setSwitchingProv(true);
     try {
       setResolvedProveedorId(nextId);
@@ -337,14 +309,13 @@ export default function ListDetailScreen() {
       await Promise.all(
         priced.map(async (item) => {
           try {
-            await api.put(
-              endpoints.listaProductoItem(idLista, item.IdProducto),
-              { PrecioActual: item.PrecioActual }
-            );
+            await api.put(endpoints.listaProductoItem(idLista, item.IdProducto), {
+              PrecioActual: item.PrecioActual,
+            });
           } catch {
             // ignore per-item persist failures
           }
-        })
+        }),
       );
     } finally {
       setSwitchingProv(false);
@@ -366,13 +337,8 @@ export default function ListDetailScreen() {
         ids_productos: productos.map((p) => p.IdProducto),
         lista_cantidad: productos.map((p) => p.Cantidad),
       };
-      const resp = await api.post<SucursalCercana[]>(
-        endpoints.sucursalCercana,
-        body
-      );
-      setBranch(
-        resp.data.find((b) => b.IdProveedor === resolvedProveedorId) || null
-      );
+      const resp = await api.post<SucursalCercana[]>(endpoints.sucursalCercana, body);
+      setBranch(resp.data.find((b) => b.IdProveedor === resolvedProveedorId) || null);
     } catch {
       setBranch(null);
     } finally {
@@ -385,18 +351,13 @@ export default function ListDetailScreen() {
   }, [loading, productos, fetchBranch]);
 
   const totals = useMemo(() => {
-    const total = productos.reduce(
-      (s, p) => s + Number(p.PrecioActual) * p.Cantidad,
-      0
-    );
+    const total = productos.reduce((s, p) => s + Number(p.PrecioActual) * p.Cantidad, 0);
     const was = productos.reduce((s, p) => {
       const unit = p.wasPrice ?? Number(p.PrecioActual);
       return s + unit * p.Cantidad;
     }, 0);
     const vsCheapest =
-      selectedOption && cheapestTotal > 0
-        ? Math.max(0, selectedOption.total - cheapestTotal)
-        : 0;
+      selectedOption && cheapestTotal > 0 ? Math.max(0, selectedOption.total - cheapestTotal) : 0;
     return {
       total,
       savings: Math.max(0, was - total),
@@ -406,7 +367,7 @@ export default function ListDetailScreen() {
 
   const openMap = () => {
     if (!branch) {
-      Alert.alert('No disponible', 'No se encontró sucursal.');
+      showToast('error', 'Ruta no disponible', 'No se encontró sucursal.');
       return;
     }
     const lat = Number(branch.Latitud);
@@ -433,10 +394,9 @@ export default function ListDetailScreen() {
   const persistQty = async (item: ListItem, nextQty: number) => {
     const clamped = Math.max(1, nextQty);
     setProductos((prev) =>
-      prev.map((p) =>
-        p.IdProducto === item.IdProducto ? { ...p, Cantidad: clamped } : p
-      )
+      prev.map((p) => (p.IdProducto === item.IdProducto ? { ...p, Cantidad: clamped } : p)),
     );
+    void triggerHaptic('selection');
     try {
       await api.put(endpoints.listaProductoItem(idLista, item.IdProducto), {
         Cantidad: clamped,
@@ -457,26 +417,18 @@ export default function ListDetailScreen() {
 
   const removeProduct = async (item: ListItem) => {
     swipeRefs.current[item.IdProducto]?.close();
-    setProductos((prev) =>
-      prev.filter((p) => p.IdProducto !== item.IdProducto)
-    );
+    setProductos((prev) => prev.filter((p) => p.IdProducto !== item.IdProducto));
     try {
-      await api.delete(
-        endpoints.listaProductoItem(idLista, item.IdProducto)
-      );
+      await api.delete(endpoints.listaProductoItem(idLista, item.IdProducto));
     } catch {
-      Alert.alert(
-        'Aviso',
-        'El producto se quitó de la vista. El backend podría no soportar borrado aún.'
-      );
+      showToast('info', 'Producto quitado', 'El backend podría no soportar borrado aún.');
     }
   };
 
   const toggleCheck = (idProducto: number) => {
+    void triggerHaptic('selection');
     setProductos((prev) =>
-      prev.map((p) =>
-        p.IdProducto === idProducto ? { ...p, checked: !p.checked } : p
-      )
+      prev.map((p) => (p.IdProducto === idProducto ? { ...p, checked: !p.checked } : p)),
     );
   };
 
@@ -505,13 +457,13 @@ export default function ListDetailScreen() {
         prompt = `Describe brevemente: ${nombres}.`;
     }
     try {
-      const res = await api.post<{ respuesta?: string }>(
-        endpoints.analizarPregunta,
-        { pregunta: prompt }
-      );
+      const res = await api.post<{ respuesta?: string }>(endpoints.analizarPregunta, {
+        pregunta: prompt,
+      });
       navigateToIaResult(res.data.respuesta || 'Sin respuesta.');
     } catch {
-      Alert.alert('Error', 'No se pudo obtener respuesta.');
+      void triggerHaptic('error');
+      showToast('error', 'No se pudo obtener respuesta', 'Intenta nuevamente.');
     } finally {
       setSending(false);
     }
@@ -533,11 +485,20 @@ export default function ListDetailScreen() {
   if (loading) {
     return (
       <Screen edges={['top']} gutters={false}>
-        <ActivityIndicator
-          size="large"
-          color={colors.navy}
-          style={{ marginTop: 48 }}
-        />
+        <View style={styles.loadingSkeletons}>
+          <Skeleton width="55%" height={22} />
+          {[0, 1, 2, 3].map((item) => (
+            <View key={item} style={styles.loadingRow}>
+              <Skeleton width={26} height={26} borderRadius={8} />
+              <Skeleton width={48} height={48} borderRadius={12} />
+              <View style={styles.loadingText}>
+                <Skeleton width="80%" height={14} />
+                <Skeleton width="45%" height={11} />
+              </View>
+              <Skeleton width={52} height={16} />
+            </View>
+          ))}
+        </View>
       </Screen>
     );
   }
@@ -576,9 +537,7 @@ export default function ListDetailScreen() {
               const active = opt.IdProveedor === resolvedProveedorId;
               const brand = getProviderBrand(opt.IdProveedor);
               const isBest =
-                opt.total === cheapestTotal &&
-                providerOptions.length > 1 &&
-                productos.length > 0;
+                opt.total === cheapestTotal && providerOptions.length > 1 && productos.length > 0;
               return (
                 <Pressable
                   key={opt.IdProveedor}
@@ -593,35 +552,24 @@ export default function ListDetailScreen() {
                   ]}
                 >
                   <Text
-                    style={[
-                      styles.providerName,
-                      active && { color: brand.color },
-                    ]}
+                    style={[styles.providerName, active && { color: brand.color }]}
                     numberOfLines={1}
                   >
                     {opt.Nombre}
                   </Text>
                   {productos.length > 0 ? (
-                    <Text
-                      style={[
-                        styles.providerTotal,
-                        active && { color: brand.color },
-                      ]}
-                    >
+                    <Text style={[styles.providerTotal, active && { color: brand.color }]}>
                       RD$ {opt.total.toFixed(2)}
                     </Text>
                   ) : null}
-                  {isBest ? (
-                    <Text style={styles.bestBadge}>Mejor precio</Text>
-                  ) : null}
+                  {isBest ? <Text style={styles.bestBadge}>Mejor precio</Text> : null}
                 </Pressable>
               );
             })}
           </ScrollView>
           {totals.vsCheapest > 0.01 ? (
             <Text style={styles.switchHint}>
-              Cambia de proveedor y ahorra RD${' '}
-              {totals.vsCheapest.toFixed(2)}
+              Cambia de proveedor y ahorra RD$ {totals.vsCheapest.toFixed(2)}
             </Text>
           ) : null}
         </View>
@@ -636,12 +584,13 @@ export default function ListDetailScreen() {
           flexGrow: 1,
         }}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>Lista vacía</Text>
-            <Text style={styles.emptyBody}>
-              Agrega productos con el botón + naranja.
-            </Text>
-          </View>
+          <EmptyState
+            icon="cart-outline"
+            title="Lista vacía"
+            description="Agrega productos con el botón + naranja."
+            actionLabel="Agregar productos"
+            onAction={goAddProducts}
+          />
         }
         ListFooterComponent={
           productos.length > 0 ? (
@@ -659,10 +608,7 @@ export default function ListDetailScreen() {
               <Pressable
                 onPress={openMap}
                 disabled={!branch || loadingBranch}
-                style={[
-                  styles.actionRuta,
-                  (!branch || loadingBranch) && { opacity: 0.6 },
-                ]}
+                style={[styles.actionRuta, (!branch || loadingBranch) && { opacity: 0.6 }]}
               >
                 <Ionicons name="git-branch-outline" size={18} color="#19426E" />
                 <Text style={styles.actionRutaText}>Ver ruta</Text>
@@ -672,120 +618,98 @@ export default function ListDetailScreen() {
         }
         renderItem={({ item }) => {
           const price = Number(item.PrecioActual);
-          const pct =
-            item.wasPrice != null ? discountPct(price, item.wasPrice) : null;
+          const pct = item.wasPrice != null ? discountPct(price, item.wasPrice) : null;
           const brand = getProviderBrand(resolvedProveedorId || 1);
 
           return (
-            <Swipeable
-              ref={(ref) => {
-                swipeRefs.current[item.IdProducto] = ref;
-              }}
-              renderRightActions={() => renderRightActions(item)}
-              overshootRight={false}
-              friction={2}
+            <Animated.View
+              entering={FadeIn.duration(180)}
+              exiting={FadeOut.duration(160)}
+              layout={LinearTransition.duration(180)}
             >
-              <View style={styles.card}>
-                <Pressable
-                  onPress={() => toggleCheck(item.IdProducto)}
-                  style={[
-                    styles.checkbox,
-                    item.checked && styles.checkboxOn,
-                  ]}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: item.checked }}
-                >
-                  {item.checked ? (
-                    <Ionicons name="checkmark" size={16} color={colors.white} />
-                  ) : null}
-                </Pressable>
-
-                {item.UrlImagen ? (
-                  <Image
-                    source={{ uri: item.UrlImagen }}
-                    style={styles.thumb}
-                  />
-                ) : (
-                  <View style={[styles.thumb, { backgroundColor: '#eee' }]} />
-                )}
-
-                <View style={styles.cardBody}>
-                  <Text
-                    style={[
-                      styles.itemName,
-                      item.checked && styles.itemNameChecked,
-                    ]}
-                    numberOfLines={1}
+              <Swipeable
+                ref={(ref) => {
+                  swipeRefs.current[item.IdProducto] = ref;
+                }}
+                renderRightActions={() => renderRightActions(item)}
+                overshootRight={false}
+                friction={2}
+              >
+                <View style={styles.card}>
+                  <Pressable
+                    onPress={() => toggleCheck(item.IdProducto)}
+                    style={[styles.checkbox, item.checked && styles.checkboxOn]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: item.checked }}
                   >
-                    {item.Nombre}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    {selectedProviderName ? (
-                      <View
-                        style={[
-                          styles.storePill,
-                          { backgroundColor: brand.bg },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.storePillText,
-                            { color: brand.color },
-                          ]}
+                    {item.checked ? (
+                      <Ionicons name="checkmark" size={16} color={colors.white} />
+                    ) : null}
+                  </Pressable>
+
+                  {item.UrlImagen ? (
+                    <Image source={{ uri: item.UrlImagen }} style={styles.thumb} />
+                  ) : (
+                    <View style={[styles.thumb, { backgroundColor: '#eee' }]} />
+                  )}
+
+                  <View style={styles.cardBody}>
+                    <Text
+                      style={[styles.itemName, item.checked && styles.itemNameChecked]}
+                      numberOfLines={1}
+                    >
+                      {item.Nombre}
+                    </Text>
+                    <View style={styles.metaRow}>
+                      {selectedProviderName ? (
+                        <View style={[styles.storePill, { backgroundColor: brand.bg }]}>
+                          <Text style={[styles.storePillText, { color: brand.color }]}>
+                            {selectedProviderName}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {item.unit ? <Text style={styles.unitMini}>{item.unit}</Text> : null}
+                      <Animated.View layout={LinearTransition.duration(160)} style={styles.qtyMini}>
+                        <Pressable
+                          onPress={() => persistQty(item, item.Cantidad - 1)}
+                          hitSlop={8}
+                          disabled={item.Cantidad <= 1}
+                          style={styles.qtyMiniBtn}
                         >
-                          {selectedProviderName}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {item.unit ? (
-                      <Text style={styles.unitMini}>{item.unit}</Text>
-                    ) : null}
-                    <View style={styles.qtyMini}>
-                      <Pressable
-                        onPress={() => persistQty(item, item.Cantidad - 1)}
-                        hitSlop={8}
-                        disabled={item.Cantidad <= 1}
-                        style={styles.qtyMiniBtn}
-                      >
-                        <Ionicons
-                          name="remove"
-                          size={14}
-                          color={
-                            item.Cantidad <= 1
-                              ? colors.tabInactive
-                              : colors.navy
-                          }
-                        />
-                      </Pressable>
-                      <Text style={styles.qtyLabel}>×{item.Cantidad}</Text>
-                      <Pressable
-                        onPress={() => persistQty(item, item.Cantidad + 1)}
-                        hitSlop={8}
-                        style={styles.qtyMiniBtn}
-                      >
-                        <Ionicons name="add" size={14} color={colors.navy} />
-                      </Pressable>
+                          <Ionicons
+                            name="remove"
+                            size={14}
+                            color={item.Cantidad <= 1 ? colors.tabInactive : colors.navy}
+                          />
+                        </Pressable>
+                        <Text style={styles.qtyLabel}>×{item.Cantidad}</Text>
+                        <Pressable
+                          onPress={() => persistQty(item, item.Cantidad + 1)}
+                          hitSlop={8}
+                          style={styles.qtyMiniBtn}
+                        >
+                          <Ionicons name="add" size={14} color={colors.navy} />
+                        </Pressable>
+                      </Animated.View>
                     </View>
                   </View>
-                </View>
 
-                <View style={styles.priceBlock}>
-                  <Text style={styles.priceNow}>
-                    {price > 0 ? `RD$ ${price.toFixed(2)}` : '—'}
-                  </Text>
-                  {item.wasPrice != null && item.wasPrice > price ? (
-                    <Text style={styles.priceWas}>
-                      RD$ {item.wasPrice.toFixed(2)}
+                  <View style={styles.priceBlock}>
+                    <Text style={styles.priceNow}>
+                      {price > 0 ? `RD$ ${price.toFixed(2)}` : '—'}
                     </Text>
-                  ) : null}
-                  {pct != null ? (
-                    <View style={styles.discPill}>
-                      <Text style={styles.discText}>- {pct} %</Text>
-                    </View>
-                  ) : null}
+                    {item.wasPrice != null && item.wasPrice > price ? (
+                      <Text style={styles.priceWas}>RD$ {item.wasPrice.toFixed(2)}</Text>
+                    ) : null}
+                    {pct != null ? (
+                      <View style={styles.discPill}>
+                        <Text style={styles.discText}>- {pct} %</Text>
+                      </View>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
-            </Swipeable>
+              </Swipeable>
+            </Animated.View>
           );
         }}
       />
@@ -794,13 +718,9 @@ export default function ListDetailScreen() {
         <View style={styles.summaryBar}>
           <View>
             <Text style={styles.summaryLabel}>Total estimado</Text>
-            <Text style={styles.summaryTotal}>
-              RD$ {totals.total.toFixed(2)}
-            </Text>
+            <Text style={styles.summaryTotal}>RD$ {totals.total.toFixed(2)}</Text>
             {totals.savings > 0 ? (
-              <Text style={styles.summarySave}>
-                Ahorras RD$ {totals.savings.toFixed(2)}
-              </Text>
+              <Text style={styles.summarySave}>Ahorras RD$ {totals.savings.toFixed(2)}</Text>
             ) : null}
           </View>
           <Pressable onPress={openMap} style={styles.buyBtn}>
@@ -916,7 +836,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#EEF0F5',
+    borderColor: colors.line,
   },
   checkbox: {
     width: 26,
@@ -1149,4 +1069,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 6,
   },
+  loadingSkeletons: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    gap: 10,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: spacing.md,
+  },
+  loadingText: { flex: 1, gap: 8 },
 });

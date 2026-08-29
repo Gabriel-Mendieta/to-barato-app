@@ -6,9 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  ActivityIndicator,
   useWindowDimensions,
-  Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +15,10 @@ import {
   Screen,
   Stagger,
   Sparkline,
+  CardSkeleton,
+  EmptyState,
+  showToast,
+  triggerHaptic,
   FLOATING_TAB_BAR_CLEARANCE,
 } from '@/src/shared/ui';
 import {
@@ -29,10 +31,7 @@ import {
   typography,
 } from '@/src/shared/theme';
 import { getProductImageUrl, getUnitAbbrev } from '@/src/shared/products/meta';
-import {
-  getProductoById,
-  SUPERMARKET_PROVIDER_IDS,
-} from '@/src/shared/dev/mocks/data';
+import { getProductoById, SUPERMARKET_PROVIDER_IDS } from '@/src/shared/dev/mocks/data';
 
 type Proveedor = {
   IdProveedor: number;
@@ -81,10 +80,7 @@ function discountPct(precio: string, oferta: string | null | undefined) {
 }
 
 function resolveImage(item: DealCard) {
-  return (
-    item.Producto.UrlImagen ||
-    getProductImageUrl(item.IdProducto)
-  );
+  return item.Producto.UrlImagen || getProductImageUrl(item.IdProducto);
 }
 
 function resolveUnit(item: DealCard) {
@@ -95,10 +91,7 @@ function resolveUnit(item: DealCard) {
 }
 
 function resolveBg(item: DealCard) {
-  const cat =
-    item.Producto.IdCategoria ??
-    getProductoById(item.IdProducto)?.IdCategoria ??
-    1;
+  const cat = item.Producto.IdCategoria ?? getProductoById(item.IdProducto)?.IdCategoria ?? 1;
   return getCategoryImageBg(cat);
 }
 
@@ -131,10 +124,7 @@ export default function HomeDashboard() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('Ofertas');
 
-  const savingsStub = useMemo(
-    () => ({ saved: 1248.5, compared: 18 }),
-    []
-  );
+  const savingsStub = useMemo(() => ({ saved: 1248.5, compared: 18 }), []);
   const money = formatMoney(savingsStub.saved);
 
   useEffect(() => {
@@ -144,7 +134,7 @@ export default function HomeDashboard() {
         const { data: provs } = await api.get<Proveedor[]>(endpoints.proveedor);
         if (cancelled) return;
         const supers = provs.filter((p) =>
-          (SUPERMARKET_PROVIDER_IDS as readonly number[]).includes(p.IdProveedor)
+          (SUPERMARKET_PROVIDER_IDS as readonly number[]).includes(p.IdProveedor),
         );
         setProveedores(supers.length ? supers.slice(0, 8) : provs.slice(0, 8));
 
@@ -153,7 +143,7 @@ export default function HomeDashboard() {
           targets.map(async (p) => {
             try {
               const { data } = await api.get<ProductoProveedorResponse[]>(
-                endpoints.preciosProductosProveedor(p.IdProveedor)
+                endpoints.preciosProductosProveedor(p.IdProveedor),
               );
               return data
                 .filter((row) => row.PrecioOferta)
@@ -166,7 +156,7 @@ export default function HomeDashboard() {
             } catch {
               return [] as DealCard[];
             }
-          })
+          }),
         );
 
         if (!cancelled) {
@@ -192,7 +182,7 @@ export default function HomeDashboard() {
   }, []);
 
   const onMic = () => {
-    Alert.alert('Próximamente', 'La búsqueda por voz estará disponible pronto.');
+    showToast('info', 'Próximamente', 'La búsqueda por voz estará disponible pronto.');
   };
 
   return (
@@ -228,8 +218,8 @@ export default function HomeDashboard() {
             <View style={styles.notifSheet}>
               <Text style={styles.sectionTitle}>Notificaciones</Text>
               <Text style={styles.muted}>
-                Sheet local (sin API de notificaciones). Los avisos reales llegarán
-                cuando el backend las exponga.
+                Sheet local (sin API de notificaciones). Los avisos reales llegarán cuando el
+                backend las exponga.
               </Text>
             </View>
           ) : null}
@@ -247,28 +237,23 @@ export default function HomeDashboard() {
             <View style={styles.savingsMeta}>
               <View style={styles.pctBadge}>
                 <Ionicons name="trending-down" size={12} color={colors.navy} />
-                <Text style={styles.pctText}>
-                  +{savingsStub.compared}% vs. mes pasado
-                </Text>
+                <Text style={styles.pctText}>+{savingsStub.compared}% vs. mes pasado</Text>
               </View>
             </View>
-            <Sparkline data={SPARKLINE_DATA} height={36} />
+            <Sparkline
+              data={SPARKLINE_DATA}
+              labels={['', '', '', '', '', '', '', '', '', 'Hoy']}
+              height={36}
+            />
           </View>
 
           {/* Search */}
           <View style={styles.searchBar}>
-            <Pressable
-              style={styles.searchMain}
-              onPress={() => router.push('/tabs/search')}
-            >
+            <Pressable style={styles.searchMain} onPress={() => router.push('/tabs/search')}>
               <Ionicons name="search" size={20} color={colors.tabInactive} />
               <Text style={styles.searchPlaceholder}>Busca un producto...</Text>
             </Pressable>
-            <Pressable
-              onPress={onMic}
-              hitSlop={10}
-              accessibilityLabel="Búsqueda por voz"
-            >
+            <Pressable onPress={onMic} hitSlop={10} accessibilityLabel="Búsqueda por voz">
               <Ionicons name="mic-outline" size={20} color={colors.tabInactive} />
             </Pressable>
           </View>
@@ -284,12 +269,13 @@ export default function HomeDashboard() {
               return (
                 <Pressable
                   key={c}
-                  onPress={() => setCategory(c)}
+                  onPress={() => {
+                    void triggerHaptic('selection');
+                    setCategory(c);
+                  }}
                   style={[styles.catPill, active && styles.catPillActive]}
                 >
-                  <Text style={[styles.catText, active && styles.catTextActive]}>
-                    {c}
-                  </Text>
+                  <Text style={[styles.catText, active && styles.catTextActive]}>{c}</Text>
                 </Pressable>
               );
             })}
@@ -298,9 +284,7 @@ export default function HomeDashboard() {
           {/* Bajadas de precio */}
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleRow}>
-              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
-                Bajadas de precio
-              </Text>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Bajadas de precio</Text>
               <View style={styles.hoyBadge}>
                 <Ionicons name="trending-down" size={11} color="#0E7A4B" />
                 <Text style={styles.hoyText}>HOY</Text>
@@ -309,7 +293,15 @@ export default function HomeDashboard() {
           </View>
 
           {loading ? (
-            <ActivityIndicator color={colors.navy} style={{ marginVertical: 24 }} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 12 }}
+            >
+              {[0, 1, 2].map((item) => (
+                <CardSkeleton key={item} />
+              ))}
+            </ScrollView>
           ) : (
             <ScrollView
               horizontal
@@ -317,7 +309,11 @@ export default function HomeDashboard() {
               contentContainerStyle={{ gap: 12, paddingBottom: 4 }}
             >
               {deals.length === 0 ? (
-                <Text style={styles.muted}>No hay bajadas cargadas (API).</Text>
+                <EmptyState
+                  icon="trending-down-outline"
+                  title="Sin bajadas de precio"
+                  description="Cuando encontremos ofertas aparecerán aquí."
+                />
               ) : (
                 deals.map((item) => {
                   const pct = discountPct(item.Precio, item.PrecioOferta);
@@ -328,9 +324,7 @@ export default function HomeDashboard() {
                     <Pressable
                       key={`${item.IdProducto}-${item.IdProveedor}`}
                       style={[styles.dealCard, { width: cardW }]}
-                      onPress={() =>
-                        router.push(`/tabs/product/${item.IdProducto}` as const)
-                      }
+                      onPress={() => router.push(`/tabs/product/${item.IdProducto}` as const)}
                     >
                       {pct > 0 ? (
                         <View style={styles.discountBadge}>
@@ -343,9 +337,7 @@ export default function HomeDashboard() {
                         {item.Producto.Nombre}
                       </Text>
                       <View style={styles.storeChip}>
-                        <View
-                          style={[styles.storeDot, { backgroundColor: brand.color }]}
-                        />
+                        <View style={[styles.storeDot, { backgroundColor: brand.color }]} />
                         <Text style={styles.storeName} numberOfLines={1}>
                           {item.providerName}
                         </Text>
@@ -363,49 +355,43 @@ export default function HomeDashboard() {
 
           {/* Tiendas cerca de ti */}
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
-              Tiendas cerca de ti
-            </Text>
-            <Pressable
-              onPress={() => router.push('/tabs/map')}
-              style={styles.linkRow}
-            >
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Tiendas cerca de ti</Text>
+            <Pressable onPress={() => router.push('/tabs/map')} style={styles.linkRow}>
               <Text style={styles.link}>Ver mapa ›</Text>
             </Pressable>
           </View>
 
           <View style={styles.storesGrid}>
-            {proveedores.slice(0, 4).map((p) => {
-              const brand = getProviderBrand(p.IdProveedor);
-              return (
-                <Pressable
-                  key={p.IdProveedor}
-                  style={styles.storeCard}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/tabs/search',
-                      params: { proveedorId: String(p.IdProveedor) },
-                    })
-                  }
-                >
-                  <View style={[styles.storeInitial, { backgroundColor: brand.bg }]}>
-                    <Text style={[styles.storeInitialText, { color: brand.color }]}>
-                      {p.Nombre.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text style={styles.storeCardName} numberOfLines={1}>
-                    {p.Nombre}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {loading
+              ? [0, 1, 2, 3].map((item) => <CardSkeleton key={item} compact />)
+              : proveedores.slice(0, 4).map((p) => {
+                  const brand = getProviderBrand(p.IdProveedor);
+                  return (
+                    <Pressable
+                      key={p.IdProveedor}
+                      style={styles.storeCard}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/tabs/search',
+                          params: { proveedorId: String(p.IdProveedor) },
+                        })
+                      }
+                    >
+                      <View style={[styles.storeInitial, { backgroundColor: brand.bg }]}>
+                        <Text style={[styles.storeInitialText, { color: brand.color }]}>
+                          {p.Nombre.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.storeCardName} numberOfLines={1}>
+                        {p.Nombre}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
           </View>
 
           {/* Recipe CTA */}
-          <Pressable
-            style={styles.recipeCta}
-            onPress={() => router.push('/tabs/lista')}
-          >
+          <Pressable style={styles.recipeCta} onPress={() => router.push('/tabs/lista')}>
             <View style={styles.recipeIcon}>
               <Text style={{ fontSize: 28 }}>🥗</Text>
             </View>
@@ -629,7 +615,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#EEF0F5',
+    borderColor: colors.line,
     shadowColor: colors.navy,
     shadowOpacity: 0.06,
     shadowRadius: 12,

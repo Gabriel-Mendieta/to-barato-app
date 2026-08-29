@@ -14,6 +14,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/src/shared/api';
+import { BottomSheetModalProvider } from '@/src/shared/ui/BottomSheetCompat';
+import { ToastProvider } from '@/src/shared/ui';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -50,11 +52,14 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <Stack screenOptions={SHARED_STACK_OPTIONS}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="auth" />
-            <Stack.Screen name="tabs" />
-          </Stack>
+          <BottomSheetModalProvider>
+            <Stack screenOptions={SHARED_STACK_OPTIONS}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="auth" />
+              <Stack.Screen name="tabs" />
+            </Stack>
+            <ToastProvider />
+          </BottomSheetModalProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
