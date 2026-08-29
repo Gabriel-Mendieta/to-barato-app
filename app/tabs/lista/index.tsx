@@ -37,10 +37,10 @@ import {
   nearby,
 } from '@/src/features/providers/api';
 import { useProviders } from '@/src/features/providers/hooks';
+import { ShoppingListCard } from '@/src/features/lists/ShoppingListCard';
 import {
   Screen,
   Stagger,
-  Chip,
   CreateListButton,
   FadeInUp,
   FLOATING_TAB_BAR_CLEARANCE,
@@ -53,32 +53,6 @@ import {
 } from '@/src/shared/ui';
 import { radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
-
-type ListVisual = { bg: string; emoji: string };
-
-const VISUAL_BY_PROVIDER: Record<number, ListVisual> = {
-  1: { bg: '#E2F1FA', emoji: '🛒' }, // Nacional
-  2: { bg: '#DCF3E5', emoji: '🛒' }, // Jumbo
-  3: { bg: '#FFE3E0', emoji: '🛒' }, // La Sirena
-  4: { bg: '#E3EDFA', emoji: '🔧' }, // Ferretería
-  5: { bg: '#FFE3E1', emoji: '💊' }, // Farmacia
-  6: { bg: '#F1E7FA', emoji: '🛒' }, // Bravo
-  7: { bg: '#DCE5F7', emoji: '🛒' }, // PriceSmart
-  8: { bg: '#FFE3E1', emoji: '🛒' },
-};
-
-const VISUAL_FALLBACK: ListVisual[] = [
-  { bg: '#FFE8D9', emoji: '🍎' },
-  { bg: '#E3EDFA', emoji: '🔧' },
-  { bg: '#F1E7FA', emoji: '🐶' },
-  { bg: '#DCF3E7', emoji: '🧃' },
-  { bg: '#FFF1C8', emoji: '🥖' },
-  { bg: '#FFE3E1', emoji: '💊' },
-];
-
-function listVisual(lista: ListDTO, index: number): ListVisual {
-  return VISUAL_BY_PROVIDER[lista.IdProveedor] ?? VISUAL_FALLBACK[index % VISUAL_FALLBACK.length];
-}
 
 function formatMoney(value: number) {
   const whole = Math.floor(value);
@@ -376,7 +350,7 @@ export default function ShoppingListScreen() {
   if (loading && !refreshing) {
     return (
       <Screen edges={['top']} style={{ paddingBottom: 0 }}>
-        <View style={styles.loadingSkeletons}>
+        <View style={styles.loadingSkeletons} testID="lists-loading-state">
           {[0, 1, 2, 3].map((item) => (
             <View key={item} style={styles.loadingRow}>
               <Skeleton width={48} height={48} borderRadius={15} />
@@ -394,13 +368,15 @@ export default function ShoppingListScreen() {
   if (listError) {
     return (
       <Screen edges={['top']}>
-        <EmptyState
-          icon="cloud-offline-outline"
-          title={t('search.productsFailed')}
-          description={t('lists.tryAgain')}
-          actionLabel={t('shared.retry')}
-          onAction={retryLists}
-        />
+        <View testID="lists-error-state">
+          <EmptyState
+            icon="cloud-offline-outline"
+            title={t('search.productsFailed')}
+            description={t('lists.tryAgain')}
+            actionLabel={t('shared.retry')}
+            onAction={retryLists}
+          />
+        </View>
       </Screen>
     );
   }
@@ -415,6 +391,7 @@ export default function ShoppingListScreen() {
         contentContainerStyle={{
           paddingBottom: FLOATING_TAB_BAR_CLEARANCE + (isSelecting ? 56 : 0),
           flexGrow: 1,
+          width: '100%',
         }}
         ListHeaderComponent={
           <Stagger step={55} delay={20}>
@@ -482,88 +459,51 @@ export default function ShoppingListScreen() {
           </Stagger>
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="cart-outline"
-            title={t('lists.noLists')}
-            description={t('lists.noListsBody')}
-            actionLabel={t('lists.newList')}
-            onAction={goCreate}
-          />
+          <View testID="lists-empty-state">
+            <EmptyState
+              icon="cart-outline"
+              title={t('lists.noLists')}
+              description={t('lists.noListsBody')}
+              actionLabel={t('lists.newList')}
+              onAction={goCreate}
+            />
+          </View>
         }
         renderItem={({ item, index }) => {
           const count = itemCounts[item.IdLista] || 0;
           const progress = calculateListProgress(item.IdLista, count);
-          const visual = listVisual(item, index);
           const selected = selectedLists.has(item.IdLista);
 
           return (
             <FadeInUp index={index + 2} step={55} delay={40} style={styles.cardWrap}>
-              <Pressable
+              <ShoppingListCard
+                item={item}
+                index={index}
+                count={count}
+                selected={selected}
+                articleLabel={t(count === 1 ? 'lists.articles_one' : 'lists.articles_other', {
+                  count,
+                })}
+                purchasedLabel={
+                  progress.done > 0 ? t('lists.purchased', { count: progress.done }) : null
+                }
+                listOptionsLabel={t('lists.listOptions')}
                 onPress={() => openList(item)}
                 onLongPress={() => toggleSelection(item.IdLista)}
-                delayLongPress={350}
-                style={({ pressed }) => [
-                  styles.card,
-                  selected && styles.cardSelected,
-                  pressed && { opacity: 0.94 },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={item.Nombre}
-              >
-                <View style={[styles.catIcon, { backgroundColor: visual.bg }]}>
-                  <Text style={styles.catEmoji}>{visual.emoji}</Text>
-                </View>
-
-                <View style={styles.cardBody}>
-                  <View style={styles.cardTop}>
-                    <Text style={styles.cardTitle} numberOfLines={1}>
-                      {item.Nombre}
-                    </Text>
-                    <Pressable
-                      onPress={() => openMenu(item)}
-                      hitSlop={12}
-                      accessibilityLabel={t('lists.listOptions')}
-                      style={styles.moreBtn}
-                    >
-                      <Ionicons
-                        name="ellipsis-horizontal"
-                        size={18}
-                        color={themeColors.tabInactive}
-                      />
-                    </Pressable>
-                  </View>
-
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>
-                      {t(count === 1 ? 'lists.articles_one' : 'lists.articles_other', { count })}
-                    </Text>
-                    {progress.done > 0 ? (
-                      <Chip tone="green" size="sm" style={styles.doneChip}>
-                        {t('lists.purchased', { count: progress.done })}
-                      </Chip>
-                    ) : null}
-                  </View>
-
-                  <View style={styles.cardProgressTrack}>
-                    <View
-                      style={[
-                        styles.cardProgressFill,
-                        { width: `${Math.min(100, progress.percentage)}%` },
-                      ]}
-                    />
-                  </View>
-                </View>
-              </Pressable>
+                onMenu={() => openMenu(item)}
+              />
             </FadeInUp>
           );
         }}
         ListFooterComponent={
           listas.length > 0 ? (
-            <CreateListButton
-              label={t('lists.newList')}
-              onPress={goCreate}
-              disabled={createDisabled}
-            />
+            <View style={styles.listFooter}>
+              <CreateListButton
+                label={t('lists.newList')}
+                onPress={goCreate}
+                disabled={createDisabled}
+              />
+            </View>
           ) : null
         }
       />
@@ -796,85 +736,23 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
     },
 
     cardWrap: {
+      width: '100%',
+      alignSelf: 'stretch',
       marginBottom: 14,
       paddingHorizontal: spacing.lg,
-    },
-    card: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 16,
-      backgroundColor: themeColors.card,
-      borderRadius: 18,
-      minHeight: 120,
-      padding: 18,
-      borderWidth: 1,
-      borderColor: themeColors.line,
       ...Platform.select({
-        ios: {
-          shadowColor: themeColors.navy,
-          shadowOpacity: 0.04,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
-        },
-        android: { elevation: 2 },
+        web: { boxSizing: 'border-box' },
         default: {},
       }),
     },
-    cardSelected: {
-      borderColor: themeColors.orange,
-      borderWidth: 2,
-      backgroundColor: themeColors.orangeSoft,
-    },
-    catIcon: {
-      width: 62,
-      height: 62,
-      borderRadius: 20,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    catEmoji: { fontSize: 32, lineHeight: 36 },
-    cardBody: { flex: 1, minWidth: 0 },
-    cardTop: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 8,
-    },
-    cardTitle: {
-      flex: 1,
-      fontSize: 15,
-      fontFamily: typography.extrabold,
-      color: themeColors.navy,
-      letterSpacing: -0.15,
-    },
-    moreBtn: { padding: 4 },
-    metaRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      marginTop: 6,
-      flexWrap: 'wrap',
-    },
-    metaText: {
-      fontSize: 12,
-      fontFamily: typography.semibold,
-      color: themeColors.muted,
-    },
-    doneChip: {
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-    },
-    cardProgressTrack: {
-      marginTop: 8,
-      height: 5,
-      backgroundColor: themeColors.line,
-      borderRadius: radii.pill,
-      overflow: 'hidden',
-    },
-    cardProgressFill: {
-      height: '100%',
-      backgroundColor: themeColors.orange,
-      borderRadius: radii.pill,
+    listFooter: {
+      width: '100%',
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      ...Platform.select({
+        web: { boxSizing: 'border-box' },
+        default: {},
+      }),
     },
 
     empty: {

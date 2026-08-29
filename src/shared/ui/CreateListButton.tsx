@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, Text } from 'react-native';
-import { radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
+import { Platform, Pressable, StyleSheet, Text } from 'react-native';
+import { radii, typography, useThemeColors } from '@/src/shared/theme';
 
 type Props = {
   label: string;
@@ -15,13 +15,18 @@ export function CreateListButton({ label, onPress, disabled = false }: Props) {
     () =>
       StyleSheet.create({
         button: {
-          marginTop: spacing.sm,
-          marginHorizontal: spacing.lg,
+          width: '100%',
+          minHeight: 64,
+          alignSelf: 'stretch',
+          ...Platform.select({
+            web: { boxSizing: 'border-box' },
+            default: {},
+          }),
           borderWidth: 1.5,
           borderStyle: 'dashed',
           borderColor: themeColors.line,
           borderRadius: radii.lg,
-          paddingVertical: 20,
+          paddingVertical: 16,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
