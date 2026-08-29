@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/src/shared/api';
+import type { ListItemDTO } from '@/src/shared/api';
 import {
   byProvider,
   catalog,
@@ -69,6 +71,65 @@ export function useProductPrices(productId: ProductEntityId | null | undefined) 
   });
 }
 
+export type ListProductQueries = {
+  details: Record<number, Awaited<ReturnType<typeof detail>> | undefined>;
+  prices: Record<number, Awaited<ReturnType<typeof prices>> | undefined>;
+  isPending: boolean;
+  isError: boolean;
+};
+
+/**
+ * Composes list relations without calling hooks from a render loop.
+ * Keys are products.detail(productId) and products.prices(productId).
+ */
+export function useListProductQueries(items: ListItemDTO[] | undefined): ListProductQueries {
+  const productIds = useMemo(
+    () => Array.from(new Set((items ?? []).map((item) => item.IdProducto))),
+    [items],
+  );
+  const detailQueries = useQueries({
+    queries: productIds.map((productId) => ({
+      queryKey: queryKeys.products.detail(productId),
+      queryFn: () => detail(productId),
+      networkMode: 'always' as const,
+      enabled: isValidId(productId),
+    })),
+  });
+  const priceQueries = useQueries({
+    queries: productIds.map((productId) => ({
+      queryKey: queryKeys.products.prices(productId),
+      queryFn: () => prices(productId),
+      networkMode: 'always' as const,
+      enabled: isValidId(productId),
+    })),
+  });
+
+  const details = useMemo(
+    () =>
+      Object.fromEntries(
+        productIds.map((productId, index) => [productId, detailQueries[index]?.data]),
+      ) as ListProductQueries['details'],
+    [productIds, detailQueries],
+  );
+  const priceData = useMemo(
+    () =>
+      Object.fromEntries(
+        productIds.map((productId, index) => [productId, priceQueries[index]?.data]),
+      ) as ListProductQueries['prices'],
+    [productIds, priceQueries],
+  );
+
+  return {
+    details,
+    prices: priceData,
+    isPending:
+      detailQueries.some((query) => query.isPending) ||
+      priceQueries.some((query) => query.isPending),
+    isError:
+      detailQueries.some((query) => query.isError) || priceQueries.some((query) => query.isError),
+  };
+}
+
 export function useProductsByProvider(providerId: ProductEntityId | null | undefined) {
   const enabled = isValidId(providerId);
   return useQuery({
@@ -103,3 +164,4 @@ export function useProductUnits() {
 export const useCatalog = useProductCatalog;
 export const useCatalogByType = useProductCatalogByType;
 export const useProduct = useProductDetail;
+export const useListProducts = useListProductQueries;

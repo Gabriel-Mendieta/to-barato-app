@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Linking,
@@ -7,18 +7,43 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   FlatList,
 } from 'react-native';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import * as Location from 'expo-location';
-import { api, endpoints } from '@/src/shared/api';
+import { useQuery } from '@tanstack/react-query';
+import {
+  getUserId,
+  type ListItemDTO,
+  type NearbyBranchesRequest,
+  type ProductDTO,
+  type ProductPriceDTO,
+} from '@/src/shared/api';
+import {
+  useListItems,
+  useRemoveListItem,
+  useUpdateListItem,
+  useUpdateListProvider,
+  useLists,
+} from '@/src/features/lists/hooks';
+import { useListProductQueries } from '@/src/features/products/hooks';
+import {
+  useProviders,
+  useProvider,
+  useProviderTypes,
+  useNearbyBranches,
+} from '@/src/features/providers/hooks';
+import { useAnalyzeQuestion } from '@/src/features/recipes/hooks';
+import { firstRouteParam } from '@/src/features/products/screenSelectors';
 import { getUnitAbbrev } from '@/src/shared/products/meta';
 import {
   Screen,
+  Button,
   EmptyState,
   Skeleton,
   showToast,
@@ -35,60 +60,22 @@ enum CategoriaLista {
   Otro = 'otro',
 }
 
-type ProductoEnLista = {
-  IdProducto: number;
-  PrecioActual: string;
-  Cantidad: number;
-};
-
-type ProductoAPI = {
-  IdProducto: number;
+type ListItemRow = ListItemDTO & {
+  product?: ProductDTO;
+  prices: ProductPriceDTO[];
   Nombre: string;
-  UrlImagen: string;
-  IdUnidadMedida?: number;
-};
-
-type PrecioRow = {
-  IdProveedor: number;
-  NombreProveedor: string;
-  Precio: string;
-  PrecioOferta?: string | null;
-};
-
-type ListItem = ProductoAPI & {
-  PrecioActual: string;
-  Cantidad: number;
-  checked: boolean;
+  UrlImagen?: string | null;
   wasPrice?: number | null;
   unit?: string;
 };
 
-type SucursalCercana = {
+type Branch = {
   NombreSucursal: string;
   Latitud: number | string;
   Longitud: number | string;
   IdProveedor: number;
-  Precio: number;
-  Distancia: number;
-};
-
-type Proveedor = {
-  IdProveedor: number;
-  Nombre: string;
-  UrlLogo: string;
-  IdTipoProveedor: number;
-};
-
-type TipoProveedor = {
-  IdTipoProveedor: number;
-  NombreTipoProveedor: string;
-};
-
-type ListaMeta = {
-  IdLista: number;
-  Nombre: string;
-  IdProveedor: number;
-  PrecioTotal: string;
+  Precio: number | string;
+  Distancia: number | string;
 };
 
 type ProviderOption = {
@@ -103,10 +90,76 @@ function discountPct(current: number, was: number) {
   return Math.round(((was - current) / was) * 100);
 }
 
-function effectivePrice(row: PrecioRow | undefined): number | null {
+function effectivePrice(row: ProductPriceDTO | undefined): number | null {
   if (!row) return null;
   const v = Number(row.PrecioOferta ?? row.Precio);
   return Number.isFinite(v) ? v : null;
+}
+
+function QuantityEditor({
+  quantity,
+  disabled,
+  onCommit,
+  decreaseLabel,
+  increaseLabel,
+  quantityLabel,
+}: {
+  quantity: number;
+  disabled: boolean;
+  onCommit: (value: number) => void;
+  decreaseLabel: string;
+  increaseLabel: string;
+  quantityLabel: string;
+}) {
+  const [draft, setDraft] = useState(String(quantity));
+
+  const commit = () => {
+    const value = Number(draft);
+    if (!Number.isInteger(value) || value < 1) {
+      setDraft(String(quantity));
+      return;
+    }
+    onCommit(value);
+  };
+
+  return (
+    <View style={styles.qtyMini}>
+      <Pressable
+        onPress={() => onCommit(quantity - 1)}
+        hitSlop={8}
+        disabled={disabled || quantity <= 1}
+        style={styles.qtyMiniBtn}
+        accessibilityLabel={decreaseLabel}
+      >
+        <Ionicons
+          name="remove"
+          size={14}
+          color={disabled || quantity <= 1 ? colors.tabInactive : colors.navy}
+        />
+      </Pressable>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        editable={!disabled}
+        keyboardType="number-pad"
+        selectTextOnFocus
+        maxLength={4}
+        style={styles.qtyInput}
+        accessibilityLabel={quantityLabel}
+      />
+      <Pressable
+        onPress={() => onCommit(quantity + 1)}
+        hitSlop={8}
+        disabled={disabled}
+        style={styles.qtyMiniBtn}
+        accessibilityLabel={increaseLabel}
+      >
+        <Ionicons name="add" size={14} color={disabled ? colors.tabInactive : colors.navy} />
+      </Pressable>
+    </View>
+  );
 }
 
 export default function ListDetailScreen() {
@@ -116,141 +169,142 @@ export default function ListDetailScreen() {
     idProveedor,
     nombre: nombreParam,
   } = useLocalSearchParams<{
-    id: string;
-    idProveedor?: string;
-    nombre?: string;
+    id: string | string[];
+    idProveedor?: string | string[];
+    nombre?: string | string[];
   }>();
-  const idLista = Number(id);
-  const proveedorIdParam = Number(idProveedor) || 0;
+  const idLista = Number(firstRouteParam(id));
+  const proveedorIdParam = Number(firstRouteParam(idProveedor)) || 0;
 
-  const [loading, setLoading] = useState(true);
-  const [productos, setProductos] = useState<ListItem[]>([]);
-  const [listName, setListName] = useState(nombreParam ?? 'Lista');
-  const [resolvedProveedorId, setResolvedProveedorId] = useState(proveedorIdParam);
-  const [tipoId, setTipoId] = useState<number | null>(null);
-  const [providers, setProviders] = useState<Proveedor[]>([]);
-  const [priceByProduct, setPriceByProduct] = useState<Record<number, PrecioRow[]>>({});
-  const [categoria, setCategoria] = useState<CategoriaLista>(CategoriaLista.Otro);
-  const [branch, setBranch] = useState<SucursalCercana | null>(null);
-  const [loadingBranch, setLoadingBranch] = useState(false);
+  const [providerOverride, setProviderOverride] = useState<number | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [pendingOperations, setPendingOperations] = useState<Set<number>>(new Set());
   const [sending, setSending] = useState(false);
-  const [switchingProv, setSwitchingProv] = useState(false);
+  const pendingOperationsRef = useRef(new Set<number>());
   const swipeRefs = useRef<Record<number, Swipeable | null>>({});
 
-  const applyProviderPrices = useCallback(
-    (items: ListItem[], proveedorId: number, matrix: Record<number, PrecioRow[]>): ListItem[] => {
-      if (!proveedorId) return items;
-      return items.map((item) => {
-        const rows = matrix[item.IdProducto] ?? [];
-        const match = rows.find((r) => r.IdProveedor === proveedorId);
-        const price = effectivePrice(match);
-        const base = match ? Number(match.Precio) : null;
-        const nextPrice = price != null ? price.toFixed(2) : item.PrecioActual;
-        const was = base != null && price != null && base > price ? base : null;
+  const sessionUserQuery = useQuery({
+    queryKey: ['session', 'user-id'],
+    queryFn: getUserId,
+    staleTime: Infinity,
+  });
+  const sessionUserId = sessionUserQuery.data ?? null;
+  const listsQuery = useLists(sessionUserId);
+  const itemsQuery = useListItems(Number.isInteger(idLista) && idLista > 0 ? idLista : null);
+  const productQueries = useListProductQueries(itemsQuery.data);
+  const providersQuery = useProviders();
+  const listMeta = useMemo(
+    () => listsQuery.data?.find((list) => list.IdLista === idLista),
+    [listsQuery.data, idLista],
+  );
+  const metadataProviderId = listMeta?.IdProveedor ?? proveedorIdParam;
+  const resolvedProveedorId = providerOverride ?? metadataProviderId;
+  const providerQuery = useProvider(resolvedProveedorId || null);
+  const providerTypesQuery = useProviderTypes();
+  const updateProviderMutation = useUpdateListProvider(sessionUserId);
+  const updateItemMutation = useUpdateListItem(sessionUserId);
+  const removeItemMutation = useRemoveListItem(sessionUserId);
+  const analyzeQuestionMutation = useAnalyzeQuestion();
+  const items = useMemo(() => itemsQuery.data ?? [], [itemsQuery.data]);
+  const providers = useMemo(() => providersQuery.data ?? [], [providersQuery.data]);
+  const listName = listMeta?.Nombre ?? firstRouteParam(nombreParam) ?? 'Lista';
+  const tipoId =
+    providerQuery.data?.IdTipoProveedor ??
+    providers.find((provider) => provider.IdProveedor === resolvedProveedorId)?.IdTipoProveedor ??
+    null;
+  const categoria = useMemo(() => {
+    const name =
+      providerTypesQuery.data?.find((type) => type.IdTipoProveedor === tipoId)
+        ?.NombreTipoProveedor ?? '';
+    const lower = name.toLowerCase();
+    if (lower.includes('supermerc')) return CategoriaLista.Supermercado;
+    if (lower.includes('ferreter')) return CategoriaLista.Ferreteria;
+    if (lower.includes('farmac')) return CategoriaLista.Farmacia;
+    return CategoriaLista.Otro;
+  }, [providerTypesQuery.data, tipoId]);
+  const visibleProviders = useMemo(() => {
+    const sameType = tipoId
+      ? providers.filter((provider) => provider.IdTipoProveedor === tipoId)
+      : providers;
+    return sameType.length ? sameType : providers;
+  }, [providers, tipoId]);
+  const productos = useMemo<ListItemRow[]>(
+    () =>
+      items.map((item) => {
+        const product = productQueries.details[item.IdProducto];
+        const prices = productQueries.prices[item.IdProducto] ?? [];
+        const match = prices.find((price) => price.IdProveedor === resolvedProveedorId);
+        const currentPrice = effectivePrice(match);
+        const basePrice = match ? Number(match.Precio) : null;
+        const unitId = product?.IdUnidadMedida;
         return {
           ...item,
-          PrecioActual: nextPrice,
-          wasPrice: was,
+          product,
+          prices,
+          Nombre: product?.Nombre ?? `Producto ${item.IdProducto}`,
+          UrlImagen: product?.UrlImagen,
+          PrecioActual: currentPrice != null ? currentPrice.toFixed(2) : item.PrecioActual,
+          wasPrice:
+            basePrice != null && currentPrice != null && basePrice > currentPrice
+              ? basePrice
+              : null,
+          unit: unitId != null ? getUnitAbbrev(unitId).replace(/^\//, '') : '',
         };
-      });
-    },
-    [],
+      }),
+    [items, productQueries.details, productQueries.prices, resolvedProveedorId],
   );
+  const nearbyPayload = useMemo<NearbyBranchesRequest | null>(
+    () =>
+      location && productos.length && resolvedProveedorId > 0
+        ? {
+            lat: location.lat,
+            lng: location.lng,
+            ids_productos: productos.map((product) => product.IdProducto),
+            lista_cantidad: productos.map((product) => product.Cantidad),
+          }
+        : null,
+    [location, productos, resolvedProveedorId],
+  );
+  const nearbyQuery = useNearbyBranches(nearbyPayload);
+  const branch = useMemo<Branch | null>(
+    () =>
+      nearbyQuery.data?.find((candidate) => candidate.IdProveedor === resolvedProveedorId) ?? null,
+    [nearbyQuery.data, resolvedProveedorId],
+  );
+  const loadingBranch = nearbyQuery.isPending;
+  const loading =
+    sessionUserQuery.isPending ||
+    (sessionUserId != null && listsQuery.isPending) ||
+    itemsQuery.isPending ||
+    providersQuery.isPending ||
+    (items.length > 0 && productQueries.isPending);
 
-  const fetchProducts = useCallback(
-    async (proveedorId: number) => {
+  // La ubicación se solicita únicamente cuando ya hay lista y proveedor válidos.
+  useEffect(() => {
+    if (!items.length || resolvedProveedorId <= 0 || location) return;
+    let active = true;
+    (async () => {
       try {
-        const resp = await api.get<ProductoEnLista[]>(endpoints.productosDeLista(idLista));
-        const rows = Array.isArray(resp.data) ? resp.data : [];
-
-        const matrix: Record<number, PrecioRow[]> = {};
-        await Promise.all(
-          rows.map(async (pl) => {
-            try {
-              const precios = await api.get<PrecioRow[]>(endpoints.preciosProductos(pl.IdProducto));
-              matrix[pl.IdProducto] = Array.isArray(precios.data) ? precios.data : [];
-            } catch {
-              matrix[pl.IdProducto] = [];
-            }
-          }),
-        );
-        setPriceByProduct(matrix);
-
-        const detalles = await Promise.all(
-          rows.map(async (pl) => {
-            const prod = await api.get<ProductoAPI>(endpoints.productoById(pl.IdProducto));
-            const unitId = prod.data.IdUnidadMedida;
-            const unit = unitId != null ? getUnitAbbrev(unitId).replace(/^\//, '') : '';
-            return {
-              ...prod.data,
-              PrecioActual: pl.PrecioActual,
-              Cantidad: pl.Cantidad,
-              checked: false,
-              wasPrice: null as number | null,
-              unit,
-            } as ListItem;
-          }),
-        );
-
-        const priced = applyProviderPrices(detalles, proveedorId, matrix);
-        setProductos(priced);
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          showToast('error', t('lists.noPermission'), t('lists.routePermissionBody'));
+          return;
+        }
+        const current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Highest,
+        });
+        if (active) {
+          setLocation({ lat: current.coords.latitude, lng: current.coords.longitude });
+        }
       } catch {
-        showToast('error', t('search.productsFailed'), t('search.retry'));
+        if (active) setLocation(null);
       }
-    },
-    [idLista, applyProviderPrices, t],
-  );
-
-  const hydrateMeta = useCallback(async () => {
-    try {
-      const [{ data: listas }, { data: allProveedores }] = await Promise.all([
-        api.get<ListaMeta[]>(endpoints.lista),
-        api.get<Proveedor[]>(endpoints.proveedor),
-      ]);
-      const meta = (listas ?? []).find((l) => l.IdLista === idLista);
-      if (meta) {
-        setListName(meta.Nombre);
-      }
-      const pid = proveedorIdParam || meta?.IdProveedor || 0;
-      setResolvedProveedorId(pid);
-
-      let tId: number | null = null;
-      if (pid) {
-        const provRes = await api.get<Proveedor>(endpoints.proveedorById(pid));
-        tId = provRes.data.IdTipoProveedor;
-        setTipoId(tId);
-        const tiposRes = await api.get<TipoProveedor[]>(endpoints.tipoproveedor);
-        const tipoObj = tiposRes.data.find((t) => t.IdTipoProveedor === tId);
-        const nombre = tipoObj?.NombreTipoProveedor.toLowerCase() || '';
-        if (nombre.includes('supermerc')) setCategoria(CategoriaLista.Supermercado);
-        else if (nombre.includes('ferreter')) setCategoria(CategoriaLista.Ferreteria);
-        else if (nombre.includes('farmac')) setCategoria(CategoriaLista.Farmacia);
-      }
-
-      const list = Array.isArray(allProveedores) ? allProveedores : [];
-      const sameTipo = tId ? list.filter((p) => p.IdTipoProveedor === tId) : list;
-      setProviders(sameTipo.length ? sameTipo : list);
-      return pid;
-    } catch {
-      return proveedorIdParam;
-    }
-  }, [idLista, proveedorIdParam]);
-
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      (async () => {
-        setLoading(true);
-        const pid = await hydrateMeta();
-        if (!active) return;
-        await fetchProducts(pid || 0);
-        if (active) setLoading(false);
-      })();
-      return () => {
-        active = false;
-      };
-    }, [fetchProducts, hydrateMeta]),
-  );
+    })();
+    return () => {
+      active = false;
+    };
+  }, [items.length, resolvedProveedorId, location, t]);
 
   const providerOptions: ProviderOption[] = useMemo(() => {
     if (!productos.length || !providers.length) {
@@ -261,12 +315,12 @@ export default function ListDetailScreen() {
         covered: 0,
       }));
     }
-    return providers
+    return visibleProviders
       .map((p) => {
         let total = 0;
         let covered = 0;
         for (const item of productos) {
-          const rows = priceByProduct[item.IdProducto] ?? [];
+          const rows = productQueries.prices[item.IdProducto] ?? [];
           const match = rows.find((r) => r.IdProveedor === p.IdProveedor);
           const price = effectivePrice(match);
           if (price != null) {
@@ -283,74 +337,49 @@ export default function ListDetailScreen() {
       })
       .filter((o) => o.covered > 0 || o.IdProveedor === resolvedProveedorId)
       .sort((a, b) => a.total - b.total);
-  }, [productos, providers, priceByProduct, resolvedProveedorId]);
+  }, [productos, providers, visibleProviders, productQueries.prices, resolvedProveedorId]);
 
   const cheapestTotal = providerOptions[0]?.total ?? 0;
   const selectedOption = providerOptions.find((o) => o.IdProveedor === resolvedProveedorId);
   const selectedProviderName =
-    providers.find((p) => p.IdProveedor === resolvedProveedorId)?.Nombre ?? null;
+    visibleProviders.find((p) => p.IdProveedor === resolvedProveedorId)?.Nombre ??
+    providers.find((p) => p.IdProveedor === resolvedProveedorId)?.Nombre ??
+    null;
 
-  const selectProvider = async (nextId: number) => {
-    if (nextId === resolvedProveedorId || switchingProv) return;
-    void triggerHaptic('selection');
-    setSwitchingProv(true);
-    try {
-      setResolvedProveedorId(nextId);
-      const priced = applyProviderPrices(productos, nextId, priceByProduct);
-      setProductos(priced);
-
-      // Persist list provider + item prices (mock / if backend supports it)
-      try {
-        await api.put(endpoints.listaById(idLista), {
-          IdProveedor: nextId,
-        });
-      } catch {
-        // Live API may lack PUT lista/:id
-      }
-
-      await Promise.all(
-        priced.map(async (item) => {
-          try {
-            await api.put(endpoints.listaProductoItem(idLista, item.IdProducto), {
-              PrecioActual: item.PrecioActual,
-            });
-          } catch {
-            // ignore per-item persist failures
-          }
-        }),
-      );
-    } finally {
-      setSwitchingProv(false);
-    }
+  const beginOperation = (productId: number) => {
+    if (pendingOperationsRef.current.size > 0) return false;
+    pendingOperationsRef.current.add(productId);
+    setPendingOperations(new Set(pendingOperationsRef.current));
+    return true;
   };
 
-  const fetchBranch = useCallback(async () => {
-    if (!productos.length || !resolvedProveedorId) return;
-    setLoadingBranch(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') throw new Error('no location');
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Highest,
-      });
-      const body = {
-        lat: loc.coords.latitude,
-        lng: loc.coords.longitude,
-        ids_productos: productos.map((p) => p.IdProducto),
-        lista_cantidad: productos.map((p) => p.Cantidad),
-      };
-      const resp = await api.post<SucursalCercana[]>(endpoints.sucursalCercana, body);
-      setBranch(resp.data.find((b) => b.IdProveedor === resolvedProveedorId) || null);
-    } catch {
-      setBranch(null);
-    } finally {
-      setLoadingBranch(false);
-    }
-  }, [productos, resolvedProveedorId]);
+  const endOperation = (productId: number) => {
+    pendingOperationsRef.current.delete(productId);
+    setPendingOperations(new Set(pendingOperationsRef.current));
+  };
 
-  useEffect(() => {
-    if (!loading && productos.length) fetchBranch();
-  }, [loading, productos, fetchBranch]);
+  const selectProvider = (nextId: number) => {
+    if (
+      nextId === resolvedProveedorId ||
+      updateProviderMutation.isPending ||
+      pendingOperations.size > 0 ||
+      !idLista
+    )
+      return;
+    void triggerHaptic('selection');
+    setProviderOverride(nextId);
+    updateProviderMutation.mutate(
+      { listId: idLista, providerId: nextId },
+      {
+        onError: () => {
+          setProviderOverride(null);
+          void triggerHaptic('error');
+          showToast('error', t('lists.providerUpdateFailed'), t('lists.tryAgain'));
+        },
+        onSettled: () => setProviderOverride(null),
+      },
+    );
+  };
 
   const totals = useMemo(() => {
     const total = productos.reduce((s, p) => s + Number(p.PrecioActual) * p.Cantidad, 0);
@@ -393,45 +422,53 @@ export default function ListDetailScreen() {
     });
   };
 
-  const persistQty = async (item: ListItem, nextQty: number) => {
-    const clamped = Math.max(1, nextQty);
-    setProductos((prev) =>
-      prev.map((p) => (p.IdProducto === item.IdProducto ? { ...p, Cantidad: clamped } : p)),
-    );
-    void triggerHaptic('selection');
-    try {
-      await api.put(endpoints.listaProductoItem(idLista, item.IdProducto), {
-        Cantidad: clamped,
-      });
-    } catch {
-      try {
-        await api.post(endpoints.listaProducto, {
-          IdLista: idLista,
-          IdProducto: item.IdProducto,
-          PrecioActual: item.PrecioActual,
-          Cantidad: clamped,
-        });
-      } catch {
-        // The local state remains usable when the API cannot persist the change.
-      }
+  const persistQty = (item: ListItemRow, nextQty: number) => {
+    if (!Number.isInteger(nextQty) || nextQty < 1) {
+      showToast('error', t('lists.quantityInvalid'), t('lists.quantityInvalidBody'));
+      return;
     }
+    if (updateProviderMutation.isPending || !beginOperation(item.IdProducto)) return;
+    void triggerHaptic('selection');
+    updateItemMutation.mutate(
+      {
+        listId: idLista,
+        productId: item.IdProducto,
+        payload: { Cantidad: nextQty },
+      },
+      {
+        onError: () => {
+          void triggerHaptic('error');
+          showToast('error', t('lists.quantityUpdateFailed'), t('lists.tryAgain'));
+        },
+        onSettled: () => endOperation(item.IdProducto),
+      },
+    );
   };
 
-  const removeProduct = async (item: ListItem) => {
+  const removeProduct = (item: ListItemRow) => {
     swipeRefs.current[item.IdProducto]?.close();
-    setProductos((prev) => prev.filter((p) => p.IdProducto !== item.IdProducto));
-    try {
-      await api.delete(endpoints.listaProductoItem(idLista, item.IdProducto));
-    } catch {
-      showToast('info', t('lists.productRemoved'), t('lists.productRemovedBody'));
-    }
+    if (updateProviderMutation.isPending || !beginOperation(item.IdProducto)) return;
+    removeItemMutation.mutate(
+      { listId: idLista, productId: item.IdProducto },
+      {
+        onSuccess: () => showToast('success', t('lists.productRemoved')),
+        onError: () => {
+          void triggerHaptic('error');
+          showToast('error', t('lists.removeFailed'), t('lists.tryAgain'));
+        },
+        onSettled: () => endOperation(item.IdProducto),
+      },
+    );
   };
 
   const toggleCheck = (idProducto: number) => {
     void triggerHaptic('selection');
-    setProductos((prev) =>
-      prev.map((p) => (p.IdProducto === idProducto ? { ...p, checked: !p.checked } : p)),
-    );
+    setCheckedIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(idProducto)) next.delete(idProducto);
+      else next.add(idProducto);
+      return next;
+    });
   };
 
   const navigateToIaResult = (msg: string) =>
@@ -459,10 +496,8 @@ export default function ListDetailScreen() {
         prompt = `Describe brevemente: ${nombres}.`;
     }
     try {
-      const res = await api.post<{ respuesta?: string }>(endpoints.analizarPregunta, {
-        pregunta: prompt,
-      });
-      navigateToIaResult(res.data.respuesta || 'Sin respuesta.');
+      const res = await analyzeQuestionMutation.mutateAsync(prompt);
+      navigateToIaResult(res.respuesta || 'Sin respuesta.');
     } catch {
       void triggerHaptic('error');
       showToast('error', t('lists.aiFailed'), t('lists.tryAgain'));
@@ -471,11 +506,12 @@ export default function ListDetailScreen() {
     }
   };
 
-  const renderRightActions = (item: ListItem) => (
+  const renderRightActions = (item: ListItemRow) => (
     <View style={styles.swipeUnderlay}>
       <Text style={styles.swipeLabel}>{t('lists.delete')}</Text>
       <Pressable
         onPress={() => removeProduct(item)}
+        disabled={pendingOperations.has(item.IdProducto) || updateProviderMutation.isPending}
         style={styles.swipeTrash}
         accessibilityLabel={`${t('lists.delete')} ${item.Nombre}`}
       >
@@ -483,6 +519,17 @@ export default function ListDetailScreen() {
       </Pressable>
     </View>
   );
+
+  if (itemsQuery.isError) {
+    return (
+      <Screen edges={['top']}>
+        <Text style={styles.errorText}>{t('search.productsFailed')}</Text>
+        <Button tone="navy" onPress={() => void itemsQuery.refetch()}>
+          {t('search.retry')}
+        </Button>
+      </Screen>
+    );
+  }
 
   if (loading) {
     return (
@@ -544,7 +591,7 @@ export default function ListDetailScreen() {
                 <Pressable
                   key={opt.IdProveedor}
                   onPress={() => selectProvider(opt.IdProveedor)}
-                  disabled={switchingProv}
+                  disabled={updateProviderMutation.isPending || pendingOperations.size > 0}
                   style={[
                     styles.providerChip,
                     active && {
@@ -640,11 +687,11 @@ export default function ListDetailScreen() {
                 <View style={styles.card}>
                   <Pressable
                     onPress={() => toggleCheck(item.IdProducto)}
-                    style={[styles.checkbox, item.checked && styles.checkboxOn]}
+                    style={[styles.checkbox, checkedIds.has(item.IdProducto) && styles.checkboxOn]}
                     accessibilityRole="checkbox"
-                    accessibilityState={{ checked: item.checked }}
+                    accessibilityState={{ checked: checkedIds.has(item.IdProducto) }}
                   >
-                    {item.checked ? (
+                    {checkedIds.has(item.IdProducto) ? (
                       <Ionicons name="checkmark" size={16} color={colors.white} />
                     ) : null}
                   </Pressable>
@@ -657,7 +704,10 @@ export default function ListDetailScreen() {
 
                   <View style={styles.cardBody}>
                     <Text
-                      style={[styles.itemName, item.checked && styles.itemNameChecked]}
+                      style={[
+                        styles.itemName,
+                        checkedIds.has(item.IdProducto) && styles.itemNameChecked,
+                      ]}
                       numberOfLines={1}
                     >
                       {item.Nombre}
@@ -671,27 +721,21 @@ export default function ListDetailScreen() {
                         </View>
                       ) : null}
                       {item.unit ? <Text style={styles.unitMini}>{item.unit}</Text> : null}
-                      <Animated.View layout={LinearTransition.duration(160)} style={styles.qtyMini}>
-                        <Pressable
-                          onPress={() => persistQty(item, item.Cantidad - 1)}
-                          hitSlop={8}
-                          disabled={item.Cantidad <= 1}
-                          style={styles.qtyMiniBtn}
-                        >
-                          <Ionicons
-                            name="remove"
-                            size={14}
-                            color={item.Cantidad <= 1 ? colors.tabInactive : colors.navy}
-                          />
-                        </Pressable>
-                        <Text style={styles.qtyLabel}>×{item.Cantidad}</Text>
-                        <Pressable
-                          onPress={() => persistQty(item, item.Cantidad + 1)}
-                          hitSlop={8}
-                          style={styles.qtyMiniBtn}
-                        >
-                          <Ionicons name="add" size={14} color={colors.navy} />
-                        </Pressable>
+                      <Animated.View
+                        key={`${item.IdProducto}-${item.Cantidad}`}
+                        layout={LinearTransition.duration(160)}
+                      >
+                        <QuantityEditor
+                          quantity={item.Cantidad}
+                          disabled={
+                            pendingOperations.has(item.IdProducto) ||
+                            updateProviderMutation.isPending
+                          }
+                          onCommit={(quantity) => persistQty(item, quantity)}
+                          decreaseLabel={t('search.less')}
+                          increaseLabel={t('search.more')}
+                          quantityLabel={t('search.quantity')}
+                        />
                       </Animated.View>
                     </View>
                   </View>
@@ -912,6 +956,15 @@ const styles = StyleSheet.create({
     minWidth: 22,
     textAlign: 'center',
   },
+  qtyInput: {
+    fontFamily: typography.bold,
+    fontSize: 11,
+    color: colors.muted,
+    minWidth: 28,
+    paddingVertical: 0,
+    paddingHorizontal: 2,
+    textAlign: 'center',
+  },
   priceBlock: { alignItems: 'flex-end', gap: 2 },
   priceNow: {
     fontFamily: typography.extrabold,
@@ -1087,4 +1140,11 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   loadingText: { flex: 1, gap: 8 },
+  errorText: {
+    fontFamily: typography.medium,
+    fontSize: 14,
+    color: colors.red,
+    marginVertical: 16,
+    textAlign: 'center',
+  },
 });
