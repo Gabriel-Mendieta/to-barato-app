@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, StyleSheet } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet, Text } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import EditProfileScreen, { getEditProfileFormWidth } from '../EditProfile';
@@ -9,6 +9,8 @@ const mockReplace = jest.fn();
 const mockShowToast = jest.fn();
 const mockTriggerHaptic = jest.fn();
 const mockMutateAsync = jest.fn();
+const mockRequestMediaLibraryPermissionsAsync = jest.fn();
+const mockLaunchImageLibraryAsync = jest.fn();
 const mockUser = {
   IdTipoUsuario: 1,
   NombreUsuario: 'mariard',
@@ -30,6 +32,13 @@ jest.mock('expo-router', () => ({
     back: (...args: unknown[]) => mockBack(...args),
     replace: (...args: unknown[]) => mockReplace(...args),
   },
+}));
+
+jest.mock('expo-image-picker', () => ({
+  MediaTypeOptions: { Images: 'Images' },
+  requestMediaLibraryPermissionsAsync: (...args: unknown[]) =>
+    mockRequestMediaLibraryPermissionsAsync(...args),
+  launchImageLibraryAsync: (...args: unknown[]) => mockLaunchImageLibraryAsync(...args),
 }));
 
 jest.mock('@/src/shared/api', () => ({
@@ -60,7 +69,10 @@ jest.mock('react-i18next', () => ({
         'profile.back': 'Volver',
         'profile.editTitle': 'Editar perfil',
         'profile.editPhoto': 'Editar foto de perfil',
-        'profile.photoEditUnavailable': 'Cambiar la foto aún no está disponible.',
+        'profile.editPhotoHint': 'Abre el selector de fotos para cambiar tu imagen.',
+        'profile.photoSelected': 'Foto seleccionada',
+        'profile.photoSelectedBody': 'Se guardará al tocar Guardar cambios.',
+        'profile.photoPickerFailed': 'No se pudo seleccionar la foto',
         'profile.name': 'Nombre',
         'profile.namePlaceholder': 'Ingresa tu nombre',
         'profile.nameHint': 'Como aparece en tu perfil',
@@ -73,6 +85,8 @@ jest.mock('react-i18next', () => ({
         'profile.phoneInvalid': 'Ingresa un teléfono válido (mínimo 7 caracteres).',
         'profile.sessionExpired': 'Sesión expirada',
         'profile.sessionExpiredBody': 'Inicia sesión nuevamente.',
+        'profile.permissionDenied': 'Permiso denegado',
+        'profile.photoPermissionBody': 'Necesitamos permiso para acceder a fotos.',
         'profile.noChanges': 'Sin cambios',
         'profile.noChangesBody': 'No hubo modificaciones para guardar.',
         'profile.updated': 'Perfil actualizado',
@@ -98,6 +112,8 @@ function renderEditProfile() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRequestMediaLibraryPermissionsAsync.mockResolvedValue({ granted: true });
+  mockLaunchImageLibraryAsync.mockResolvedValue({ canceled: true, assets: [] });
   mockMutateAsync.mockResolvedValue({
     IdTipoUsuario: 1,
     NombreUsuario: 'mariard',
@@ -114,6 +130,12 @@ beforeEach(() => {
 });
 
 describe('Editar perfil', () => {
+  function getTextContent(children: React.ReactNode): string {
+    if (typeof children === 'string' || typeof children === 'number') return String(children);
+    if (Array.isArray(children)) return children.map(getTextContent).join('');
+    return '';
+  }
+
   it('monta la pantalla del ZIP con sus textos y valores offline', async () => {
     renderEditProfile();
 
@@ -133,16 +155,94 @@ describe('Editar perfil', () => {
     expect(screen.getByText('Para alertas y verificación')).toBeTruthy();
     expect(screen.getByTestId('edit-profile-avatar')).toBeTruthy();
     expect(screen.getByTestId('edit-profile-avatar-edit')).toBeTruthy();
-    expect(screen.queryAllByText(/^profile\./)).toHaveLength(0);
+    const visibleText = screen
+      .UNSAFE_getAllByType(Text)
+      .map((node) => getTextContent(node.props.children))
+      .filter(Boolean);
+    expect(visibleText.some((text) => text.trim().startsWith('profile.'))).toBe(false);
   });
 
-  it('expone un editor de avatar honesto cuando no hay contrato de upload', async () => {
+  it('expone un lápiz visible y accesible que abre el selector de fotos', async () => {
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-avatar');
+
+    const pencil = screen.getByTestId('edit-profile-avatar-edit');
+    expect(pencil.props.accessibilityRole).toBe('button');
+    expect(pencil.props.accessibilityLabel).toBe('Editar foto de perfil');
+    expect(pencil.props.accessibilityHint).toBe(
+      'Abre el selector de fotos para cambiar tu imagen.',
+    );
+    expect(StyleSheet.flatten(pencil.props.style)).toEqual(
+      expect.objectContaining({ width: 44, height: 44 }),
+    );
+    expect(mockRequestMediaLibraryPermissionsAsync).not.toHaveBeenCalled();
+
+    fireEvent.press(pencil);
+
+    await waitFor(() => expect(mockRequestMediaLibraryPermissionsAsync).toHaveBeenCalledTimes(1));
+    expect(mockLaunchImageLibraryAsync).toHaveBeenCalledWith({
+      mediaTypes: 'Images',
+      allowsEditing: true,
+      quality: 0.8,
+      base64: false,
+    });
+  });
+
+  it('no cambia el avatar ni rompe el formulario al cancelar la selección', async () => {
+    mockLaunchImageLibraryAsync.mockResolvedValueOnce({ canceled: true, assets: [] });
     renderEditProfile();
     await screen.findByTestId('edit-profile-avatar');
 
     fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
 
-    expect(mockShowToast).toHaveBeenCalledWith('info', 'Cambiar la foto aún no está disponible.');
+    await waitFor(() => expect(mockLaunchImageLibraryAsync).toHaveBeenCalled());
+    expect(screen.queryByTestId('edit-profile-avatar-image')).toBeNull();
+    expect(screen.getByTestId('edit-profile-name-input')).toBeTruthy();
+    expect(mockShowToast).not.toHaveBeenCalled();
+  });
+
+  it('informa permiso denegado sin abrir el selector ni romper el formulario', async () => {
+    mockRequestMediaLibraryPermissionsAsync.mockResolvedValueOnce({ granted: false });
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-avatar');
+
+    fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
+
+    await waitFor(() =>
+      expect(mockShowToast).toHaveBeenCalledWith(
+        'error',
+        'Permiso denegado',
+        'Necesitamos permiso para acceder a fotos.',
+      ),
+    );
+    expect(mockLaunchImageLibraryAsync).not.toHaveBeenCalled();
+    expect(screen.getByTestId('edit-profile-phone-input')).toBeTruthy();
+  });
+
+  it('muestra inmediatamente la imagen elegida y la envía con el submit', async () => {
+    mockLaunchImageLibraryAsync.mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file:///tmp/avatar.jpg' }],
+    });
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-avatar');
+
+    fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
+
+    const image = await screen.findByTestId('edit-profile-avatar-image');
+    expect(image.props.source).toEqual({ uri: 'file:///tmp/avatar.jpg' });
+    expect(mockShowToast).toHaveBeenCalledWith(
+      'info',
+      'Foto seleccionada',
+      'Se guardará al tocar Guardar cambios.',
+    );
+
+    fireEvent.press(screen.getByTestId('edit-profile-save'));
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        UrlPerfil: 'file:///tmp/avatar.jpg',
+      }),
+    );
   });
 
   it('conserva el formulario usable con teclado y anchos de teléfono/tablet', async () => {

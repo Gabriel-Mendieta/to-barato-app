@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
@@ -105,13 +106,14 @@ function ProfileField({ label, hint, error, testID, ...inputProps }: ProfileFiel
 }
 
 export default function EditProfileScreen() {
-  const { t } = useTranslation();
+  const { t } = useTranslation('translation');
   const colors = useThemeColors();
   const colorScheme = useColorScheme();
   const { width } = useWindowDimensions();
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
   const [avatarImageFailed, setAvatarImageFailed] = useState(false);
+  const [selectedAvatarUri, setSelectedAvatarUri] = useState<string | null>(null);
   const {
     control,
     handleSubmit,
@@ -178,6 +180,31 @@ export default function EditProfileScreen() {
     router.replace('/auth/IniciarSesion');
   }, [t, userQuery.isError]);
 
+  const handlePickAvatar = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showToast('error', t('profile.permissionDenied'), t('profile.photoPermissionBody'));
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+        base64: false,
+      });
+
+      if (result.canceled || !result.assets[0]?.uri) return;
+
+      setAvatarImageFailed(false);
+      setSelectedAvatarUri(result.assets[0].uri);
+      showToast('info', t('profile.photoSelected'), t('profile.photoSelectedBody'));
+    } catch {
+      showToast('error', t('profile.photoPickerFailed'), t('profile.tryAgain'));
+    }
+  };
+
   const handleSave = handleSubmit(async (values) => {
     if (!userData) return;
 
@@ -193,6 +220,9 @@ export default function EditProfileScreen() {
     }
     if (values.telefono.trim() !== userData.Telefono.trim()) {
       payload.Telefono = values.telefono.trim();
+    }
+    if (selectedAvatarUri && selectedAvatarUri !== userData.UrlPerfil) {
+      payload.UrlPerfil = selectedAvatarUri;
     }
 
     if (Object.keys(payload).length === 0) {
@@ -234,6 +264,7 @@ export default function EditProfileScreen() {
 
   const fullName = getFullName(userData);
   const initials = getInitials(fullName);
+  const avatarUri = selectedAvatarUri ?? userData.UrlPerfil;
 
   return (
     <SafeAreaView
@@ -273,11 +304,11 @@ export default function EditProfileScreen() {
           <View style={[styles.content, { width: getEditProfileFormWidth(width) }]}>
             <View style={styles.avatarSection}>
               <View style={styles.avatarEditor}>
-                {userData.UrlPerfil && !avatarImageFailed ? (
+                {avatarUri && !avatarImageFailed ? (
                   <Image
-                    source={{ uri: userData.UrlPerfil }}
+                    source={{ uri: avatarUri }}
                     style={styles.avatar}
-                    testID="edit-profile-avatar"
+                    testID="edit-profile-avatar-image"
                     accessibilityLabel={initials}
                     onError={() => setAvatarImageFailed(true)}
                   />
@@ -297,8 +328,8 @@ export default function EditProfileScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('profile.editPhoto')}
-                  accessibilityHint={t('profile.photoEditUnavailable')}
-                  onPress={() => showToast('info', t('profile.photoEditUnavailable'))}
+                  accessibilityHint={t('profile.editPhotoHint')}
+                  onPress={() => void handlePickAvatar()}
                   style={({ pressed }) => [
                     styles.avatarEditButton,
                     { backgroundColor: colors.navy, borderColor: colors.bg },
@@ -306,7 +337,7 @@ export default function EditProfileScreen() {
                   ]}
                   testID="edit-profile-avatar-edit"
                 >
-                  <Ionicons name="create-outline" size={16} color={colors.white} />
+                  <Ionicons name="create-outline" size={20} color={colors.white} />
                 </Pressable>
               </View>
             </View>
@@ -445,10 +476,10 @@ const styles = StyleSheet.create({
   },
   avatarEditButton: {
     position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 34,
-    height: 34,
+    right: -6,
+    bottom: -6,
+    width: 44,
+    height: 44,
     borderRadius: radii.pill,
     borderWidth: 3,
     alignItems: 'center',

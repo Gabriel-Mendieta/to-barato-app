@@ -139,9 +139,10 @@ notificaciones locales hardcodeadas. Permite:
 - editar el nombre visible y teléfono en `/tabs/settings/EditProfile` con
   `PUT usuario/{id}`; el nombre visible se traduce a `Nombres`/`Apellidos` y
   el correo se presenta como solo lectura. La pantalla muestra el avatar o sus
-  iniciales y un control de edición; como no existe un contrato confirmado
-  para subir fotos, ese control informa que la función aún no está disponible
-  y no simula persistencia. `UrlPerfil` continúa en el DTO;
+  iniciales y permite seleccionar otra imagen con `expo-image-picker`; la
+  selección se previsualiza de inmediato y se envía como `UrlPerfil` al guardar
+  mediante `useUpdateUser`. El contrato confirmado es un campo string en
+  `PUT usuario/{id}`; no se agrega un endpoint de upload ni se usa base64.
 - cambiar contraseña en `/tabs/settings/ChangePassword` con
   `PUT change-password`;
 - cerrar sesión limpiando SecureStore;
