@@ -12,16 +12,25 @@ export type {
 } from './auth';
 export type { SignUpRequest, SignUpResponse, UserDTO } from './user';
 export type {
+  BranchDTO,
+  CategoryDTO,
   NearbyBranchDTO,
+  NearbyBranchesRequest,
   ProductDTO,
+  ProductPriceDTO,
   ProductProviderDTO,
+  ProviderCatalogProductDTO,
   ProviderDTO,
   ProviderTypeDTO,
+  UnitDTO,
 } from './catalog';
 export type {
+  ListItemAddRequest,
   ListDTO,
   ListItemDTO,
+  ListItemMutationResponse,
   ListItemRelationUpdateRequest,
+  ListUpdateRequest,
 } from './lists';
 export { ApiError } from './errors';
 export type { ApiErrorDetails, ApiErrorShape } from './errors';

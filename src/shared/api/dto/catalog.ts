@@ -12,6 +12,16 @@ export type ProviderTypeDTO = {
   NombreTipoProveedor: string;
 };
 
+export type CategoryDTO = {
+  IdCategoria: number;
+  NombreCategoria: string;
+};
+
+export type UnitDTO = {
+  IdUnidadMedida: number;
+  NombreUnidadMedida: string;
+};
+
 export type ProductDTO = {
   IdProducto: number;
   IdCategoria?: number;
@@ -29,6 +39,35 @@ export type ProductProviderDTO = {
   DescripcionOferta?: string | null;
   FechaOferta?: string | null;
   FechaPrecio?: string | null;
+};
+
+export type ProductPriceDTO = {
+  IdProveedor: number;
+  NombreProveedor: string;
+  UrlImagenProveedor?: string | null;
+  Precio: DecimalValue;
+  PrecioOferta?: DecimalValue | null;
+};
+
+export type ProviderCatalogProductDTO = ProductProviderDTO & {
+  Producto: Omit<ProductDTO, 'IdProducto'> & {
+    Unidad?: string | null;
+  };
+};
+
+export type BranchDTO = {
+  IdSucursal: number;
+  NombreSucursal: string;
+  Latitud: DecimalValue;
+  Longitud: DecimalValue;
+  IdProveedor: number;
+};
+
+export type NearbyBranchesRequest = {
+  lat: number;
+  lng: number;
+  ids_productos: number[];
+  lista_cantidad: number[];
 };
 
 export type NearbyBranchDTO = {
