@@ -138,9 +138,10 @@ notificaciones locales hardcodeadas. Permite:
 
 - editar el nombre visible y teléfono en `/tabs/settings/EditProfile` con
   `PUT usuario/{id}`; el nombre visible se traduce a `Nombres`/`Apellidos` y
-  el correo se presenta como solo lectura. `UrlPerfil` continúa en el DTO,
-  pero el rediseño del ZIP no incluye un control de foto ni simula su
-  persistencia;
+  el correo se presenta como solo lectura. La pantalla muestra el avatar o sus
+  iniciales y un control de edición; como no existe un contrato confirmado
+  para subir fotos, ese control informa que la función aún no está disponible
+  y no simula persistencia. `UrlPerfil` continúa en el DTO;
 - cambiar contraseña en `/tabs/settings/ChangePassword` con
   `PUT change-password`;
 - cerrar sesión limpiando SecureStore;

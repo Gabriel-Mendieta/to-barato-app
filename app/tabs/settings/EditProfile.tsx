@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -28,7 +29,7 @@ import { Button, showToast, triggerHaptic } from '@/src/shared/ui';
 
 export function getEditProfileFormWidth(width: number) {
   const preferredWidth =
-    width >= layout.tabletBreakpoint ? width - layout.gutterWide * 2 : width * 0.72;
+    width >= layout.tabletBreakpoint ? width - layout.gutterWide * 2 : width - layout.gutter * 2;
   return Math.min(layout.maxContentWidth, Math.max(280, preferredWidth));
 }
 
@@ -47,13 +48,25 @@ function splitFullName(value: string, fallbackSurname: string) {
   return { nombres: parts[0], apellidos: parts.slice(1).join(' ') };
 }
 
+function getInitials(fullName: string) {
+  return (
+    fullName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('') || '?'
+  );
+}
+
 type ProfileFieldProps = React.ComponentProps<typeof TextInput> & {
   label: string;
+  hint?: string;
   error?: string;
   testID: string;
 };
 
-function ProfileField({ label, error, testID, ...inputProps }: ProfileFieldProps) {
+function ProfileField({ label, hint, error, testID, ...inputProps }: ProfileFieldProps) {
   const colors = useThemeColors();
   const [focused, setFocused] = useState(false);
 
@@ -81,6 +94,7 @@ function ProfileField({ label, error, testID, ...inputProps }: ProfileFieldProps
           inputProps.onBlur?.(event);
         }}
       />
+      {hint ? <Text style={[styles.hint, { color: colors.muted }]}>{hint}</Text> : null}
       {error ? (
         <Text accessibilityRole="alert" style={[styles.error, { color: colors.red }]}>
           {error}
@@ -97,11 +111,12 @@ export default function EditProfileScreen() {
   const { width } = useWindowDimensions();
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
   const {
     control,
     handleSubmit,
     reset,
-    formState: { errors, isDirty, isSubmitting },
+    formState: { errors, isSubmitting },
   } = useForm<EditProfileFormValues>({
     resolver: zodResolver(editProfileSchema),
     mode: 'onChange',
@@ -217,13 +232,19 @@ export default function EditProfileScreen() {
 
   if (!userData) return null;
 
+  const fullName = getFullName(userData);
+  const initials = getInitials(fullName);
+
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: colors.bg }]}
+      testID="edit-profile-screen"
+    >
       <StatusBar
         barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={colors.bg}
       />
-      <View style={[styles.header, { borderBottomColor: colors.line }]}>
+      <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t('profile.back')}
@@ -249,67 +270,110 @@ export default function EditProfileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.form, { width: getEditProfileFormWidth(width) }]}>
-            <Controller
-              control={control}
-              name="nombres"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <ProfileField
-                  label={t('profile.name')}
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  placeholder={t('profile.namePlaceholder')}
-                  error={errors.nombres?.message ? t(errors.nombres.message) : undefined}
-                  testID="edit-profile-name-input"
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="correo"
-              render={({ field: { value } }) => (
-                <ProfileField
-                  label={t('profile.email')}
-                  value={value}
-                  editable={false}
-                  selectTextOnFocus={false}
-                  error={errors.correo?.message ? t(errors.correo.message) : undefined}
-                  testID="edit-profile-email-input"
-                />
-              )}
-            />
-            <Controller
-              control={control}
-              name="telefono"
-              render={({ field: { onChange, onBlur, value } }) => (
-                <ProfileField
-                  label={t('profile.phone')}
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  keyboardType="phone-pad"
-                  placeholder={t('profile.phonePlaceholder')}
-                  error={errors.telefono?.message ? t(errors.telefono.message) : undefined}
-                  testID="edit-profile-phone-input"
-                />
-              )}
-            />
+          <View style={[styles.content, { width: getEditProfileFormWidth(width) }]}>
+            <View style={styles.avatarSection}>
+              <View style={styles.avatarEditor}>
+                {userData.UrlPerfil && !avatarImageFailed ? (
+                  <Image
+                    source={{ uri: userData.UrlPerfil }}
+                    style={styles.avatar}
+                    testID="edit-profile-avatar"
+                    accessibilityLabel={initials}
+                    onError={() => setAvatarImageFailed(true)}
+                  />
+                ) : (
+                  <View
+                    style={[
+                      styles.avatar,
+                      styles.avatarFallback,
+                      { backgroundColor: colors.orange },
+                    ]}
+                    testID="edit-profile-avatar"
+                    accessibilityLabel={initials}
+                  >
+                    <Text style={styles.avatarInitials}>{initials}</Text>
+                  </View>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('profile.editPhoto')}
+                  accessibilityHint={t('profile.photoEditUnavailable')}
+                  onPress={() => showToast('info', t('profile.photoEditUnavailable'))}
+                  style={({ pressed }) => [
+                    styles.avatarEditButton,
+                    { backgroundColor: colors.navy, borderColor: colors.bg },
+                    pressed && styles.pressed,
+                  ]}
+                  testID="edit-profile-avatar-edit"
+                >
+                  <Ionicons name="create-outline" size={16} color={colors.white} />
+                </Pressable>
+              </View>
+            </View>
 
-            <View style={styles.saveRow}>
-              <Button
-                full={false}
-                size="md"
-                onPress={handleSave}
-                disabled={submitting || !isDirty}
-                loading={submitting}
-                testID="edit-profile-save"
-                style={styles.saveButton}
-              >
-                {t('profile.save')}
-              </Button>
+            <View style={styles.form}>
+              <Controller
+                control={control}
+                name="nombres"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <ProfileField
+                    label={t('profile.name')}
+                    hint={t('profile.nameHint')}
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    placeholder={t('profile.namePlaceholder')}
+                    error={errors.nombres?.message ? t(errors.nombres.message) : undefined}
+                    testID="edit-profile-name-input"
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="correo"
+                render={({ field: { value } }) => (
+                  <ProfileField
+                    label={t('profile.email')}
+                    hint={t('profile.emailHint')}
+                    value={value}
+                    editable={false}
+                    selectTextOnFocus={false}
+                    error={errors.correo?.message ? t(errors.correo.message) : undefined}
+                    testID="edit-profile-email-input"
+                  />
+                )}
+              />
+              <Controller
+                control={control}
+                name="telefono"
+                render={({ field: { onChange, onBlur, value } }) => (
+                  <ProfileField
+                    label={t('profile.phone')}
+                    hint={t('profile.phoneHint')}
+                    value={value}
+                    onChangeText={onChange}
+                    onBlur={onBlur}
+                    keyboardType="phone-pad"
+                    placeholder={t('profile.phonePlaceholder')}
+                    error={errors.telefono?.message ? t(errors.telefono.message) : undefined}
+                    testID="edit-profile-phone-input"
+                  />
+                )}
+              />
+
+              <View style={styles.saveRow}>
+                <Button
+                  onPress={handleSave}
+                  disabled={submitting}
+                  loading={submitting}
+                  testID="edit-profile-save"
+                  style={styles.saveButton}
+                >
+                  {t('profile.saveChanges')}
+                </Button>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -327,7 +391,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
     paddingHorizontal: spacing.lg,
   },
   headerTitle: {
@@ -346,11 +409,52 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   scrollContent: {
     flexGrow: 1,
-    paddingTop: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxxl,
   },
-  form: {
+  content: {
     alignSelf: 'center',
+  },
+  avatarSection: {
+    alignItems: 'center',
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.lg,
+  },
+  avatarEditor: {
+    position: 'relative',
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: radii.pill,
+  },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#C97A1A',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  avatarInitials: {
+    color: '#fff',
+    fontFamily: typography.extrabold,
+    fontSize: 36,
+  },
+  avatarEditButton: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 34,
+    height: 34,
+    borderRadius: radii.pill,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  form: {
     gap: spacing.lg,
   },
   field: { gap: spacing.xs },
@@ -359,10 +463,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
   },
+  hint: {
+    fontFamily: typography.family,
+    fontSize: typography.sizes.xs,
+    lineHeight: 16,
+  },
   input: {
-    minHeight: 48,
+    minHeight: 54,
     borderWidth: 1,
-    borderRadius: radii.sm,
+    borderRadius: radii.lg,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     fontFamily: typography.medium,
@@ -374,11 +483,9 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
   },
   saveRow: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   saveButton: {
-    minWidth: 90,
-    minHeight: 44,
+    minHeight: 54,
   },
 });

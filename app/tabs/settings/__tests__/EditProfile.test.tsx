@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, StyleSheet } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import EditProfileScreen, { getEditProfileFormWidth } from '../EditProfile';
@@ -59,11 +59,16 @@ jest.mock('react-i18next', () => ({
       ({
         'profile.back': 'Volver',
         'profile.editTitle': 'Editar perfil',
+        'profile.editPhoto': 'Editar foto de perfil',
+        'profile.photoEditUnavailable': 'Cambiar la foto aún no está disponible.',
         'profile.name': 'Nombre',
         'profile.namePlaceholder': 'Ingresa tu nombre',
+        'profile.nameHint': 'Como aparece en tu perfil',
         'profile.email': 'Correo electrónico',
+        'profile.emailHint': 'Ingrese su correo',
         'profile.phone': 'Teléfono',
         'profile.phonePlaceholder': 'Ingresa tu teléfono',
+        'profile.phoneHint': 'Para alertas y verificación',
         'profile.nameRequired': 'El nombre es obligatorio.',
         'profile.phoneInvalid': 'Ingresa un teléfono válido (mínimo 7 caracteres).',
         'profile.sessionExpired': 'Sesión expirada',
@@ -73,7 +78,7 @@ jest.mock('react-i18next', () => ({
         'profile.updated': 'Perfil actualizado',
         'profile.updateFailed': 'No se pudo actualizar',
         'profile.tryAgain': 'Intenta nuevamente.',
-        'profile.save': 'Guardar',
+        'profile.saveChanges': 'Guardar cambios',
       })[key] ?? key,
   }),
 }));
@@ -114,6 +119,7 @@ describe('Editar perfil', () => {
 
     await waitFor(() => expect(screen.getByTestId('edit-profile-name-input')).toBeTruthy());
 
+    expect(screen.getByTestId('edit-profile-screen')).toBeTruthy();
     expect(screen.getByText('Editar perfil')).toBeTruthy();
     expect(screen.getByText('Nombre')).toBeTruthy();
     expect(screen.getByText('Correo electrónico')).toBeTruthy();
@@ -121,9 +127,32 @@ describe('Editar perfil', () => {
     expect(screen.getByDisplayValue('María Rodríguez')).toBeTruthy();
     expect(screen.getByDisplayValue('maria@example.com')).toBeTruthy();
     expect(screen.getByDisplayValue('8095551234')).toBeTruthy();
-    expect(screen.getByText('Guardar')).toBeTruthy();
+    expect(screen.getByText('Guardar cambios')).toBeTruthy();
+    expect(screen.getByText('Como aparece en tu perfil')).toBeTruthy();
+    expect(screen.getByText('Ingrese su correo')).toBeTruthy();
+    expect(screen.getByText('Para alertas y verificación')).toBeTruthy();
+    expect(screen.getByTestId('edit-profile-avatar')).toBeTruthy();
+    expect(screen.getByTestId('edit-profile-avatar-edit')).toBeTruthy();
     expect(screen.queryAllByText(/^profile\./)).toHaveLength(0);
-    expect(screen.queryByTestId('edit-profile-avatar')).toBeNull();
+  });
+
+  it('expone un editor de avatar honesto cuando no hay contrato de upload', async () => {
+    renderEditProfile();
+    await screen.findByTestId('edit-profile-avatar');
+
+    fireEvent.press(screen.getByTestId('edit-profile-avatar-edit'));
+
+    expect(mockShowToast).toHaveBeenCalledWith('info', 'Cambiar la foto aún no está disponible.');
+  });
+
+  it('conserva el formulario usable con teclado y anchos de teléfono/tablet', async () => {
+    const view = renderEditProfile();
+    await screen.findByTestId('edit-profile-name-input');
+
+    expect(view.UNSAFE_queryByType(KeyboardAvoidingView)).toBeTruthy();
+    expect(getEditProfileFormWidth(402)).toBe(370);
+    expect(getEditProfileFormWidth(430)).toBe(398);
+    expect(getEditProfileFormWidth(834)).toBe(720);
   });
 
   it('mantiene el email de solo lectura y valida nombre antes de enviar', async () => {
@@ -196,15 +225,12 @@ describe('Editar perfil', () => {
         'Intenta nuevamente.',
       ),
     );
-    expect(getEditProfileFormWidth(402)).toBeCloseTo(289.44);
-    expect(getEditProfileFormWidth(834)).toBe(720);
-
     const backStyle = StyleSheet.flatten(screen.getByTestId('edit-profile-back').props.style);
     const saveStyle = StyleSheet.flatten(screen.getByTestId('edit-profile-save').props.style);
     expect(backStyle).toEqual(expect.objectContaining({ width: 44, height: 44 }));
-    expect(saveStyle).toEqual(expect.objectContaining({ minHeight: 44 }));
+    expect(saveStyle).toEqual(expect.objectContaining({ minHeight: 54 }));
     expect(StyleSheet.flatten(screen.getByTestId('edit-profile-name-input').props.style)).toEqual(
-      expect.objectContaining({ minHeight: 48 }),
+      expect.objectContaining({ minHeight: 54 }),
     );
     expect(view.UNSAFE_queryByType(ActivityIndicator)).toBeNull();
   });
