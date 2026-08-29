@@ -1,10 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import {
-  __resetDevModeForTests,
-  initDevMode,
-  isOfflineMode,
-  setOfflineMode,
-} from '../devMode';
+import { __resetDevModeForTests, initDevMode, isOfflineMode, setOfflineMode } from '../devMode';
 import { setMockDelayMs } from '../mockDelay';
 import { routeMock } from '../mockRouter';
 import { __resetAuthMockForTests } from '../mocks/auth.mock';
@@ -43,17 +38,17 @@ async function callMock(
   method: string,
   path: string,
   data: unknown = {},
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
 ) {
   return routeMock({ method, path, params, data });
 }
 
-/** Routes referenced from app/ and core/ — must stay in sync with grep audit. */
-const APP_API_ROUTES: Array<{
+/** Routes referenced from app/ and src/features/ — must stay in sync with grep audit. */
+const APP_API_ROUTES: {
   method: string;
   path: string;
   data?: unknown;
-}> = [
+}[] = [
   { method: 'POST', path: 'login', data: { Correo: 'test@example.com', Clave: 'x' } },
   { method: 'POST', path: 'solicitar-otp' },
   { method: 'POST', path: 'signup', data: { Correo: 'test@example.com' } },
@@ -62,7 +57,11 @@ const APP_API_ROUTES: Array<{
   { method: 'GET', path: `usuario/${MOCK_USER_ID}` },
   { method: 'PUT', path: `usuario/${MOCK_USER_ID}`, data: { Telefono: '8090000000' } },
   { method: 'DELETE', path: `usuario/${MOCK_USER_ID}` },
-  { method: 'PUT', path: 'change-password', data: { IdUsuario: MOCK_USER_ID, Clave: 'old', ClaveNueva: 'new123' } },
+  {
+    method: 'PUT',
+    path: 'change-password',
+    data: { IdUsuario: MOCK_USER_ID, Clave: 'old', ClaveNueva: 'new123' },
+  },
   { method: 'GET', path: 'tipoproveedor' },
   { method: 'GET', path: 'proveedor' },
   { method: 'GET', path: 'proveedor/1' },
@@ -80,11 +79,19 @@ const APP_API_ROUTES: Array<{
   { method: 'PUT', path: 'lista/1', data: { IdProveedor: 2 } },
   { method: 'DELETE', path: 'lista/99' },
   { method: 'GET', path: 'productosdelista/1' },
-  { method: 'POST', path: 'listaproducto', data: { IdLista: 1, IdProducto: 2, Cantidad: 1, PrecioActual: '10.00' } },
+  {
+    method: 'POST',
+    path: 'listaproducto',
+    data: { IdLista: 1, IdProducto: 2, Cantidad: 1, PrecioActual: '10.00' },
+  },
   { method: 'GET', path: 'listas/1/productos/2' },
   { method: 'PUT', path: 'listas/1/productos/2', data: { Cantidad: 3 } },
   { method: 'DELETE', path: 'listas/1/productos/2' },
-  { method: 'POST', path: 'sucursal-cercana', data: { ids_productos: [1, 3], lista_cantidad: [1, 2] } },
+  {
+    method: 'POST',
+    path: 'sucursal-cercana',
+    data: { ids_productos: [1, 3], lista_cantidad: [1, 2] },
+  },
   { method: 'POST', path: 'ruta-multiples-listas', data: { ids_proveedores: [1, 2] } },
   { method: 'POST', path: 'dashboard/analizar-pregunta', data: { pregunta: 'Receta con arroz' } },
 ];
@@ -149,35 +156,40 @@ describe('mockRouter', () => {
   });
 
   it('verificar-otp returns success message', async () => {
-    const data = (await callMock('POST', 'verificar-otp', {}, {
-      email: 'test@example.com',
-      codigo: '123456',
-    })) as { message: string };
+    const data = (await callMock(
+      'POST',
+      'verificar-otp',
+      {},
+      {
+        email: 'test@example.com',
+        codigo: '123456',
+      },
+    )) as { message: string };
     expect(data.message).toMatch(/OTP/i);
   });
 
   it('returns DR supermarket providers', async () => {
-    const data = (await callMock('GET', 'proveedor')) as Array<{ Nombre: string }>;
+    const data = (await callMock('GET', 'proveedor')) as { Nombre: string }[];
     const names = data.map((p) => p.Nombre);
     expect(names).toEqual(expect.arrayContaining(['Nacional', 'Jumbo', 'La Sirena']));
   });
 
   it('returns 15 categories', async () => {
-    const data = (await callMock('GET', 'categoria')) as Array<{ IdCategoria: number }>;
+    const data = (await callMock('GET', 'categoria')) as { IdCategoria: number }[];
     expect(data).toHaveLength(15);
   });
 
   it('returns seeded shopping lists', async () => {
-    const data = (await callMock('GET', 'lista')) as Array<{ Nombre: string }>;
+    const data = (await callMock('GET', 'lista')) as { Nombre: string }[];
     expect(data.length).toBeGreaterThanOrEqual(2);
     expect(data[0].Nombre).toBeTruthy();
   });
 
   it('returns products for productotipoproveedor (supermarket)', async () => {
-    const data = (await callMock('GET', 'productotipoproveedor/1')) as Array<{
+    const data = (await callMock('GET', 'productotipoproveedor/1')) as {
       IdProducto: number;
       Nombre: string;
-    }>;
+    }[];
     expect(data.length).toBe(productos.length);
     expect(data[0]).toMatchObject({
       IdProducto: expect.any(Number),
@@ -186,26 +198,26 @@ describe('mockRouter', () => {
   });
 
   it('productotipoproveedor products have prices in the matrix', async () => {
-    const products = (await callMock('GET', 'productotipoproveedor/1')) as Array<{
+    const products = (await callMock('GET', 'productotipoproveedor/1')) as {
       IdProducto: number;
-    }>;
+    }[];
     const sample = products.slice(0, 5);
     for (const p of sample) {
-      const prices = (await callMock('GET', `precios-productos/${p.IdProducto}`)) as Array<{
+      const prices = (await callMock('GET', `precios-productos/${p.IdProducto}`)) as {
         Precio: string;
-      }>;
+      }[];
       expect(prices.length).toBeGreaterThanOrEqual(6);
       expect(prices[0].Precio).toMatch(/^\d+\.\d{2}$/);
     }
   });
 
   it('precios-productos/:id returns multiple providers with Precio/PrecioOferta', async () => {
-    const data = (await callMock('GET', 'precios-productos/1')) as Array<{
+    const data = (await callMock('GET', 'precios-productos/1')) as {
       IdProveedor: number;
       NombreProveedor: string;
       Precio: string;
       PrecioOferta: string | null;
-    }>;
+    }[];
     expect(data.length).toBeGreaterThanOrEqual(6);
     expect(data[0]).toMatchObject({
       IdProveedor: expect.any(Number),
@@ -217,11 +229,11 @@ describe('mockRouter', () => {
   });
 
   it('precios-productos/proveedor/:id returns catalog with prices', async () => {
-    const data = (await callMock('GET', 'precios-productos/proveedor/1')) as Array<{
+    const data = (await callMock('GET', 'precios-productos/proveedor/1')) as {
       IdProducto: number;
       Precio: string;
       Producto: { Nombre: string };
-    }>;
+    }[];
     expect(data.length).toBe(productos.length);
     expect(data[0]).toMatchObject({
       IdProducto: expect.any(Number),
@@ -244,10 +256,7 @@ describe('mockRouter', () => {
   });
 
   it('profile GET returns complete UsuarioResponse shape', async () => {
-    const data = (await callMock('GET', `usuario/${MOCK_USER_ID}`)) as Record<
-      string,
-      unknown
-    >;
+    const data = (await callMock('GET', `usuario/${MOCK_USER_ID}`)) as Record<string, unknown>;
     for (const field of USUARIO_FIELDS) {
       expect(data).toHaveProperty(field);
     }
@@ -293,7 +302,7 @@ describe('mockRouter', () => {
   });
 
   it('GET sucursal returns branch locations', async () => {
-    const data = (await callMock('GET', 'sucursal')) as Array<{ IdSucursal: number }>;
+    const data = (await callMock('GET', 'sucursal')) as { IdSucursal: number }[];
     expect(data.length).toBeGreaterThanOrEqual(10);
   });
 
@@ -301,7 +310,7 @@ describe('mockRouter', () => {
     const data = (await callMock('POST', 'sucursal-cercana', {
       ids_productos: [1, 3],
       lista_cantidad: [1, 2],
-    })) as Array<{ IdProveedor: number; Precio: number; Distancia: number }>;
+    })) as { IdProveedor: number; Precio: number; Distancia: number }[];
     expect(data.length).toBeGreaterThanOrEqual(6);
     expect(data[0]).toMatchObject({
       IdProveedor: expect.any(Number),
@@ -313,32 +322,32 @@ describe('mockRouter', () => {
   it('POST ruta-multiples-listas returns route stops', async () => {
     const data = (await callMock('POST', 'ruta-multiples-listas', {
       ids_proveedores: [1, 2, 3],
-    })) as Array<{ IdSucursal: number }>;
+    })) as { IdSucursal: number }[];
     expect(data).toHaveLength(3);
   });
 
   it('GET productosdelista returns items for seeded list', async () => {
-    const data = (await callMock('GET', 'productosdelista/1')) as Array<{
+    const data = (await callMock('GET', 'productosdelista/1')) as {
       IdProducto: number;
       Cantidad: number;
-    }>;
+    }[];
     expect(data.length).toBeGreaterThanOrEqual(1);
     expect(data[0]).toHaveProperty('PrecioActual');
   });
 
   it('PUT lista updates IdProveedor and reprices items', async () => {
-    const before = (await callMock('GET', 'productosdelista/1')) as Array<{
+    const before = (await callMock('GET', 'productosdelista/1')) as {
       IdProducto: number;
       PrecioActual: string;
-    }>;
+    }[];
     const updated = (await callMock('PUT', 'lista/1', {
       IdProveedor: 2,
     })) as { IdLista: number; IdProveedor: number };
     expect(updated).toMatchObject({ IdLista: 1, IdProveedor: 2 });
-    const after = (await callMock('GET', 'productosdelista/1')) as Array<{
+    const after = (await callMock('GET', 'productosdelista/1')) as {
       IdProducto: number;
       PrecioActual: string;
-    }>;
+    }[];
     expect(after).toHaveLength(before.length);
     // Prices should come from matrix for provider 2
     expect(Number(after[0].PrecioActual)).toBeGreaterThan(0);
@@ -404,7 +413,7 @@ describe('mockRouter', () => {
     expect(data.respuesta).toMatch(/Sancocho/i);
   });
 
-  it('covers every API path used in app/ and core/', async () => {
+  it('covers every API path used in app/ and src/features/', async () => {
     const missing: string[] = [];
     for (const route of APP_API_ROUTES) {
       const result = await callMock(route.method, route.path, route.data ?? {});
