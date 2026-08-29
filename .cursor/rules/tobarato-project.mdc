@@ -1,0 +1,51 @@
+---
+description: Guía persistente de arquitectura, contratos y calidad de ToBarato
+alwaysApply: true
+---
+
+# Reglas del proyecto ToBarato
+
+Antes de cambiar algo, consulta `docs/README.md`, `PROJECT.md`,
+`ARCHITECTURE.md`, `API.md`, `FLOWS.md`, `QUALITY.md`, `CONTRIBUTING.md` y
+`KNOWN_ISSUES.md`. Si la documentación contradice el código, verifica el
+código y actualiza la documentación en el mismo cambio.
+
+- Preserva contratos existentes: método, path, parámetros, DTOs, auth, errores,
+  navegación y query keys.
+- Centraliza la base URL en `src/shared/config/env.ts` y los paths en
+  `src/shared/api/endpoints.ts`. No inventes endpoints ni secretos.
+- Usa APIs, DTOs, hooks e invalidaciones de la feature correspondiente.
+- Usa el `api` compartido, `ApiError`/`getApiErrorMessage` y el `QueryClient`
+  compartido; no crees clientes HTTP ni caches paralelos.
+- Mantén la separación `app/` (pantalla/ruta), `src/features/` (dominio) y
+  `src/shared/` (infraestructura/UI transversal).
+- Reutiliza tokens de `src/shared/theme/`, componentes UI e i18n. Las cadenas
+  visibles deben tener recurso de locale.
+- Conserva Online y Offline: el adapter mock debe ejercitar la misma ruta,
+  payload y forma de respuesta; no uses datos mock como producción.
+- Incluye loading, error, empty, permisos y mutaciones/rollback cuando aplique.
+- Valida IDs positivos, cantidades enteras, fechas, coordenadas y formularios
+  antes de llamar a la API.
+- No registres ni documentes tokens, contraseñas, OTP, DSN privados o datos
+  personales. Sanitiza errores y logs.
+- Antes de un cambio de path, método, campo, token, navegación pública o
+  comportamiento de sesión, reporta al usuario: `Impacto / Riesgo /
+Compatibilidad / Validación / Comunicación`. Espera decisión antes de
+  implementar si puede ser breaking.
+- Para cada flujo nuevo: localiza impacto, planifica, verifica contrato real,
+  agrega pruebas, valida iOS/Android/iPad/web según corresponda, prueba
+  Online/Offline, revisa regresiones y actualiza docs.
+
+## Validación mínima
+
+```bash
+yarn typecheck
+yarn lint
+yarn test --ci --runInBand --passWithNoTests
+yarn prettier --check README.md 'docs/**/*.md'
+yarn prettier --check --parser markdown .cursor/rules/tobarato-project.mdc
+git diff --check
+```
+
+No ejecutes `prebuild`, cambies iOS/Android, dependencias o `.env` para una
+tarea documental. No hagas commit/push salvo solicitud explícita.
