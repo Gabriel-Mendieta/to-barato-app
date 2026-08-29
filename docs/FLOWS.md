@@ -136,8 +136,11 @@ errores y ausencia de sucursales tienen estados explícitos.
 `/tabs/perfil` carga `GET usuario/{id}` con sesión guardada, muestra perfil y
 notificaciones locales hardcodeadas. Permite:
 
-- editar nombre de usuario, teléfono, nombres, apellidos y foto en
-  `/tabs/settings/EditProfile` con `PUT usuario/{id}`;
+- editar el nombre visible y teléfono en `/tabs/settings/EditProfile` con
+  `PUT usuario/{id}`; el nombre visible se traduce a `Nombres`/`Apellidos` y
+  el correo se presenta como solo lectura. `UrlPerfil` continúa en el DTO,
+  pero el rediseño del ZIP no incluye un control de foto ni simula su
+  persistencia;
 - cambiar contraseña en `/tabs/settings/ChangePassword` con
   `PUT change-password`;
 - cerrar sesión limpiando SecureStore;

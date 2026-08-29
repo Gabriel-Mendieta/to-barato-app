@@ -1,38 +1,102 @@
-// app/settings/EditProfile.tsx
-
-import { clearSession, getAccessToken, getUserId, getApiErrorMessage } from '@/src/shared/api';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  Image,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  Platform,
-  StyleSheet,
-  TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useColorScheme,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { MotiView } from 'moti';
-import * as ImagePicker from 'expo-image-picker';
-import { colors, typography } from '@/src/shared/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { editProfileSchema, type EditProfileFormValues } from '@/src/features/profile/schema';
-import { useCurrentUser, useUpdateUser } from '@/src/features/profile/hooks';
-import type { UserDTO } from '@/src/shared/api/dto';
-import { showToast, triggerHaptic } from '@/src/shared/ui';
 import { useTranslation } from 'react-i18next';
+import { clearSession, getAccessToken, getApiErrorMessage, getUserId } from '@/src/shared/api';
+import { useCurrentUser, useUpdateUser } from '@/src/features/profile/hooks';
+import { editProfileSchema, type EditProfileFormValues } from '@/src/features/profile/schema';
+import type { UserDTO } from '@/src/shared/api/dto';
+import { layout, radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
+import { Button, showToast, triggerHaptic } from '@/src/shared/ui';
+
+export function getEditProfileFormWidth(width: number) {
+  const preferredWidth =
+    width >= layout.tabletBreakpoint ? width - layout.gutterWide * 2 : width * 0.72;
+  return Math.min(layout.maxContentWidth, Math.max(280, preferredWidth));
+}
+
+function getFullName(user: UserDTO) {
+  return [user.Nombres, user.Apellidos]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function splitFullName(value: string, fallbackSurname: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return { nombres: parts[0] ?? '', apellidos: fallbackSurname };
+  }
+  return { nombres: parts[0], apellidos: parts.slice(1).join(' ') };
+}
+
+type ProfileFieldProps = React.ComponentProps<typeof TextInput> & {
+  label: string;
+  error?: string;
+  testID: string;
+};
+
+function ProfileField({ label, error, testID, ...inputProps }: ProfileFieldProps) {
+  const colors = useThemeColors();
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: colors.ink }]}>{label}</Text>
+      <TextInput
+        {...inputProps}
+        accessibilityLabel={label}
+        accessibilityState={inputProps.editable === false ? { disabled: true } : undefined}
+        placeholderTextColor={colors.muted}
+        testID={testID}
+        style={[
+          styles.input,
+          { backgroundColor: colors.card, borderColor: colors.line, color: colors.ink },
+          focused && { borderColor: colors.navySoft, borderWidth: 2 },
+          error && { borderColor: colors.red },
+        ]}
+        onFocus={(event) => {
+          setFocused(true);
+          inputProps.onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          setFocused(false);
+          inputProps.onBlur?.(event);
+        }}
+      />
+      {error ? (
+        <Text accessibilityRole="alert" style={[styles.error, { color: colors.red }]}>
+          {error}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 export default function EditProfileScreen() {
   const { t } = useTranslation();
+  const colors = useThemeColors();
+  const colorScheme = useColorScheme();
+  const { width } = useWindowDimensions();
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [localImageUri, setLocalImageUri] = useState<string | null>(null);
   const {
     control,
     handleSubmit,
@@ -49,6 +113,7 @@ export default function EditProfileScreen() {
       apellidos: '',
     },
   });
+
   const userQuery = useCurrentUser(sessionUserId);
   const updateUserMutation = useUpdateUser(sessionUserId);
   const userData = userQuery.data;
@@ -56,23 +121,28 @@ export default function EditProfileScreen() {
   const submitting = isSubmitting || updateUserMutation.isPending;
 
   useEffect(() => {
-    (async () => {
+    let mounted = true;
+
+    void (async () => {
       try {
-        const token = await getAccessToken();
-        const userId = await getUserId();
+        const [token, userId] = await Promise.all([getAccessToken(), getUserId()]);
         if (!token || !userId) {
           await clearSession();
           router.replace('/auth/IniciarSesion');
           return;
         }
-        setSessionUserId(userId);
+        if (mounted) setSessionUserId(userId);
       } catch {
         await clearSession();
         router.replace('/auth/IniciarSesion');
       } finally {
-        setCheckingSession(false);
+        if (mounted) setCheckingSession(false);
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -81,7 +151,7 @@ export default function EditProfileScreen() {
       nombreUsuario: userData.NombreUsuario,
       correo: userData.Correo,
       telefono: userData.Telefono,
-      nombres: userData.Nombres,
+      nombres: getFullName(userData),
       apellidos: userData.Apellidos,
     });
   }, [reset, userData]);
@@ -93,56 +163,37 @@ export default function EditProfileScreen() {
     router.replace('/auth/IniciarSesion');
   }, [t, userQuery.isError]);
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      showToast('error', t('profile.permissionDenied'), t('profile.photoPermissionBody'));
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!res.canceled) {
-      void triggerHaptic('selection');
-      setLocalImageUri(res.assets[0].uri);
-    }
-  };
-
   const handleSave = handleSubmit(async (values) => {
     if (!userData) return;
 
+    const payload: Partial<
+      Pick<UserDTO, 'NombreUsuario' | 'Telefono' | 'Nombres' | 'Apellidos' | 'UrlPerfil'>
+    > = {};
+    const nextName = values.nombres.trim();
+
+    if (nextName !== getFullName(userData)) {
+      const { nombres, apellidos } = splitFullName(nextName, userData.Apellidos);
+      payload.Nombres = nombres;
+      payload.Apellidos = apellidos;
+    }
+    if (values.telefono.trim() !== userData.Telefono.trim()) {
+      payload.Telefono = values.telefono.trim();
+    }
+
+    if (Object.keys(payload).length === 0) {
+      showToast('info', t('profile.noChanges'), t('profile.noChangesBody'));
+      return;
+    }
+
     try {
-      const payload: Partial<
-        Pick<UserDTO, 'NombreUsuario' | 'Telefono' | 'Nombres' | 'Apellidos' | 'UrlPerfil'>
-      > = {};
-
-      if (values.nombreUsuario !== userData.NombreUsuario)
-        payload.NombreUsuario = values.nombreUsuario;
-      // correo es solo lectura
-      if (values.telefono !== userData.Telefono) payload.Telefono = values.telefono;
-      if (values.nombres !== userData.Nombres) payload.Nombres = values.nombres;
-      if (values.apellidos !== userData.Apellidos) payload.Apellidos = values.apellidos;
-
-      if (localImageUri) {
-        payload.UrlPerfil = localImageUri;
-      }
-
-      if (Object.keys(payload).length === 0) {
-        showToast('info', t('profile.noChanges'), t('profile.noChangesBody'));
-        return;
-      }
-
       const updated = await updateUserMutation.mutateAsync(payload);
       reset({
         nombreUsuario: updated.NombreUsuario,
         correo: updated.Correo,
         telefono: updated.Telefono,
-        nombres: updated.Nombres,
+        nombres: getFullName(updated),
         apellidos: updated.Apellidos,
       });
-      setLocalImageUri(null);
       void triggerHaptic('success');
       showToast('success', t('profile.updated'));
       router.back();
@@ -158,236 +209,176 @@ export default function EditProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: colors.bg }]}>
         <ActivityIndicator size="large" color={colors.navy} />
       </SafeAreaView>
     );
   }
+
   if (!userData) return null;
 
-  const fullName = `${userData.Nombres} ${userData.Apellidos}`;
-
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.navy} />
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.push('../../tabs/perfil')}
-          style={styles.backButton}
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.bg }]}>
+      <StatusBar
+        barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.bg}
+      />
+      <View style={[styles.header, { borderBottomColor: colors.line }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('profile.back')}
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          testID="edit-profile-back"
         >
-          <Ionicons name="chevron-back" size={28} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('profile.editTitle')}</Text>
-        <View style={{ width: 28 }} />
+          <Ionicons name="chevron-back" size={24} color={colors.navySoft} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: colors.navySoft }]}>
+          {t('profile.editTitle')}
+        </Text>
+        <View style={styles.headerSide} />
       </View>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <MotiView
-          from={{ opacity: 0, translateY: 20 }}
-          animate={{ opacity: 1, translateY: 0 }}
-          transition={{ type: 'timing', duration: 400 }}
-          style={styles.profileHeader}
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <TouchableOpacity style={styles.avatarContainer} onPress={pickImage}>
-            <Image
-              source={{
-                uri: localImageUri ?? userData.UrlPerfil ?? undefined,
-              }}
-              style={styles.avatar}
+          <View style={[styles.form, { width: getEditProfileFormWidth(width) }]}>
+            <Controller
+              control={control}
+              name="nombres"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <ProfileField
+                  label={t('profile.name')}
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  placeholder={t('profile.namePlaceholder')}
+                  error={errors.nombres?.message ? t(errors.nombres.message) : undefined}
+                  testID="edit-profile-name-input"
+                />
+              )}
             />
-            <View style={styles.editIcon}>
-              <MaterialIcons name="edit" size={20} color="#FFF" />
+            <Controller
+              control={control}
+              name="correo"
+              render={({ field: { value } }) => (
+                <ProfileField
+                  label={t('profile.email')}
+                  value={value}
+                  editable={false}
+                  selectTextOnFocus={false}
+                  error={errors.correo?.message ? t(errors.correo.message) : undefined}
+                  testID="edit-profile-email-input"
+                />
+              )}
+            />
+            <Controller
+              control={control}
+              name="telefono"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <ProfileField
+                  label={t('profile.phone')}
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  keyboardType="phone-pad"
+                  placeholder={t('profile.phonePlaceholder')}
+                  error={errors.telefono?.message ? t(errors.telefono.message) : undefined}
+                  testID="edit-profile-phone-input"
+                />
+              )}
+            />
+
+            <View style={styles.saveRow}>
+              <Button
+                full={false}
+                size="md"
+                onPress={handleSave}
+                disabled={submitting || !isDirty}
+                loading={submitting}
+                testID="edit-profile-save"
+                style={styles.saveButton}
+              >
+                {t('profile.save')}
+              </Button>
             </View>
-          </TouchableOpacity>
-          <Text style={styles.name}>{fullName}</Text>
-        </MotiView>
-
-        <View style={styles.form}>
-          <Text style={styles.label}>{t('profile.username')}</Text>
-          <Controller
-            control={control}
-            name="nombreUsuario"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.nombreUsuario && styles.inputError]}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                autoCapitalize="none"
-              />
-            )}
-          />
-          {errors.nombreUsuario && (
-            <Text style={styles.inlineError} accessibilityRole="alert">
-              {errors.nombreUsuario.message}
-            </Text>
-          )}
-
-          <Text style={styles.label}>{t('profile.email')}</Text>
-          <Controller
-            control={control}
-            name="correo"
-            render={({ field: { value } }) => (
-              <TextInput
-                style={[styles.input, styles.readOnly]}
-                value={value}
-                editable={false}
-                selectTextOnFocus={false}
-              />
-            )}
-          />
-          {errors.correo && (
-            <Text style={styles.inlineError} accessibilityRole="alert">
-              {errors.correo.message}
-            </Text>
-          )}
-
-          <Text style={styles.label}>{t('profile.phone')}</Text>
-          <Controller
-            control={control}
-            name="telefono"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.telefono && styles.inputError]}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                keyboardType="phone-pad"
-              />
-            )}
-          />
-          {errors.telefono && (
-            <Text style={styles.inlineError} accessibilityRole="alert">
-              {errors.telefono.message}
-            </Text>
-          )}
-
-          <Text style={styles.label}>{t('profile.names')}</Text>
-          <Controller
-            control={control}
-            name="nombres"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.nombres && styles.inputError]}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-              />
-            )}
-          />
-          {errors.nombres && (
-            <Text style={styles.inlineError} accessibilityRole="alert">
-              {errors.nombres.message}
-            </Text>
-          )}
-
-          <Text style={styles.label}>{t('profile.surnames')}</Text>
-          <Controller
-            control={control}
-            name="apellidos"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <TextInput
-                style={[styles.input, errors.apellidos && styles.inputError]}
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-              />
-            )}
-          />
-          {errors.apellidos && (
-            <Text style={styles.inlineError} accessibilityRole="alert">
-              {errors.apellidos.message}
-            </Text>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.saveBtn, submitting && styles.saveBtnDisabled]}
-          onPress={handleSave}
-          disabled={submitting || (!isDirty && !localImageUri)}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <Text style={styles.saveText}>{t('profile.saveChanges')}</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  safeArea: { flex: 1 },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.navy,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
     justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    paddingHorizontal: spacing.lg,
   },
   headerTitle: {
-    color: colors.white,
-    fontSize: 20,
-    fontWeight: '500',
+    fontFamily: typography.bold,
+    fontSize: 24,
+    letterSpacing: -0.4,
   },
+  headerSide: { width: 44, height: 44 },
   backButton: {
-    width: 28,
-  },
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
-  },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingBottom: 40 },
-  profileHeader: { alignItems: 'center', paddingVertical: 24, backgroundColor: colors.card },
-  title: { fontSize: 24, fontFamily: typography.bold, color: colors.ink, marginBottom: 12 },
-  avatarContainer: { position: 'relative', marginBottom: 12 },
-  avatar: { width: 112, height: 112, borderRadius: 56, backgroundColor: '#EEE' },
-  editIcon: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: colors.navy,
-    borderRadius: 12,
-    padding: 4,
-  },
-  name: { fontSize: 20, fontFamily: typography.semibold, color: colors.ink },
-  form: {
-    marginTop: 12,
-    backgroundColor: colors.card,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    padding: 16,
-    elevation: 2,
-  },
-  label: { fontSize: 14, fontFamily: typography.medium, color: colors.ink, marginTop: 12 },
-  input: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: colors.ink,
-  },
-  inputError: { borderWidth: 1, borderColor: colors.red },
-  readOnly: { backgroundColor: '#ECECEC' },
-  inlineError: {
-    color: colors.red,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  saveBtn: {
-    marginTop: 24,
-    marginHorizontal: 32,
-    backgroundColor: colors.navy,
-    borderRadius: 8,
-    paddingVertical: 14,
+    width: 44,
+    height: 44,
     alignItems: 'center',
-    elevation: 3,
+    justifyContent: 'center',
+    borderRadius: radii.md,
   },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveText: { color: colors.white, fontSize: 16, fontFamily: typography.semibold },
+  pressed: { opacity: 0.72 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxxl,
+  },
+  form: {
+    alignSelf: 'center',
+    gap: spacing.lg,
+  },
+  field: { gap: spacing.xs },
+  label: {
+    fontFamily: typography.semibold,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  input: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontFamily: typography.medium,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  error: {
+    fontFamily: typography.medium,
+    fontSize: typography.sizes.xs,
+  },
+  saveRow: {
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  saveButton: {
+    minWidth: 90,
+    minHeight: 44,
+  },
 });
