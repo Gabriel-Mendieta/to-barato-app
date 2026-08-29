@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, Pressable, StyleSheet, Text } from 'react-native';
-import { radii, typography, useThemeColors } from '@/src/shared/theme';
+import { radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 
 type Props = {
   label: string;
@@ -24,17 +24,18 @@ export function CreateListButton({ label, onPress, disabled = false }: Props) {
           }),
           borderWidth: 1.5,
           borderStyle: 'dashed',
-          borderColor: themeColors.line,
+          borderColor: themeColors.orange,
+          backgroundColor: themeColors.orangeSoft,
           borderRadius: radii.lg,
-          paddingVertical: 16,
+          paddingVertical: spacing.lg,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 8,
+          gap: spacing.sm,
         },
         pressed: {
-          backgroundColor: themeColors.orangeSoft,
-          borderColor: themeColors.orange,
+          backgroundColor: themeColors.navy,
+          borderColor: themeColors.navy,
         },
         disabled: {
           opacity: 0.5,
@@ -43,6 +44,9 @@ export function CreateListButton({ label, onPress, disabled = false }: Props) {
           fontFamily: typography.bold,
           fontSize: 13,
           color: themeColors.navy,
+        },
+        labelPressed: {
+          color: themeColors.white,
         },
       }),
     [themeColors],
@@ -62,8 +66,12 @@ export function CreateListButton({ label, onPress, disabled = false }: Props) {
       accessibilityState={{ disabled }}
       testID="create-list-button"
     >
-      <Ionicons name="add" size={18} color={themeColors.navy} />
-      <Text style={styles.label}>{label}</Text>
+      {({ pressed }) => (
+        <>
+          <Ionicons name="add" size={18} color={pressed ? themeColors.white : themeColors.navy} />
+          <Text style={[styles.label, pressed && styles.labelPressed]}>{label}</Text>
+        </>
+      )}
     </Pressable>
   );
 }

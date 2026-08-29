@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ListDTO } from '@/src/shared/api';
 import { calculateListProgress } from './screenSelectors';
 import { Chip } from '@/src/shared/ui/Chip';
-import { radii, typography, useThemeColors } from '@/src/shared/theme';
+import { radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 
 type ListVisual = { bg: string; emoji: string };
 
@@ -74,6 +74,7 @@ export function ShoppingListCard({
         style={({ pressed }) => [styles.cardPressable, pressed && styles.pressed]}
         accessibilityRole="button"
         accessibilityLabel={item.Nombre}
+        testID={`shopping-list-card-content-${item.IdLista}`}
       >
         <View style={[styles.catIcon, { backgroundColor: visual.bg }]}>
           <Text style={styles.catEmoji}>{visual.emoji}</Text>
@@ -126,8 +127,8 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
         default: {},
       }),
       backgroundColor: themeColors.card,
-      borderRadius: 18,
-      minHeight: 120,
+      borderRadius: radii.xl,
+      minHeight: 104,
       borderWidth: 1,
       borderColor: themeColors.line,
       ...Platform.select({
@@ -148,21 +149,22 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
     },
     cardPressable: {
       width: '100%',
-      minHeight: 118,
+      minHeight: 102,
       ...Platform.select({
         web: { boxSizing: 'border-box' },
         default: {},
       }),
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 16,
-      padding: 18,
+      gap: spacing.md,
+      padding: spacing.lg,
     },
     pressed: { opacity: 0.94 },
     catIcon: {
-      width: 62,
-      height: 62,
-      borderRadius: 20,
+      width: 56,
+      height: 56,
+      flexShrink: 0,
+      borderRadius: radii.lg,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -172,7 +174,8 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 8,
+      gap: spacing.sm,
+      minWidth: 0,
     },
     cardTitle: {
       flex: 1,
@@ -181,12 +184,12 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
       color: themeColors.navy,
       letterSpacing: -0.15,
     },
-    moreBtn: { padding: 4 },
+    moreBtn: { padding: spacing.xs, flexShrink: 0 },
     metaRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      marginTop: 6,
+      gap: spacing.sm,
+      marginTop: spacing.sm,
       flexWrap: 'wrap',
     },
     metaText: {
@@ -200,7 +203,7 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
     },
     cardProgressTrack: {
       width: '100%',
-      marginTop: 8,
+      marginTop: spacing.sm,
       height: 5,
       backgroundColor: themeColors.line,
       borderRadius: radii.pill,
