@@ -1,439 +1,777 @@
-// app/tabs/list/add.tsx
-
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-    SafeAreaView,
-    View,
-    Text,
-    FlatList,
-    Image,
-    TouchableOpacity,
-    StatusBar,
-    Platform,
-    StyleSheet,
-    ActivityIndicator,
-    Modal,
-    ScrollView,
-    TextInput,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import Icon from 'react-native-vector-icons/Ionicons';
-import { MotiView } from 'moti';
-import axios from 'axios';
+import { Ionicons } from '@expo/vector-icons';
+import { api, endpoints } from '@/src/shared/api';
+import { getUnitAbbrev } from '@/src/shared/products/meta';
+import {
+  Screen,
+  FLOATING_TAB_BAR_CLEARANCE,
+  Button,
+} from '@/src/shared/ui';
+import {
+  colors,
+  radii,
+  spacing,
+  typography,
+} from '@/src/shared/theme';
 
-////////////////////////////////////////////////////////////////////////////////
-// TIPOS
-////////////////////////////////////////////////////////////////////////////////
 type ProductoAPI = {
-    IdProducto: number;
-    Nombre: string;
-    UrlImagen: string | null;
+  IdProducto: number;
+  Nombre: string;
+  UrlImagen: string | null;
+  IdCategoria?: number;
+  IdUnidadMedida?: number;
 };
 
-type OutgoingProduct = {
-    IdProducto: number;
-    Nombre: string;
-    UrlImagen: string | null;
-    Cantidad: number;
+type CategoriaAPI = {
+  IdCategoria: number;
+  NombreCategoria: string;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-// COMPONENTE
-////////////////////////////////////////////////////////////////////////////////
-export default function AddToListScreen() {
-    const params = useLocalSearchParams<{
-        tipo?: string;
-        edit?: string;
-        initial?: string;
-    }>();
-    const tipoId = params.tipo ? Number(params.tipo) : null;
+type UnidadMedida = {
+  IdUnidadMedida: number;
+  NombreUnidadMedida: string;
+};
 
-    // Parsear datos iniciales cada vez que cambien los params
-    const initialProducts: OutgoingProduct[] = useMemo(() => {
-        if (!params.initial) return [];
-        try {
-            return JSON.parse(decodeURIComponent(params.initial));
-        } catch {
-            return [];
-        }
-    }, [params.initial]);
+const POPULAR = [
+  'Manzana',
+  'Pollo Fresco',
+  'Arroz Premium',
+  'Leche',
+  'Aceite',
+] as const;
 
-    const [allProducts, setAllProducts] = useState<ProductoAPI[]>([]);
-    const [loadingProducts, setLoadingProducts] = useState(true);
-    const [errorProducts, setErrorProducts] = useState<string | null>(null);
+const CATEGORY_EMOJI: Record<string, string> = {
+  frutas: '🍎',
+  verduras: '🥕',
+  hogar: '🔧',
+  limpieza: '🧹',
+  mascotas: '🐶',
+  bebidas: '🧃',
+  panad: '🥖',
+  panadería: '🥖',
+  panaderia: '🥖',
+  farmacia: '💊',
+  mercado: '🛒',
+  despensa: '🛒',
+  ofertas: '🔥',
+  lácteos: '🥛',
+  lacteos: '🥛',
+  carnes: '🍗',
+  snacks: '🍿',
+};
 
-    const [query, setQuery] = useState('');
-    const [quantities, setQuantities] = useState<Record<number, number>>({});
-
-    const [showModal, setShowModal] = useState(false);
-
-    // Función para cargar productos según tipo
-    const fetchProducts = useCallback(async () => {
-        setLoadingProducts(true);
-        setErrorProducts(null);
-        try {
-            let productos: ProductoAPI[];
-            if (tipoId) {
-                const resp = await axios.get<ProductoAPI[]>(
-                    `https://tobarato-api.alirizvi.dev/api/productotipoproveedor/${tipoId}`
-                );
-                productos = resp.data;
-            } else {
-                const resp = await axios.get<ProductoAPI[]>(
-                    'https://tobarato-api.alirizvi.dev/api/producto'
-                );
-                productos = resp.data;
-            }
-            setAllProducts(productos);
-        } catch (err) {
-            console.error('[AddToList] Error al cargar productos:', err);
-            setErrorProducts('No se pudieron cargar los productos.');
-        } finally {
-            setLoadingProducts(false);
-        }
-    }, [tipoId]);
-
-    // Cada vez que la pantalla recibe foco, recargar productos y cantidades iniciales
-    useFocusEffect(
-        useCallback(() => {
-            setQuery('');
-            fetchProducts();
-
-            // Precargar cantidades de initialProducts
-            if (initialProducts.length) {
-                const initQtys = initialProducts.reduce((acc, p) => {
-                    acc[p.IdProducto] = p.Cantidad;
-                    return acc;
-                }, {} as Record<number, number>);
-                setQuantities(initQtys);
-            } else {
-                setQuantities({});
-            }
-        }, [fetchProducts, initialProducts])
-    );
-
-    // Filtrado de búsqueda
-    const filtered = useMemo(() => {
-        if (!query.trim()) return [];
-        return allProducts.filter((p) =>
-            p.Nombre.toLowerCase().includes(query.toLowerCase())
-        );
-    }, [query, allProducts]);
-
-    // Funciones de incremento/decremento
-    const increment = (id: number) => {
-        setQuantities((q) => ({ ...q, [id]: (q[id] || 0) + 1 }));
-    };
-    const decrement = (id: number) => {
-        setQuantities((q) => {
-            const copy = { ...q };
-            const curr = copy[id] || 0;
-            if (curr <= 1) delete copy[id];
-            else copy[id] = curr - 1;
-            return copy;
-        });
-    };
-
-    const selectedCount = Object.keys(quantities).length;
-
-    // Render de loading / error
-    if (loadingProducts) {
-        return (
-            <SafeAreaView style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#33618D" />
-                <Text style={{ marginTop: 8 }}>Cargando productos…</Text>
-            </SafeAreaView>
-        );
-    }
-    if (errorProducts) {
-        return (
-            <SafeAreaView style={styles.loadingContainer}>
-                <Text style={{ color: 'red' }}>{errorProducts}</Text>
-            </SafeAreaView>
-        );
-    }
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-
-            {/* HEADER */}
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => router.back()}>
-                    <Icon name="chevron-back" size={28} color="#fff" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>
-                    {params.edit === 'true' ? 'Editar Lista' : 'Buscar Productos'}
-                </Text>
-                <View style={{ width: 28 }} />
-            </View>
-
-            {/* SEARCH */}
-            <View style={styles.searchWrap}>
-                <Icon name="search" size={20} color="#555" style={{ marginRight: 8 }} />
-                <TextInput
-                    placeholder="Buscar producto..."
-                    value={query}
-                    onChangeText={setQuery}
-                    style={styles.searchInput}
-                    autoCapitalize="none"
-                    clearButtonMode="while-editing"
-                />
-            </View>
-
-            {/* NO RESULTS */}
-            {filtered.length === 0 && query.trim().length > 0 && (
-                <View style={styles.noResults}>
-                    <Text>No se encontraron productos</Text>
-                </View>
-            )}
-
-            {/* LISTA DE PRODUCTOS */}
-            <FlatList
-                data={filtered}
-                keyExtractor={(item) => item.IdProducto.toString()}
-                contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
-                renderItem={({ item }) => {
-                    const qty = quantities[item.IdProducto] || 0;
-                    return (
-                        <MotiView
-                            from={{ opacity: 0, translateY: 20 }}
-                            animate={{ opacity: 1, translateY: 0 }}
-                            transition={{ type: 'timing', duration: 300 }}
-                            style={styles.card}
-                        >
-                            <View style={styles.productRow}>
-                                <Image
-                                    source={{ uri: item.UrlImagen || '' }}
-                                    style={styles.image}
-                                    resizeMode="cover"
-                                />
-                                <Text style={styles.name}>{item.Nombre}</Text>
-                                <View style={styles.qtyControls}>
-                                    {qty > 0 && (
-                                        <TouchableOpacity onPress={() => decrement(item.IdProducto)}>
-                                            <Icon
-                                                name={qty === 1 ? 'trash-outline' : 'remove-circle-outline'}
-                                                size={24}
-                                                color={qty === 1 ? '#D1170F' : '#33618D'}
-                                            />
-                                        </TouchableOpacity>
-                                    )}
-                                    {qty > 0 && <Text style={styles.qtyText}>{qty}</Text>}
-                                    <TouchableOpacity onPress={() => increment(item.IdProducto)}>
-                                        <Icon name="add-circle-outline" size={24} color="#33618D" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </MotiView>
-                    );
-                }}
-            />
-
-            {/* BOTÓN Ver Productos */}
-            {selectedCount > 0 && (
-                <TouchableOpacity style={styles.viewBtn} onPress={() => setShowModal(true)}>
-                    <Text style={styles.viewText}>Ver Productos ({selectedCount})</Text>
-                </TouchableOpacity>
-            )}
-
-            {/* BOTÓN Continuar */}
-            <TouchableOpacity
-                style={[styles.continueBtn, !selectedCount && styles.btnDisabled]}
-                disabled={!selectedCount}
-                onPress={() => {
-                    const outgoing: OutgoingProduct[] = allProducts
-                        .filter((p) => quantities[p.IdProducto] > 0)
-                        .map((p) => ({
-                            IdProducto: p.IdProducto,
-                            Nombre: p.Nombre,
-                            UrlImagen: p.UrlImagen,
-                            Cantidad: quantities[p.IdProducto],
-                        }));
-                    router.push({
-                        pathname: './providers',
-                        params: { items: encodeURIComponent(JSON.stringify(outgoing)) },
-                    });
-                }}
-            >
-                <Text style={styles.continueText}>
-                    Continuar{selectedCount ? ` (${selectedCount})` : ''}
-                </Text>
-            </TouchableOpacity>
-
-            {/* MODAL Ver Productos */}
-            <Modal
-                visible={showModal}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setShowModal(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Productos seleccionados</Text>
-                        <ScrollView>
-                            {allProducts
-                                .filter((p) => quantities[p.IdProducto] > 0)
-                                .map((p) => {
-                                    const qty = quantities[p.IdProducto];
-                                    return (
-                                        <View key={p.IdProducto} style={styles.modalRow}>
-                                            <Image source={{ uri: p.UrlImagen || '' }} style={styles.modalImage} />
-                                            <Text numberOfLines={1} style={styles.modalName}>
-                                                {p.Nombre}
-                                            </Text>
-                                            <View style={styles.qtyControls}>
-                                                <TouchableOpacity onPress={() => decrement(p.IdProducto)}>
-                                                    <Icon
-                                                        name={qty === 1 ? 'trash-outline' : 'remove-circle-outline'}
-                                                        size={24}
-                                                        color={qty === 1 ? '#D1170F' : '#33618D'}
-                                                    />
-                                                </TouchableOpacity>
-                                                <Text style={styles.qtyText}>{qty}</Text>
-                                                <TouchableOpacity onPress={() => increment(p.IdProducto)}>
-                                                    <Icon name="add-circle-outline" size={24} color="#33618D" />
-                                                </TouchableOpacity>
-                                            </View>
-                                        </View>
-                                    );
-                                })}
-                        </ScrollView>
-                        <TouchableOpacity
-                            style={styles.modalCloseBtn}
-                            onPress={() => setShowModal(false)}
-                        >
-                            <Text style={styles.modalCloseText}>Cerrar</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
-        </SafeAreaView>
-    );
+function stripAccents(s: string) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// ESTILOS
-////////////////////////////////////////////////////////////////////////////////
+function categoryEmoji(nombre: string): string {
+  const key = stripAccents(nombre.toLowerCase());
+  for (const [k, emoji] of Object.entries(CATEGORY_EMOJI)) {
+    if (key.includes(k)) return emoji;
+  }
+  return '📦';
+}
+
+function categoryTint(nombre: string, index: number): string {
+  const palette = [
+    '#FFE3E1',
+    '#E6E7EA',
+    '#FFF1C8',
+    '#DCF3E7',
+    '#FFEACB',
+    '#FFE3E1',
+    '#E2F1FA',
+    '#FFE8D9',
+  ];
+  return palette[index % palette.length];
+}
+
+export default function AddToListScreen() {
+  const params = useLocalSearchParams<{
+    tipo?: string;
+    listaId?: string;
+    nombre?: string;
+    idProveedor?: string;
+  }>();
+  const tipoId = params.tipo ? Number(params.tipo) : null;
+  const listaId = params.listaId ? Number(params.listaId) : null;
+  const idProveedor = params.idProveedor ? Number(params.idProveedor) : null;
+  const listName = params.nombre ?? 'Lista';
+
+  const [allProducts, setAllProducts] = useState<ProductoAPI[]>([]);
+  const [categorias, setCategorias] = useState<CategoriaAPI[]>([]);
+  const [unitNames, setUnitNames] = useState<Record<number, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+
+  const [qtyModal, setQtyModal] = useState<ProductoAPI | null>(null);
+  const [qty, setQty] = useState(1);
+  const [adding, setAdding] = useState(false);
+
+  const unitLabel = useCallback(
+    (p: ProductoAPI) => {
+      const id = p.IdUnidadMedida;
+      if (id == null) return '';
+      const full = unitNames[id];
+      if (full) return full;
+      const abbr = getUnitAbbrev(id).replace(/^\//, '');
+      return abbr || '';
+    },
+    [unitNames]
+  );
+
+  const fetchBase = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [prodResp, catResp, unitResp] = await Promise.all([
+        tipoId
+          ? api.get<ProductoAPI[]>(endpoints.productoTipoProveedor(tipoId))
+          : api.get<ProductoAPI[]>(endpoints.producto),
+        api.get<CategoriaAPI[]>(endpoints.categoria),
+        api.get<UnidadMedida[]>(endpoints.unidadmedida),
+      ]);
+      setAllProducts(Array.isArray(prodResp.data) ? prodResp.data : []);
+      setCategorias(Array.isArray(catResp.data) ? catResp.data : []);
+      const units = Array.isArray(unitResp.data) ? unitResp.data : [];
+      setUnitNames(
+        Object.fromEntries(
+          units.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])
+        )
+      );
+    } catch {
+      setError('No se pudieron cargar los productos.');
+    } finally {
+      setLoading(false);
+    }
+  }, [tipoId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setQuery('');
+      setCategoryId(null);
+      fetchBase();
+    }, [fetchBase])
+  );
+
+  const filtered = useMemo(() => {
+    let list = allProducts;
+    if (categoryId != null) {
+      list = list.filter((p) => p.IdCategoria === categoryId);
+    }
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((p) => p.Nombre.toLowerCase().includes(q));
+    }
+    return list;
+  }, [allProducts, query, categoryId]);
+
+  const showBrowse = !query.trim() && categoryId == null;
+
+  const openQty = (p: ProductoAPI) => {
+    setQty(1);
+    setQtyModal(p);
+  };
+
+  const confirmAdd = async () => {
+    if (!qtyModal || !listaId) {
+      Alert.alert('Error', 'No hay una lista activa para agregar.');
+      return;
+    }
+    setAdding(true);
+    try {
+      // Sin fijar proveedor/precio aquí: el detalle de lista aplica precios
+      // según el proveedor elegido. PrecioActual '0.00' = sin vínculo.
+      await api.post(endpoints.listaProducto, {
+        IdLista: listaId,
+        IdProducto: qtyModal.IdProducto,
+        PrecioActual: '0.00',
+        Cantidad: qty,
+      });
+      setQtyModal(null);
+      Alert.alert('Agregado', `${qtyModal.Nombre} ×${qty} en la lista.`);
+    } catch {
+      Alert.alert('Error', 'No se pudo agregar el producto.');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const goToList = () => {
+    if (!listaId) {
+      router.back();
+      return;
+    }
+    router.replace({
+      pathname: '/tabs/list/[id]',
+      params: {
+        id: String(listaId),
+        idProveedor: String(idProveedor ?? ''),
+        nombre: listName,
+      },
+    });
+  };
+
+  const browseCats = useMemo(() => {
+    const preferred = [
+      'Frutas',
+      'Hogar',
+      'Mascotas',
+      'Bebidas',
+      'Panadería',
+      'Farmacia',
+      'Despensa',
+      'Ofertas',
+    ];
+    const byName = new Map(
+      categorias.map((c) => [c.NombreCategoria.toLowerCase(), c])
+    );
+    const picked: CategoriaAPI[] = [];
+    for (const label of preferred) {
+      const hit = byName.get(label.toLowerCase());
+      if (hit) picked.push(hit);
+    }
+    for (const c of categorias) {
+      if (picked.length >= 8) break;
+      if (!picked.some((p) => p.IdCategoria === c.IdCategoria)) {
+        picked.push(c);
+      }
+    }
+    if (
+      picked.length < 8 &&
+      !picked.some((c) => c.NombreCategoria.toLowerCase().includes('oferta'))
+    ) {
+      picked.push({ IdCategoria: -1, NombreCategoria: 'Ofertas' });
+    }
+    return picked.slice(0, 8);
+  }, [categorias]);
+
+  if (loading) {
+    return (
+      <Screen edges={['top']} gutters={false}>
+        <ActivityIndicator
+          size="large"
+          color={colors.navy}
+          style={{ marginTop: 48 }}
+        />
+      </Screen>
+    );
+  }
+
+  if (error) {
+    return (
+      <Screen edges={['top']}>
+        <Text style={styles.errorText}>{error}</Text>
+        <Button tone="navy" onPress={fetchBase}>
+          Reintentar
+        </Button>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen edges={['top']} gutters={false} style={{ paddingBottom: 0 }}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.navy} />
+        </Pressable>
+        <View style={styles.searchPill}>
+          <Ionicons name="search" size={18} color={colors.navySoft} />
+          <TextInput
+            value={query}
+            onChangeText={(t) => {
+              setQuery(t);
+              if (t.trim()) setCategoryId(null);
+            }}
+            placeholder="Busca un producto"
+            placeholderTextColor={colors.muted}
+            style={styles.searchInput}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {query ? (
+            <Pressable
+              onPress={() => setQuery('')}
+              hitSlop={8}
+              accessibilityLabel="Limpiar búsqueda"
+            >
+              <Ionicons name="close" size={18} color={colors.muted} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
+      {showBrowse ? (
+        <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: FLOATING_TAB_BAR_CLEARANCE + 72,
+          }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.sectionTitle}>Búsquedas populares</Text>
+          <View style={styles.chipWrap}>
+            {POPULAR.map((p) => (
+              <Pressable
+                key={p}
+                onPress={() => setQuery(p.split(' ')[0])}
+                style={styles.popularChip}
+              >
+                <Text style={styles.flame}>🔥</Text>
+                <Text style={styles.popularText}>{p}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>
+            Categorías
+          </Text>
+          <View style={styles.catGrid}>
+            {browseCats.map((c, i) => (
+              <Pressable
+                key={c.IdCategoria}
+                onPress={() => {
+                  if (c.IdCategoria === -1) {
+                    setQuery('Oferta');
+                    return;
+                  }
+                  setCategoryId(c.IdCategoria);
+                  setQuery('');
+                }}
+                style={styles.catCard}
+              >
+                <View
+                  style={[
+                    styles.catIcon,
+                    { backgroundColor: categoryTint(c.NombreCategoria, i) },
+                  ]}
+                >
+                  <Text style={styles.catEmoji}>
+                    {categoryEmoji(c.NombreCategoria)}
+                  </Text>
+                </View>
+                <Text style={styles.catLabel} numberOfLines={1}>
+                  {c.NombreCategoria.length > 7
+                    ? `${c.NombreCategoria.slice(0, 6)}.`
+                    : c.NombreCategoria}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => String(item.IdProducto)}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            paddingHorizontal: spacing.lg,
+            paddingBottom: FLOATING_TAB_BAR_CLEARANCE + 72,
+            flexGrow: 1,
+          }}
+          ListHeaderComponent={
+            <View style={styles.resultsHeader}>
+              {categoryId != null ? (
+                <Pressable
+                  onPress={() => setCategoryId(null)}
+                  style={styles.clearCat}
+                >
+                  <Ionicons name="close-circle" size={16} color={colors.muted} />
+                  <Text style={styles.clearCatText}>
+                    {categorias.find((c) => c.IdCategoria === categoryId)
+                      ?.NombreCategoria ?? 'Categoría'}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Text style={styles.resultsMeta}>
+                {filtered.length} RESULTADO
+                {filtered.length === 1 ? '' : 'S'}
+                {query.trim()
+                  ? ` PARA '${query.trim().toUpperCase()}'`
+                  : ''}
+              </Text>
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Text style={{ fontSize: 38 }}>🔍</Text>
+              <Text style={styles.emptyTitle}>Sin resultados</Text>
+              <Text style={styles.emptyBody}>
+                Prueba con otra palabra o explora categorías.
+              </Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const unit = unitLabel(item);
+            return (
+              <Pressable
+                onPress={() => openQty(item)}
+                style={({ pressed }) => [
+                  styles.resultCard,
+                  pressed && { opacity: 0.92 },
+                ]}
+              >
+                {item.UrlImagen ? (
+                  <Image
+                    source={{ uri: item.UrlImagen }}
+                    style={styles.thumb}
+                  />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                    <Text style={{ fontSize: 22 }}>🛒</Text>
+                  </View>
+                )}
+                <View style={styles.resultBody}>
+                  <Text style={styles.resultName} numberOfLines={2}>
+                    {item.Nombre}
+                  </Text>
+                  {unit ? (
+                    <Text style={styles.unitText}>{unit}</Text>
+                  ) : null}
+                </View>
+                <Ionicons
+                  name="add-circle"
+                  size={28}
+                  color={colors.orange}
+                />
+              </Pressable>
+            );
+          }}
+        />
+      )}
+
+      {listaId ? (
+        <View style={styles.footerBar}>
+          <Button tone="navy" onPress={goToList}>
+            {`Ver lista · ${listName}`}
+          </Button>
+        </View>
+      ) : null}
+
+      <Modal
+        visible={!!qtyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQtyModal(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setQtyModal(null)}
+          />
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Cantidad</Text>
+            <Text style={styles.modalSub} numberOfLines={2}>
+              {qtyModal?.Nombre}
+              {qtyModal ? (
+                unitLabel(qtyModal) ? (
+                  <Text style={styles.modalUnit}>
+                    {` · ${unitLabel(qtyModal)}`}
+                  </Text>
+                ) : null
+              ) : null}
+            </Text>
+            <View style={styles.stepper}>
+              <Pressable
+                onPress={() => setQty((q) => Math.max(1, q - 1))}
+                style={styles.stepBtn}
+                accessibilityLabel="Menos"
+              >
+                <Ionicons name="remove" size={22} color={colors.navy} />
+              </Pressable>
+              <Text style={styles.stepValue}>{qty}</Text>
+              <Pressable
+                onPress={() => setQty((q) => q + 1)}
+                style={styles.stepBtn}
+                accessibilityLabel="Más"
+              >
+                <Ionicons name="add" size={22} color={colors.navy} />
+              </Pressable>
+            </View>
+            <Button
+              tone="orange"
+              onPress={confirmAdd}
+              loading={adding}
+              disabled={!listaId}
+            >
+              Agregar a la lista
+            </Button>
+            <Button tone="light" onPress={() => setQtyModal(null)}>
+              Cancelar
+            </Button>
+          </View>
+        </View>
+      </Modal>
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#F8F9FF',
-    },
-    container: { flex: 1, backgroundColor: '#F8F9FF' },
-
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#001D35',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
-        paddingBottom: 12,
-        paddingHorizontal: 16,
-    },
-    headerTitle: { color: '#fff', fontSize: 20, fontWeight: '500' },
-
-    searchWrap: {
-        flexDirection: 'row',
-        backgroundColor: '#E5E7EB',
-        marginHorizontal: 16,
-        marginTop: 16,
-        marginBottom: 8,
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        alignItems: 'center',
-    },
-    searchInput: { flex: 1, height: 40, fontSize: 16 },
-
-    noResults: { alignItems: 'center', paddingVertical: 20 },
-
-    card: { marginBottom: 12 },
-    productRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
-        borderRadius: 12,
-        padding: 12,
-        elevation: 2,
-    },
-    image: { width: 56, height: 56, borderRadius: 8, marginRight: 12 },
-    name: { flex: 1, fontSize: 16, fontWeight: '500' },
-
-    qtyControls: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    qtyText: {
-        marginHorizontal: 8,
-        fontSize: 16,
-        fontWeight: '500',
-    },
-
-    viewBtn: {
-        position: 'absolute',
-        bottom: 80,
-        left: 16,
-        right: 16,
-        backgroundColor: '#F3732A',
-        padding: 14,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    viewText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-
-    continueBtn: {
-        position: 'absolute',
-        bottom: 16,
-        left: 16,
-        right: 16,
-        backgroundColor: '#33618D',
-        padding: 16,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    continueText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-
-    btnDisabled: { opacity: 0.6 },
-
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-    },
-    modalContent: {
-        maxHeight: '60%',
-        backgroundColor: '#FFF',
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-        padding: 16,
-    },
-    modalTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        marginBottom: 12,
-        textAlign: 'center',
-    },
-    modalRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    modalImage: {
-        width: 48,
-        height: 48,
-        borderRadius: 8,
-        backgroundColor: '#eee',
-        marginRight: 8,
-    },
-    modalName: { flex: 1, fontSize: 14, fontWeight: '500' },
-    modalCloseBtn: {
-        marginTop: 12,
-        backgroundColor: '#001D35',
-        borderRadius: 8,
-        padding: 12,
-        alignItems: 'center',
-    },
-    modalCloseText: { color: '#FFF', fontWeight: '600' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: 6,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.blueSoft,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+    borderWidth: 1,
+    borderColor: '#C5D8EE',
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: typography.semibold,
+    fontSize: 14,
+    color: colors.navy,
+    paddingVertical: 4,
+  },
+  sectionTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 13,
+    color: colors.navy,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  popularChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  flame: { fontSize: 12 },
+  popularText: {
+    fontFamily: typography.bold,
+    fontSize: 12,
+    color: colors.ink,
+  },
+  catGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -5,
+  },
+  catCard: {
+    width: '25%',
+    padding: 5,
+    alignItems: 'center',
+  },
+  catIcon: {
+    width: '100%',
+    aspectRatio: 1,
+    maxWidth: 72,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    marginBottom: 6,
+  },
+  catEmoji: { fontSize: 22 },
+  catLabel: {
+    fontFamily: typography.bold,
+    fontSize: 10,
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  resultsHeader: { paddingTop: 8, paddingBottom: 4, gap: 6 },
+  clearCat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  clearCatText: {
+    fontFamily: typography.semibold,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  resultsMeta: {
+    fontFamily: typography.bold,
+    fontSize: 11,
+    color: colors.muted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
+  resultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#EEF0F5',
+    ...Platform.select({
+      ios: {
+        shadowColor: 'rgba(11,37,69,0.06)',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 6,
+      },
+      android: { elevation: 1 },
+      default: {},
+    }),
+  },
+  thumb: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: '#F0F2F7',
+  },
+  thumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resultBody: { flex: 1, minWidth: 0 },
+  resultName: {
+    fontFamily: typography.extrabold,
+    fontSize: 14,
+    color: colors.ink,
+  },
+  unitText: {
+    fontFamily: typography.semibold,
+    fontSize: 12,
+    color: colors.muted,
+    marginTop: 4,
+  },
+  emptyBox: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+    marginTop: 8,
+  },
+  emptyTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 14,
+    color: colors.navy,
+    marginTop: 4,
+  },
+  emptyBody: {
+    fontFamily: typography.medium,
+    fontSize: 12,
+    color: colors.muted,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  footerBar: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: FLOATING_TAB_BAR_CLEARANCE,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11,37,69,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 20,
+    gap: 12,
+    paddingBottom: 28,
+  },
+  modalTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 18,
+    color: colors.navy,
+  },
+  modalSub: {
+    fontFamily: typography.medium,
+    fontSize: 13,
+    color: colors.muted,
+  },
+  modalUnit: {
+    fontFamily: typography.semibold,
+    color: colors.navySoft,
+  },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    paddingVertical: 8,
+  },
+  stepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: colors.blueSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepValue: {
+    fontFamily: typography.extrabold,
+    fontSize: 28,
+    color: colors.navy,
+    minWidth: 40,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontFamily: typography.medium,
+    fontSize: 14,
+    color: colors.red,
+    marginVertical: 16,
+    textAlign: 'center',
+  },
 });

@@ -1,8 +1,8 @@
 // app/settings/EditProfile.tsx
 
+import {api, endpoints, clearSession, getAccessToken, getUserId, saveSession, hasStoredSession} from '@/src/shared/api';
 import React, { useEffect, useState } from 'react';
 import {
-    SafeAreaView,
     View,
     Text,
     Image,
@@ -15,11 +15,11 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { MotiView } from 'moti';
-import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -57,17 +57,13 @@ export default function EditProfileScreen() {
                 const token = await SecureStore.getItemAsync('access_token');
                 const userId = await SecureStore.getItemAsync('user_id');
                 if (!token || !userId) {
-                    await SecureStore.deleteItemAsync('access_token');
-                    await SecureStore.deleteItemAsync('refresh_token');
-                    await SecureStore.deleteItemAsync('user_id');
-                    delete axios.defaults.headers.common['Authorization'];
+                    await clearSession();
                     router.replace('/auth/IniciarSesion');
                     return;
                 }
 
-                axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-                const res = await axios.get<UsuarioResponse>(
-                    `https://tobarato-api.alirizvi.dev/api/usuario/${userId}`
+                const res = await api.get<UsuarioResponse>(
+                    endpoints.usuario(userId)
                 );
                 setUserData(res.data);
 
@@ -76,12 +72,8 @@ export default function EditProfileScreen() {
                 setTelefono(res.data.Telefono);
                 setNombres(res.data.Nombres);
                 setApellidos(res.data.Apellidos);
-            } catch (err: any) {
-                console.error('[EditProfile] load error', err);
-                await SecureStore.deleteItemAsync('access_token');
-                await SecureStore.deleteItemAsync('refresh_token');
-                await SecureStore.deleteItemAsync('user_id');
-                delete axios.defaults.headers.common['Authorization'];
+            } catch {
+                await clearSession();
                 Alert.alert('Sesión expirada', 'Por favor inicia sesión de nuevo.', [
                     { text: 'Ok', onPress: () => router.replace('/auth/IniciarSesion') },
                 ]);
@@ -131,16 +123,15 @@ export default function EditProfileScreen() {
                 return;
             }
 
-            const resPut = await axios.put<UsuarioResponse>(
-                `https://tobarato-api.alirizvi.dev/api/usuario/${userId}`,
+            const resPut = await api.put<UsuarioResponse>(
+                endpoints.usuario(userId),
                 payload
             );
             setUserData(resPut.data);
             setLocalImageUri(null);
             Alert.alert('¡Éxito!', 'Tu perfil fue actualizado correctamente.');
             router.back();
-        } catch (err: any) {
-            console.error('[EditProfile] save error', err);
+        } catch {
             Alert.alert('Error', 'No se pudo actualizar tu perfil. Intenta nuevamente.');
         } finally {
             setSubmitting(false);

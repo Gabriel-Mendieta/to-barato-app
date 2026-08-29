@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SignUpRequestDTO, SignUpResponseDTO } from '../../data/dtos/SignUpRequestDTO';
 import { SignUpUseCase } from '../../../src/domain/usecases/SignUpUseCase';
 import { UserRepositoryImpl } from '../../data/repositories/UserRepositoryImpl';
+import { getApiErrorMessage } from '../../shared/api';
 
 export function useSignUp() {
     const [loading, setLoading] = useState(false);
@@ -21,15 +22,8 @@ export function useSignUp() {
         setError(null);
         try {
             return await signUpUc.execute(request);
-        } catch (e: any) {
-            // 👉 Muestra TODO el objeto de respuesta en consola:
-            console.error("API error response:", e.response);
-            // Y para que el usuario vea algo más útil:
-            const msg =
-                e.response?.data?.message ||
-                JSON.stringify(e.response?.data) ||
-                e.message;
-            setError(msg);
+        } catch (e) {
+            setError(getApiErrorMessage(e, 'No se pudo crear la cuenta.'));
             return null;
         } finally {
             setLoading(false);

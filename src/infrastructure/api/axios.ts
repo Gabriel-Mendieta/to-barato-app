@@ -1,7 +1,2 @@
-// src/infrastructure/api/axios.ts
-import axios from 'axios';
-
-export const api = axios.create({
-    baseURL: 'https://tobarato-api.alirizvi.dev/api/',
-    headers: { 'Content-Type': 'application/json' },
-});
+/** @deprecated Use `@/src/shared/api` — kept as a thin re-export during migration. */
+export { api } from '../../shared/api/client';

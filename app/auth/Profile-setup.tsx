@@ -1,7 +1,6 @@
 // app/auth/Profile-setup.tsx
 import React, { useState, useEffect } from "react";
 import {
-    SafeAreaView,
     View,
     Text,
     TouchableOpacity,
@@ -13,6 +12,7 @@ import {
     StyleSheet,
     ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { router, useLocalSearchParams } from "expo-router";

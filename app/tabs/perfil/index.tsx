@@ -1,8 +1,8 @@
 // Archivo: app/settings/Profile.tsx
 
+import {api, endpoints, clearSession, getAccessToken, getUserId, saveSession, hasStoredSession} from '@/src/shared/api';
 import React, { useEffect, useState } from "react";
 import {
-    SafeAreaView,
     View,
     Text,
     Image,
@@ -16,11 +16,11 @@ import {
     ActivityIndicator,
     Alert,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import Ionicons from "react-native-vector-icons/Ionicons";
-import MaterialIcons from "react-native-vector-icons/MaterialIcons";
+import { Ionicons } from "@expo/vector-icons";
+import { MaterialIcons } from "@expo/vector-icons";
 import { MotiView } from "moti";
-import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
 // --------------------------------------------------------------------
@@ -57,30 +57,21 @@ export default function ProfileScreen() {
 
                 if (!token || !userId) {
                     // Si alguno falta, borramos todo y redirigimos a Login
-                    await SecureStore.deleteItemAsync("access_token");
-                    await SecureStore.deleteItemAsync("refresh_token");
-                    await SecureStore.deleteItemAsync("user_id");
-                    delete axios.defaults.headers.common["Authorization"];
+                    await clearSession();
                     router.replace("/auth/IniciarSesion");
                     return;
                 }
 
                 // 2) Fijamos el header para llamar al backend
-                axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
                 // 3) Hacer GET /usuario/{userId}
-                const res = await axios.get<UsuarioResponse>(
-                    `https://tobarato-api.alirizvi.dev/api/usuario/${userId}`
+                const res = await api.get<UsuarioResponse>(
+                    endpoints.usuario(userId)
                 );
                 setUserData(res.data);
-            } catch (err: any) {
-                console.error("[Profile] Error al obtener datos de usuario", err);
-
+            } catch {
                 // Si el backend devuelve 401/403, el token ya no es válido → borramos todo y mandamos a Login
-                await SecureStore.deleteItemAsync("access_token");
-                await SecureStore.deleteItemAsync("refresh_token");
-                await SecureStore.deleteItemAsync("user_id");
-                delete axios.defaults.headers.common["Authorization"];
+                await clearSession();
 
                 Alert.alert(
                     "Sesión expirada",
@@ -102,10 +93,7 @@ export default function ProfileScreen() {
     }, []);
 
     const handleLogout = async () => {
-        await SecureStore.deleteItemAsync("access_token");
-        await SecureStore.deleteItemAsync("refresh_token");
-        await SecureStore.deleteItemAsync("user_id");
-        delete axios.defaults.headers.common["Authorization"];
+        await clearSession();
         router.replace("/auth/IniciarSesion");
     };
 
@@ -121,21 +109,17 @@ export default function ProfileScreen() {
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            await axios.delete(
-                                `https://tobarato-api.alirizvi.dev/api/usuario/${userData.IdUsuario}`
+                            await api.delete(
+                                endpoints.usuario(userData.IdUsuario)
                             );
                             // Después de eliminar, limpiamos credenciales y llevamos al login
-                            await SecureStore.deleteItemAsync("access_token");
-                            await SecureStore.deleteItemAsync("refresh_token");
-                            await SecureStore.deleteItemAsync("user_id");
-                            delete axios.defaults.headers.common["Authorization"];
+                            await clearSession();
                             Alert.alert(
                                 "Cuenta eliminada",
                                 "Tu cuenta ha sido eliminada correctamente."
                             );
                             router.replace("/auth/IniciarSesion");
-                        } catch (err) {
-                            console.error("[Profile] Error eliminando usuario", err);
+                        } catch {
                             Alert.alert(
                                 "Error",
                                 "No se pudo eliminar la cuenta. Intenta nuevamente."

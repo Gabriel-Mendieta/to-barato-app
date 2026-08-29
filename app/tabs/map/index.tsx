@@ -1,364 +1,824 @@
-// app/map.tsx
-
-import React, { useEffect, useState } from 'react';
+import { api, endpoints } from '@/src/shared/api';
 import {
-    SafeAreaView,
-    View,
-    Text,
-    ActivityIndicator,
-    StyleSheet,
-    Platform,
-    StatusBar,
-    Alert,
-    Image,
-    TouchableOpacity,
-    Linking,
-    ActionSheetIOS,
-} from 'react-native';
-import MapView, { Marker, Region, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
-import * as Location from 'expo-location';
-import axios from 'axios';
-import * as SecureStore from 'expo-secure-store';
-import { Picker } from '@react-native-picker/picker';
+  Chip,
+  FadeInUp,
+  FLOATING_TAB_BAR_CLEARANCE,
+  Screen,
+} from '@/src/shared/ui';
+import {
+  colors,
+  getProviderBrand,
+  radii,
+  spacing,
+  typography,
+} from '@/src/shared/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import * as Location from 'expo-location';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import MapView, {
+  Marker,
+  PROVIDER_DEFAULT,
+  Region,
+  UrlTile,
+} from 'react-native-maps';
 
 type TipoProveedor = {
-    IdTipoProveedor: number;
-    NombreTipoProveedor: string;
+  IdTipoProveedor: number;
+  NombreTipoProveedor: string;
 };
 
 type Proveedor = {
-    IdProveedor: number;
-    Nombre: string;
-    UrlLogo: string;
-    IdTipoProveedor: number;
+  IdProveedor: number;
+  Nombre: string;
+  UrlLogo: string;
+  IdTipoProveedor: number;
 };
 
 type Sucursal = {
-    IdSucursal: number;
-    NombreSucursal: string;
-    Latitud: string;
-    Longitud: string;
-    IdProveedor: number;
+  IdSucursal: number;
+  NombreSucursal: string;
+  Latitud: string;
+  Longitud: string;
+  IdProveedor: number;
 };
 
+type BranchCard = Sucursal & {
+  lat: number;
+  lng: number;
+  distanceKm: number;
+  provider?: Proveedor;
+};
+
+const CARD_WIDTH = 220;
+
+function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatDistance(km: number) {
+  if (!Number.isFinite(km)) return '—';
+  if (km < 1) return `${km.toFixed(1)} km`;
+  return `${km.toFixed(1)} km`;
+}
+
+function pluralTipoLabel(nombre: string) {
+  const n = nombre.trim();
+  if (/supermercado/i.test(n)) return 'Supermercados';
+  if (/farmacia/i.test(n)) return 'Farmacias';
+  if (/ferreter/i.test(n)) return 'Ferreterías';
+  return n.endsWith('s') ? n : `${n}s`;
+}
+
+function getBranchName(b: Sucursal, prov?: Proveedor) {
+  if (!prov) return b.NombreSucursal;
+  const stripped = b.NombreSucursal.replace(
+    new RegExp(`^\\s*${prov.Nombre}\\s*`, 'i'),
+    ''
+  ).trim();
+  return stripped || b.NombreSucursal;
+}
+
 export default function MapScreen() {
-    const [region, setRegion] = useState<Region | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [token, setToken] = useState<string | null>(null);
+  const mapRef = useRef<MapView>(null);
+  const carouselRef = useRef<FlatList<BranchCard>>(null);
 
-    const [tipos, setTipos] = useState<TipoProveedor[]>([]);
-    const [providers, setProviders] = useState<Proveedor[]>([]);
-    const [branches, setBranches] = useState<Sucursal[]>([]);
+  const [region, setRegion] = useState<Region | null>(null);
+  const [userCoords, setUserCoords] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-    const [selectedTipo, setSelectedTipo] = useState<string>('all');
-    const [selectedProvider, setSelectedProvider] = useState<string>('all');
-    const [filteredBranches, setFilteredBranches] = useState<Sucursal[]>([]);
-    const [markersLoading, setMarkersLoading] = useState(false);
-    const [selectedBranch, setSelectedBranch] = useState<Sucursal | null>(null);
+  const [tipos, setTipos] = useState<TipoProveedor[]>([]);
+  const [providers, setProviders] = useState<Proveedor[]>([]);
+  const [branches, setBranches] = useState<Sucursal[]>([]);
 
-    // 1) Leer token
-    useEffect(() => {
-        SecureStore.getItemAsync('access_token')
-            .then(setToken)
-            .catch(console.warn);
-    }, []);
+  const [selectedTipo, setSelectedTipo] = useState<string>('all');
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [markersReady, setMarkersReady] = useState(false);
 
-    // 2) Pedir permiso / región inicial
-    useEffect(() => {
-        (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Sin permiso', 'No podemos obtener tu ubicación');
-                setLoading(false);
-                return;
-            }
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-            setRegion({
-                latitude: loc.coords.latitude,
-                longitude: loc.coords.longitude,
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
-            });
-            setLoading(false);
-        })();
-    }, []);
-
-    // 3) Fetch tipos, proveedores y sucursales
-    useEffect(() => {
-        const headers: any = {};
-        if (token) headers.Authorization = `Bearer ${token}`;
-
-        axios
-            .get<TipoProveedor[]>('https://tobarato-api.alirizvi.dev/api/tipoproveedor', { headers })
-            .then(res => setTipos(res.data))
-            .catch(err => console.warn('[Map] error fetching tipos', err));
-
-        axios
-            .get<Proveedor[]>('https://tobarato-api.alirizvi.dev/api/proveedor', { headers })
-            .then(res => setProviders(res.data))
-            .catch(err => console.error('[Map] error fetching proveedores', err));
-
-        axios
-            .get<Sucursal[]>('https://tobarato-api.alirizvi.dev/api/sucursal', { headers })
-            .then(res => setBranches(res.data))
-            .catch(err => console.error('[Map] error fetching sucursales', err));
-    }, [token]);
-
-    // 4) Filtrar sucursales según tipo y proveedor seleccionado
-    useEffect(() => {
-        setMarkersLoading(true);
-        setSelectedBranch(null);
-
-        const provIdsByTipo =
-            selectedTipo === 'all'
-                ? providers.map(p => p.IdProveedor)
-                : providers.filter(p => p.IdTipoProveedor === Number(selectedTipo)).map(p => p.IdProveedor);
-
-        const finalProvIds =
-            selectedProvider === 'all'
-                ? provIdsByTipo
-                : provIdsByTipo.filter(id => id === Number(selectedProvider));
-
-        setFilteredBranches(branches.filter(b => finalProvIds.includes(b.IdProveedor)));
-        // luego de actualizar filtros, desactiva spinner
-        setMarkersLoading(false);
-    }, [selectedTipo, selectedProvider, branches, providers]);
-
-    // 5) Abrir navegación
-    const openNavigation = (lat: number, lng: number, label: string) => {
-        const url = Platform.select({
-            ios: `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(label)}`,
-            android: `google.navigation:q=${lat},${lng}`,
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Sin permiso', 'No podemos obtener tu ubicación');
+          setRegion({
+            latitude: 18.4861,
+            longitude: -69.9312,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          });
+          setLoading(false);
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
         });
-        if (url) Linking.openURL(url).catch(console.warn);
-    };
+        const coords = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
+        setUserCoords(coords);
+        setRegion({
+          ...coords,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+      } catch {
+        setRegion({
+          latitude: 18.4861,
+          longitude: -69.9312,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-    if (loading || region === null) {
-        return (
-            <SafeAreaView style={styles.containerCentered}>
-                <ActivityIndicator size="large" color="#33618D" />
-            </SafeAreaView>
-        );
+  useEffect(() => {
+    api
+      .get<TipoProveedor[]>(endpoints.tipoproveedor)
+      .then((res) => setTipos(res.data))
+      .catch(() => undefined);
+
+    api
+      .get<Proveedor[]>(endpoints.proveedor)
+      .then((res) => setProviders(res.data))
+      .catch(() => undefined);
+
+    api
+      .get<Sucursal[]>(endpoints.sucursal)
+      .then((res) => setBranches(res.data))
+      .catch(() => undefined);
+  }, []);
+
+  const origin = userCoords ?? {
+    latitude: region?.latitude ?? 18.4861,
+    longitude: region?.longitude ?? -69.9312,
+  };
+
+  const nearby = useMemo(() => {
+    const provById = new Map(providers.map((p) => [p.IdProveedor, p]));
+    const q = query.trim().toLowerCase();
+
+    const cards: BranchCard[] = [];
+    for (const b of branches) {
+      const prov = provById.get(b.IdProveedor);
+      if (selectedTipo !== 'all' && prov?.IdTipoProveedor !== Number(selectedTipo)) {
+        continue;
+      }
+      if (q) {
+        const hay = `${prov?.Nombre ?? ''} ${b.NombreSucursal}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
+      const lat = parseFloat(b.Latitud);
+      const lng = parseFloat(b.Longitud);
+      if (Number.isNaN(lat) || Number.isNaN(lng)) continue;
+      cards.push({
+        ...b,
+        lat,
+        lng,
+        distanceKm: haversineKm(origin.latitude, origin.longitude, lat, lng),
+        provider: prov,
+      });
     }
+    cards.sort((a, b) => a.distanceKm - b.distanceKm);
+    return cards;
+  }, [branches, providers, selectedTipo, query, origin.latitude, origin.longitude]);
 
-    // Nombre resumido de sucursal
-    const getBranchName = (b: Sucursal) => {
-        const prov = providers.find(p => p.IdProveedor === b.IdProveedor);
-        if (!prov) return b.NombreSucursal;
-        const stripped = b.NombreSucursal.replace(new RegExp(`^\\s*${prov.Nombre}\\s*`, 'i'), '').trim();
-        return stripped || b.NombreSucursal;
-    };
-
-    // Proveedores filtrados para segundo select
-    const proveedoresFiltrados = providers.filter(
-        p => selectedTipo === 'all' || p.IdTipoProveedor === Number(selectedTipo)
+  useEffect(() => {
+    if (!nearby.length) {
+      setSelectedId(null);
+      return;
+    }
+    setSelectedId((prev) =>
+      prev != null && nearby.some((b) => b.IdSucursal === prev)
+        ? prev
+        : nearby[0].IdSucursal
     );
+  }, [nearby]);
 
-    // iOS: ActionSheet selectors
-    const showTipoSelector = () => {
-        const options = ['Todos los tipos', ...tipos.map(t => t.NombreTipoProveedor), 'Cancelar'];
-        ActionSheetIOS.showActionSheetWithOptions(
-            { options, cancelButtonIndex: options.length - 1 },
-            idx => {
-                if (idx === options.length - 1) return;
-                setSelectedTipo(idx === 0 ? 'all' : String(tipos[idx - 1].IdTipoProveedor));
-                setSelectedProvider('all');
-            }
+  const selectBranch = useCallback(
+    (id: number, animateMap = true) => {
+      setSelectedId(id);
+      const card = nearby.find((b) => b.IdSucursal === id);
+      if (!card) return;
+      if (animateMap) {
+        mapRef.current?.animateToRegion(
+          {
+            latitude: card.lat,
+            longitude: card.lng,
+            latitudeDelta: 0.03,
+            longitudeDelta: 0.03,
+          },
+          350
         );
-    };
-    const showProviderSelector = () => {
-        const labels = ['Todos los proveedores', ...proveedoresFiltrados.map(p => p.Nombre), 'Cancelar'];
-        ActionSheetIOS.showActionSheetWithOptions(
-            { options: labels, cancelButtonIndex: labels.length - 1 },
-            idx => {
-                if (idx === labels.length - 1) return;
-                setSelectedProvider(idx === 0 ? 'all' : String(proveedoresFiltrados[idx - 1].IdProveedor));
-            }
-        );
-    };
+      }
+      const idx = nearby.findIndex((b) => b.IdSucursal === id);
+      if (idx >= 0) {
+        carouselRef.current?.scrollToIndex({
+          index: idx,
+          animated: true,
+          viewPosition: 0.1,
+        });
+      }
+    },
+    [nearby]
+  );
 
+  const openNavigation = (lat: number, lng: number, label: string) => {
+    const url = Platform.select({
+      ios: `http://maps.apple.com/?ll=${lat},${lng}&q=${encodeURIComponent(label)}`,
+      android: `google.navigation:q=${lat},${lng}`,
+    });
+    if (url) Linking.openURL(url).catch(console.warn);
+  };
+
+  const recenter = () => {
+    if (!userCoords) return;
+    mapRef.current?.animateToRegion(
+      {
+        ...userCoords,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      },
+      400
+    );
+  };
+
+  if (loading || region === null) {
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-
-            {/* HEADER */}
-            <View style={styles.header}>
-                <Ionicons name="arrow-back" size={28} color="#fff" onPress={() => { }} />
-                <Text style={styles.headerTitle}>Mapa de Sucursales</Text>
-                <View style={{ width: 28 }} />
-            </View>
-
-            {/* SELECTS */}
-            {Platform.OS === 'ios' ? (
-                <>
-                    <TouchableOpacity style={styles.selectField} onPress={showTipoSelector}>
-                        <Text style={styles.selectText}>
-                            {selectedTipo === 'all'
-                                ? 'Todos los tipos'
-                                : tipos.find(t => String(t.IdTipoProveedor) === selectedTipo)?.NombreTipoProveedor}
-                        </Text>
-                    </TouchableOpacity>
-                    {selectedTipo !== 'all' && (
-                        <TouchableOpacity style={styles.selectField} onPress={showProviderSelector}>
-                            <Text style={styles.selectText}>
-                                {selectedProvider === 'all'
-                                    ? 'Todos los proveedores'
-                                    : providers.find(p => String(p.IdProveedor) === selectedProvider)?.Nombre}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </>
-            ) : (
-                <>
-                    <View style={styles.pickerContainer}>
-                        <Picker selectedValue={selectedTipo} onValueChange={setSelectedTipo} mode="dropdown">
-                            <Picker.Item label="Todos los tipos" value="all" />
-                            {tipos.map(t => (
-                                <Picker.Item key={t.IdTipoProveedor} label={t.NombreTipoProveedor} value={String(t.IdTipoProveedor)} />
-                            ))}
-                        </Picker>
-                    </View>
-                    {selectedTipo !== 'all' && (
-                        <View style={styles.pickerContainer}>
-                            <Picker selectedValue={selectedProvider} onValueChange={setSelectedProvider} mode="dropdown">
-                                <Picker.Item label="Todos los proveedores" value="all" />
-                                {proveedoresFiltrados.map(p => (
-                                    <Picker.Item key={p.IdProveedor} label={p.Nombre} value={String(p.IdProveedor)} />
-                                ))}
-                            </Picker>
-                        </View>
-                    )}
-                </>
-            )}
-
-            {/* MAPA */}
-            <View style={styles.mapWrapper}>
-                <MapView
-                    key={`${selectedTipo}-${selectedProvider}`}
-                    style={styles.map}
-                    initialRegion={region}
-                    showsUserLocation
-                    provider={PROVIDER_DEFAULT}
-                    mapType={Platform.OS === 'android' ? 'none' : 'standard'}
-                >
-                    <UrlTile urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} flipY={false} />
-                    {!markersLoading &&
-                        filteredBranches.map(b => {
-                            const lat = parseFloat(b.Latitud);
-                            const lng = parseFloat(b.Longitud);
-                            if (isNaN(lat) || isNaN(lng)) return null;
-                            return <Marker key={b.IdSucursal} coordinate={{ latitude: lat, longitude: lng }} onPress={() => setSelectedBranch(b)} />;
-                        })}
-                </MapView>
-                {markersLoading && (
-                    <View style={styles.loadingOverlay}>
-                        <ActivityIndicator size="large" color="#33618D" />
-                    </View>
-                )}
-            </View>
-
-            {/* TARJETA INFERIOR */}
-            {selectedBranch && (() => {
-                const prov = providers.find(p => p.IdProveedor === selectedBranch.IdProveedor)!;
-                return (
-                    <View style={styles.card}>
-                        {prov.UrlLogo && <Image source={{ uri: prov.UrlLogo }} style={styles.providerLogo} resizeMode="contain" />}
-                        <View style={styles.info}>
-                            <Text style={styles.providerName}>{prov.Nombre}</Text>
-                            <Text style={styles.branchName}>{getBranchName(selectedBranch)}</Text>
-                        </View>
-                        <TouchableOpacity
-                            style={styles.button}
-                            onPress={() =>
-                                openNavigation(
-                                    parseFloat(selectedBranch.Latitud),
-                                    parseFloat(selectedBranch.Longitud),
-                                    selectedBranch.NombreSucursal
-                                )
-                            }
-                        >
-                            <Text style={styles.buttonText}>Ir</Text>
-                        </TouchableOpacity>
-                    </View>
-                );
-            })()}
-        </SafeAreaView>
+      <Screen edges={['top']} style={styles.centered}>
+        <ActivityIndicator size="large" color={colors.navy} />
+      </Screen>
     );
+  }
+
+  return (
+    <Screen edges={['top']} gutters={false} style={styles.root}>
+      <FadeInUp index={0} step={55} delay={20}>
+        <View style={styles.topBar}>
+          <Pressable
+            onPress={() => router.push('/tabs/home')}
+            style={styles.iconBtn}
+            accessibilityLabel="Volver"
+          >
+            <Ionicons name="chevron-back" size={22} color={colors.navy} />
+          </Pressable>
+          <Text style={styles.title} numberOfLines={1}>
+            Mapa de proveedores
+          </Text>
+          <Pressable
+            onPress={() => router.push('/tabs/search')}
+            style={styles.iconBtn}
+            accessibilityLabel="Buscar"
+          >
+            <Ionicons name="options-outline" size={20} color={colors.navy} />
+          </Pressable>
+        </View>
+      </FadeInUp>
+
+      <FadeInUp index={1} step={55} delay={20}>
+        <View style={styles.searchBlock}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={18} color={colors.tabInactive} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Búsqueda de proveedores"
+              placeholderTextColor={colors.muted}
+              style={styles.searchInput}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipRow}
+          >
+            <FilterPill
+              label="Todos"
+              active={selectedTipo === 'all'}
+              onPress={() => setSelectedTipo('all')}
+            />
+            {tipos.map((t) => (
+              <FilterPill
+                key={t.IdTipoProveedor}
+                label={pluralTipoLabel(t.NombreTipoProveedor)}
+                active={selectedTipo === String(t.IdTipoProveedor)}
+                onPress={() => setSelectedTipo(String(t.IdTipoProveedor))}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      </FadeInUp>
+
+      <FadeInUp index={2} step={55} delay={20} style={styles.mapPad}>
+        <View style={styles.mapFrame}>
+          <MapView
+            ref={mapRef}
+            style={styles.map}
+            initialRegion={region}
+            showsUserLocation
+            showsMyLocationButton={false}
+            provider={PROVIDER_DEFAULT}
+            mapType={Platform.OS === 'android' ? 'none' : 'standard'}
+            onMapReady={() => setMarkersReady(true)}
+          >
+            <UrlTile
+              urlTemplate="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maximumZ={19}
+              flipY={false}
+            />
+            {markersReady &&
+              nearby.map((b) => {
+                const brand = getProviderBrand(b.IdProveedor);
+                const isSel = selectedId === b.IdSucursal;
+                const name = b.provider?.Nombre ?? 'Tienda';
+                return (
+                  <Marker
+                    key={b.IdSucursal}
+                    coordinate={{ latitude: b.lat, longitude: b.lng }}
+                    onPress={() => selectBranch(b.IdSucursal, false)}
+                    tracksViewChanges={false}
+                    anchor={{ x: 0.5, y: 1 }}
+                  >
+                    <View style={styles.pinWrap}>
+                      <View
+                        style={[
+                          styles.pinBubble,
+                          {
+                            backgroundColor: brand.color,
+                            borderColor: colors.white,
+                            shadowColor: isSel ? brand.color : '#000',
+                            shadowOpacity: isSel ? 0.45 : 0.2,
+                            transform: [{ scale: isSel ? 1.08 : 1 }],
+                          },
+                        ]}
+                      >
+                        <Ionicons name="location" size={12} color="#fff" />
+                        <Text style={styles.pinLabel} numberOfLines={1}>
+                          {name}
+                        </Text>
+                      </View>
+                      <View
+                        style={[styles.pinTail, { borderTopColor: brand.color }]}
+                      />
+                    </View>
+                  </Marker>
+                );
+              })}
+          </MapView>
+
+          <Pressable
+            onPress={recenter}
+            style={styles.recenterBtn}
+            accessibilityLabel="Centrar en mi ubicación"
+          >
+            <Ionicons name="navigate-outline" size={20} color={colors.navy} />
+          </Pressable>
+        </View>
+      </FadeInUp>
+
+      <FadeInUp index={3} step={55} delay={20}>
+        <View style={styles.carouselWrap}>
+          {nearby.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>
+                No hay sucursales cerca con este filtro.
+              </Text>
+            </View>
+          ) : (
+            <FlatList
+              ref={carouselRef}
+              data={nearby}
+              keyExtractor={(item) => String(item.IdSucursal)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.carouselContent}
+              snapToInterval={CARD_WIDTH + 10}
+              decelerationRate="fast"
+              getItemLayout={(_, index) => ({
+                length: CARD_WIDTH + 10,
+                offset: (CARD_WIDTH + 10) * index,
+                index,
+              })}
+              onScrollToIndexFailed={(info) => {
+                setTimeout(() => {
+                  carouselRef.current?.scrollToIndex({
+                    index: info.index,
+                    animated: true,
+                  });
+                }, 100);
+              }}
+              renderItem={({ item }) => {
+                const brand = getProviderBrand(item.IdProveedor);
+                const isSel = selectedId === item.IdSucursal;
+                const name = item.provider?.Nombre ?? 'Proveedor';
+                const branchLabel = getBranchName(item, item.provider);
+                return (
+                  <Pressable
+                    onPress={() => selectBranch(item.IdSucursal)}
+                    style={[
+                      styles.card,
+                      {
+                        borderColor: isSel ? brand.color : colors.line,
+                        shadowOpacity: isSel ? 0.18 : 0.04,
+                        shadowColor: isSel ? brand.color : colors.navy,
+                      },
+                    ]}
+                  >
+                    <View style={styles.cardTop}>
+                      {item.provider?.UrlLogo ? (
+                        <Image
+                          source={{ uri: item.provider.UrlLogo }}
+                          style={[styles.avatar, { backgroundColor: brand.bg }]}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        <View
+                          style={[styles.avatar, { backgroundColor: brand.bg }]}
+                        >
+                          <Text
+                            style={[styles.avatarLetter, { color: brand.color }]}
+                          >
+                            {name.charAt(0)}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={styles.cardMeta}>
+                        <Text style={styles.cardName} numberOfLines={1}>
+                          {name}
+                        </Text>
+                        <Text style={styles.cardSub} numberOfLines={1}>
+                          {formatDistance(item.distanceKm)} · {branchLabel}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.cardChips}>
+                      <Chip tone="green" size="sm">
+                        Cerca
+                      </Chip>
+                      <View style={styles.verifiedChip}>
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={11}
+                          color={colors.green}
+                        />
+                        <Text style={styles.verifiedText}>Verificado</Text>
+                      </View>
+                    </View>
+
+                    <Pressable
+                      style={styles.routeBtn}
+                      onPress={() =>
+                        openNavigation(item.lat, item.lng, item.NombreSucursal)
+                      }
+                    >
+                      <Ionicons name="navigate" size={14} color={colors.white} />
+                      <Text style={styles.routeBtnText}>Cómo llegar</Text>
+                    </Pressable>
+                  </Pressable>
+                );
+              }}
+            />
+          )}
+        </View>
+      </FadeInUp>
+    </Screen>
+  );
+}
+
+function FilterPill({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.filterPill,
+        active ? styles.filterPillActive : styles.filterPillIdle,
+      ]}
+    >
+      <Text
+        style={[
+          styles.filterPillText,
+          active ? styles.filterPillTextActive : styles.filterPillTextIdle,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FF' },
-    containerCentered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FF' },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#001D35',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
-        paddingBottom: 12,
-        paddingHorizontal: 16,
-    },
-    headerTitle: { color: '#fff', fontSize: 20, fontWeight: '500' },
+  root: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    paddingBottom: FLOATING_TAB_BAR_CLEARANCE,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.bg,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: typography.extrabold,
+    fontSize: 18,
+    color: colors.navy,
+    letterSpacing: -0.2,
+  },
 
-    selectField: {
-        marginHorizontal: 16,
-        marginTop: 8,
-        marginBottom: 8,
-        paddingVertical: 12,
-        paddingHorizontal: 12,
-        borderWidth: 1,
-        borderColor: '#F3732A',
-        borderRadius: 8,
-        backgroundColor: '#FFF',
-    },
-    selectText: {
-        color: '#33618D',
-        fontSize: 16,
-    },
+  searchBlock: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 11 : 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: typography.medium,
+    fontSize: 13,
+    color: colors.ink,
+    paddingVertical: Platform.OS === 'android' ? 8 : 0,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+    paddingRight: spacing.lg,
+  },
+  filterPill: {
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  filterPillActive: {
+    backgroundColor: colors.navy,
+    borderColor: colors.navy,
+  },
+  filterPillIdle: {
+    backgroundColor: colors.white,
+    borderColor: colors.line,
+  },
+  filterPillText: {
+    fontFamily: typography.bold,
+    fontSize: 12,
+  },
+  filterPillTextActive: { color: colors.white },
+  filterPillTextIdle: { color: colors.ink },
 
-    pickerContainer: {
-        backgroundColor: '#FFF',
-        marginHorizontal: 16,
-        marginTop: 8,
-        borderRadius: 8,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: '#F3732A',
-    },
+  mapPad: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    minHeight: 220,
+  },
+  mapFrame: {
+    flex: 1,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#B6CCEA',
+    backgroundColor: '#D9E5F0',
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.navy,
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.1,
+        shadowRadius: 24,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  map: { flex: 1 },
+  recenterBtn: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.navy,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+      },
+      android: { elevation: 3 },
+    }),
+  },
 
-    mapWrapper: { flex: 1 },
-    map: { flex: 1 },
+  pinWrap: { alignItems: 'center' },
+  pinBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 14,
+    paddingVertical: 6,
+    paddingLeft: 8,
+    paddingRight: 10,
+    borderWidth: 2,
+    maxWidth: 140,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowRadius: 8,
+      },
+      android: { elevation: 3 },
+    }),
+  },
+  pinLabel: {
+    color: '#fff',
+    fontFamily: typography.extrabold,
+    fontSize: 11,
+  },
+  pinTail: {
+    width: 0,
+    height: 0,
+    marginTop: -1,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+  },
 
-    loadingOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(248,249,255,0.8)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
+  carouselWrap: {
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  carouselContent: {
+    paddingHorizontal: spacing.lg,
+    gap: 10,
+  },
+  emptyCard: {
+    marginHorizontal: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: spacing.lg,
+  },
+  emptyText: {
+    fontFamily: typography.medium,
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+  },
 
-    card: {
-        position: 'absolute',
-        bottom: 20,
-        left: 16,
-        right: 16,
-        backgroundColor: '#FFF',
-        borderRadius: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 12,
-        elevation: 6,
-    },
-    providerLogo: { width: 50, height: 50, marginRight: 12, borderRadius: 8 },
-    info: { flex: 1, justifyContent: 'center' },
-    providerName: { fontSize: 16, fontWeight: '700', marginBottom: 2 },
-    branchName: { fontSize: 14, color: '#555' },
-
-    button: {
-        backgroundColor: '#F3732A',
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 8,
-    },
-    buttonText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  card: {
+    width: CARD_WIDTH,
+    backgroundColor: colors.white,
+    borderRadius: radii.lg,
+    borderWidth: 1.5,
+    padding: spacing.md,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowRadius: 12,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLetter: {
+    fontFamily: typography.extrabold,
+    fontSize: 16,
+  },
+  cardMeta: { flex: 1, minWidth: 0 },
+  cardName: {
+    fontFamily: typography.extrabold,
+    fontSize: 14,
+    color: colors.navy,
+  },
+  cardSub: {
+    fontFamily: typography.semibold,
+    fontSize: 11,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  cardChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  verifiedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EEF1F6',
+    borderRadius: radii.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  verifiedText: {
+    fontFamily: typography.bold,
+    fontSize: 10,
+    color: '#4E5867',
+  },
+  routeBtn: {
+    marginTop: 10,
+    backgroundColor: colors.navy,
+    borderRadius: radii.md,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  routeBtnText: {
+    fontFamily: typography.extrabold,
+    fontSize: 12,
+    color: colors.white,
+  },
 });

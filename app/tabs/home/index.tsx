@@ -1,439 +1,783 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    SafeAreaView,
-    View,
-    Text,
-    Image,
-    FlatList,
-    StatusBar,
-    Platform,
-    useWindowDimensions,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    ActivityIndicator,
+  View,
+  Text,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  useWindowDimensions,
+  Alert,
 } from 'react-native';
-import axios from 'axios';
-import { MotiView } from 'moti';
 import { router } from 'expo-router';
-import Icon from 'react-native-vector-icons/Ionicons';
 import { Ionicons } from '@expo/vector-icons';
+import { api, endpoints } from '@/src/shared/api';
+import {
+  Screen,
+  Stagger,
+  Sparkline,
+  FLOATING_TAB_BAR_CLEARANCE,
+} from '@/src/shared/ui';
+import {
+  colors,
+  getCategoryImageBg,
+  getProviderBrand,
+  layout,
+  radii,
+  spacing,
+  typography,
+} from '@/src/shared/theme';
+import { getProductImageUrl, getUnitAbbrev } from '@/src/shared/products/meta';
+import {
+  getProductoById,
+  SUPERMARKET_PROVIDER_IDS,
+} from '@/src/shared/dev/mocks/data';
 
-type TipoProveedor = { IdTipoProveedor: number; NombreTipoProveedor: string };
 type Proveedor = {
-    IdProveedor: number;
-    Nombre: string;
-    UrlLogo: string;
-    IdTipoProveedor: number;
+  IdProveedor: number;
+  Nombre: string;
+  UrlLogo: string;
+  IdTipoProveedor: number;
 };
+
 type ProductoProveedorResponse = {
-    IdProducto: number;
-    IdProveedor: number;
-    Precio: string;
-    PrecioOferta?: string | null;
-    DescripcionOferta?: string | null;
-    FechaOferta?: string;
-    FechaPrecio?: string;
-    Producto: {
-        IdCategoria: number;
-        IdUnidadMedida: number;
-        Nombre: string;
-        UrlImagen: string | null;
-        Descripcion: string;
-    };
-};
-type Producto = {
-    IdProducto: number;
+  IdProducto: number;
+  IdProveedor?: number;
+  Precio: string;
+  PrecioOferta?: string | null;
+  Producto: {
     Nombre: string;
     UrlImagen: string | null;
-    IdCategoria: number;
-    IdUnidadMedida: number;
-    Descripcion?: string;
-    Precio: string;
-    PrecioOferta?: string;
+    IdCategoria?: number;
+    IdUnidadMedida?: number;
+    Unidad?: string;
+  };
 };
-type Categoria = { IdCategoria: number; NombreCategoria: string };
-type UnidadMedida = { IdUnidadMedida: number; NombreUnidadMedida: string };
 
-export default function HomeScreenDynamic() {
-    const { width: screenWidth } = useWindowDimensions();
-    const CARD_WIDTH = Math.round(screenWidth * 0.6);
+type DealCard = ProductoProveedorResponse & {
+  IdProveedor: number;
+  providerName: string;
+};
 
-    const [tipos, setTipos] = useState<TipoProveedor[]>([]);
-    const [activeTipo, setActiveTipo] = useState<number | null>(null);
+const CATEGORIES = ['Ofertas', 'Mercado', 'Farmacia', 'Ferretería'] as const;
+const SPARKLINE_DATA = [12, 18, 15, 24, 22, 30, 35, 32, 42, 48];
 
-    const [proveedores, setProveedores] = useState<Proveedor[]>([]);
-    const [activeProveedor, setActiveProveedor] = useState<number | null>(null);
+function formatMoney(value: number) {
+  const whole = Math.floor(value);
+  const cents = Math.round((value - whole) * 100);
+  return {
+    whole: whole.toLocaleString('es-DO'),
+    cents: cents.toString().padStart(2, '0'),
+  };
+}
 
-    const [productos, setProductos] = useState<Producto[]>([]);
-    const [loadingProductos, setLoadingProductos] = useState(true);
+function discountPct(precio: string, oferta: string | null | undefined) {
+  if (!oferta) return 0;
+  const was = Number(precio);
+  const now = Number(oferta);
+  if (!was || !now || now >= was) return 0;
+  return Math.round(((was - now) / was) * 100);
+}
 
-    const [categorias, setCategorias] = useState<Categoria[]>([]);
-    const [unidadesMap, setUnidadesMap] = useState<Record<number, string>>({});
+function resolveImage(item: DealCard) {
+  return (
+    item.Producto.UrlImagen ||
+    getProductImageUrl(item.IdProducto)
+  );
+}
 
-    const [showNotifications, setShowNotifications] = useState(false);
-    const notificationsData = [
-        { id: 'n1', title: 'Ofertas y Promociones', desc: 'El arroz está a RD$50 menos.', time: 'Hace 4h', icon: 'information' },
-        { id: 'n2', title: 'Recordatorio', desc: 'Revisa tu lista de compras.', time: 'Hace 1d', icon: 'cart-outline' },
-        { id: 'n3', title: 'Actualización', desc: 'Leche bajó 15%.', time: 'Hace 12d', icon: 'pricetag-outline' },
-    ];
+function resolveUnit(item: DealCard) {
+  if (item.Producto.Unidad) return item.Producto.Unidad;
+  const local = getProductoById(item.IdProducto);
+  if (local) return getUnitAbbrev(local.IdUnidadMedida);
+  return '';
+}
 
-    // 1) Cargar tipos
-    useEffect(() => {
-        axios.get<TipoProveedor[]>('https://tobarato-api.alirizvi.dev/api/tipoproveedor')
-            .then(({ data }) => {
-                setTipos(data);
-                if (data.length) setActiveTipo(data[0].IdTipoProveedor);
-            })
-            .catch(console.error);
-    }, []);
+function resolveBg(item: DealCard) {
+  const cat =
+    item.Producto.IdCategoria ??
+    getProductoById(item.IdProducto)?.IdCategoria ??
+    1;
+  return getCategoryImageBg(cat);
+}
 
-    // 2) Cargar proveedores al cambiar tipo
-    useEffect(() => {
-        if (activeTipo == null) return;
-        axios.get<Proveedor[]>('https://tobarato-api.alirizvi.dev/api/proveedor')
-            .then(({ data }) => {
-                const filt = data.filter(p => p.IdTipoProveedor === activeTipo);
-                setProveedores(filt);
-                if (filt.length) setActiveProveedor(filt[0].IdProveedor);
-            })
-            .catch(console.error);
-    }, [activeTipo]);
+function DealImage({ uri, bg }: { uri: string; bg: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <View style={[styles.dealImgWrap, { backgroundColor: bg }]}>
+      {failed ? (
+        <Ionicons name="basket-outline" size={36} color={colors.muted} />
+      ) : (
+        <Image
+          source={{ uri }}
+          style={styles.dealImg}
+          resizeMode="cover"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </View>
+  );
+}
 
-    // 3) Cargar productos al cambiar proveedor
-    useEffect(() => {
-        if (activeProveedor == null) {
-            setProductos([]);
-            setLoadingProductos(false);
-            return;
-        }
-        setLoadingProductos(true);
-        axios.get<ProductoProveedorResponse[]>(
-            `https://tobarato-api.alirizvi.dev/api/precios-productos/proveedor/${activeProveedor}`
-        )
-            .then(({ data }) => {
-                const mapped: Producto[] = data.map(item => ({
-                    IdProducto: item.IdProducto,
-                    Nombre: item.Producto.Nombre,
-                    UrlImagen: item.Producto.UrlImagen,
-                    IdCategoria: item.Producto.IdCategoria,
-                    IdUnidadMedida: item.Producto.IdUnidadMedida,
-                    Descripcion: item.Producto.Descripcion,
-                    Precio: item.Precio,
-                    PrecioOferta: item.PrecioOferta ?? undefined,
+export default function HomeDashboard() {
+  const { width } = useWindowDimensions();
+  const wide = width >= layout.tabletBreakpoint;
+  const cardW = wide ? Math.min(168, width / 4 - 24) : 158;
+
+  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [deals, setDeals] = useState<DealCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('Ofertas');
+
+  const savingsStub = useMemo(
+    () => ({ saved: 1248.5, compared: 18 }),
+    []
+  );
+  const money = formatMoney(savingsStub.saved);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: provs } = await api.get<Proveedor[]>(endpoints.proveedor);
+        if (cancelled) return;
+        const supers = provs.filter((p) =>
+          (SUPERMARKET_PROVIDER_IDS as readonly number[]).includes(p.IdProveedor)
+        );
+        setProveedores(supers.length ? supers.slice(0, 8) : provs.slice(0, 8));
+
+        const targets = (supers.length ? supers : provs).slice(0, 4);
+        const batches = await Promise.all(
+          targets.map(async (p) => {
+            try {
+              const { data } = await api.get<ProductoProveedorResponse[]>(
+                endpoints.preciosProductosProveedor(p.IdProveedor)
+              );
+              return data
+                .filter((row) => row.PrecioOferta)
+                .slice(0, 4)
+                .map((row) => ({
+                  ...row,
+                  IdProveedor: row.IdProveedor ?? p.IdProveedor,
+                  providerName: p.Nombre,
                 }));
-                setProductos(mapped);
-            })
-            .catch(console.error)
-            .finally(() => setLoadingProductos(false));
-    }, [activeProveedor]);
-
-    // 4) Cargar categorías
-    useEffect(() => {
-        axios.get<Categoria[]>('https://tobarato-api.alirizvi.dev/api/categoria')
-            .then(({ data }) => setCategorias(data))
-            .catch(console.error);
-    }, []);
-
-    // 5) Cargar unidades
-    useEffect(() => {
-        axios.get<UnidadMedida[]>('https://tobarato-api.alirizvi.dev/api/unidadmedida')
-            .then(({ data }) => {
-                const m: Record<number, string> = {};
-                data.forEach(u => m[u.IdUnidadMedida] = u.NombreUnidadMedida);
-                setUnidadesMap(m);
-            })
-            .catch(console.error);
-    }, []);
-
-    // proveedor activo objeto
-    const proveedorActivoObj = useMemo(
-        () => proveedores.find(p => p.IdProveedor === activeProveedor) || null,
-        [activeProveedor, proveedores]
-    );
-
-    return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-
-            {/* HEADER */}
-            <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <Image source={require('../../../assets/icons/logo.png')} style={styles.logo} />
-                    <Text style={styles.headerText}>To' Barato</Text>
-                </View>
-                <Pressable onPress={() => setShowNotifications(true)}>
-                    <Icon name="notifications-outline" size={28} color="#FFF" />
-                </Pressable>
-            </View>
-
-            {/* NOTIFICATIONS OVERLAY */}
-            {showNotifications && (
-                <MotiView from={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={styles.overlay}>
-                    <MotiView
-                        from={{ translateY: -400 }}
-                        animate={{ translateY: 0 }}
-                        exit={{ translateY: -400 }}
-                        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                        style={styles.overlayBox}
-                    >
-                        <Text style={styles.overlayTitle}>Notificaciones</Text>
-                        <ScrollView>
-                            {notificationsData.map(n => (
-                                <View key={n.id} style={styles.notifCard}>
-                                    <Ionicons name={n.icon as any} size={24} color="#EDCA04" />
-                                    <View style={styles.notifTextWrap}>
-                                        <Text style={styles.notifTitle}>{n.title}</Text>
-                                        <Text style={styles.notifDesc}>{n.desc}</Text>
-                                        <Text style={styles.notifTime}>{n.time}</Text>
-                                    </View>
-                                </View>
-                            ))}
-                        </ScrollView>
-                        <Pressable style={styles.overlayClose} onPress={() => setShowNotifications(false)}>
-                            <Text style={styles.overlayCloseText}>Cerrar</Text>
-                        </Pressable>
-                    </MotiView>
-                </MotiView>
-            )}
-
-            {/* TABS TIPOS */}
-            <View style={styles.tabRow}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {tipos.map(t => (
-                        <Pressable
-                            key={t.IdTipoProveedor}
-                            onPress={() => setActiveTipo(t.IdTipoProveedor)}
-                            style={[
-                                styles.tabItem,
-                                { width: screenWidth / (tipos.length || 1) },
-                                activeTipo === t.IdTipoProveedor && styles.tabActive,
-                            ]}
-                        >
-                            <Text style={[styles.tabText, activeTipo === t.IdTipoProveedor && styles.tabTextActive]}>
-                                {t.NombreTipoProveedor}
-                            </Text>
-                        </Pressable>
-                    ))}
-                </ScrollView>
-            </View>
-
-            {/* PROVEEDORES LOGOS - MODIFICADO */}
-            <View style={styles.providerRow}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {proveedores.map(p => (
-                        <Pressable
-                            key={p.IdProveedor}
-                            onPress={() => setActiveProveedor(p.IdProveedor)}
-                            style={[styles.providerBtn, activeProveedor === p.IdProveedor && styles.providerBtnActive]}
-                        >
-                            <Image source={{ uri: p.UrlLogo }} style={styles.providerBtnBackground} resizeMode="contain" />
-                        </Pressable>
-                    ))}
-                </ScrollView>
-            </View>
-
-            {/* PRODUCTOS */}
-            {loadingProductos ? (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#33618D" />
-                </View>
-            ) : (
-                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                    {categorias.map(cat => {
-                        const productosPorCategoria = productos.filter(p => p.IdCategoria === cat.IdCategoria);
-                        if (!productosPorCategoria.length) return null;
-                        return (
-                            <View key={cat.IdCategoria} style={styles.categorySection}>
-                                <Text style={styles.categoryTitle}>{cat.NombreCategoria}</Text>
-                                <FlatList
-                                    data={productosPorCategoria}
-                                    keyExtractor={p => p.IdProducto.toString()}
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    contentContainerStyle={{ paddingVertical: 12, paddingLeft: 16 }}
-                                    snapToInterval={CARD_WIDTH + 16}
-                                    decelerationRate="fast"
-                                    renderItem={({ item }) => {
-                                        // Datos para pasar a detalle:
-                                        const dto = {
-                                            IdProducto: item.IdProducto,
-                                            Nombre: item.Nombre,
-                                            UrlImagen: item.UrlImagen,
-                                            Precio: item.Precio,
-                                            PrecioOferta: item.PrecioOferta,
-                                            Descripcion: item.Descripcion,
-                                            Unidad: unidadesMap[item.IdUnidadMedida] || '—',
-                                            Categoria: cat.NombreCategoria,
-                                            ProveedorNombre: proveedorActivoObj?.Nombre,
-                                            ProveedorLogo: proveedorActivoObj?.UrlLogo,
-                                        };
-                                        return (
-                                            <MotiView
-                                                from={{ opacity: 0, translateY: 20 }}
-                                                animate={{ opacity: 1, translateY: 0 }}
-                                                transition={{ type: 'timing', duration: 400 }}
-                                                style={{ width: CARD_WIDTH, marginRight: 16 }}
-                                            >
-                                                <Pressable
-                                                    style={styles.card}
-                                                    onPress={() =>
-                                                        router.push({
-                                                            pathname: `../tabs/product/${item.IdProducto}`,
-                                                            params: {
-                                                                data: encodeURIComponent(JSON.stringify({
-                                                                    IdProducto: item.IdProducto,
-                                                                    Nombre: item.Nombre,
-                                                                    UrlImagen: item.UrlImagen,
-                                                                    Precio: item.Precio,
-                                                                    Descripcion: item.Descripcion,
-                                                                    Unidad: dto.Unidad,
-                                                                    Categoria: dto.Categoria,
-                                                                    ProveedorNombre: proveedorActivoObj?.Nombre,
-                                                                    ProveedorLogo: proveedorActivoObj?.UrlLogo,
-                                                                })),
-                                                            },
-                                                        })
-                                                    }
-                                                >
-                                                    <Image source={{ uri: item.UrlImagen ?? undefined }} style={styles.cardImage} />
-                                                    <View style={styles.cardBody}>
-                                                        <Text style={styles.cardTitle}>{item.Nombre}</Text>
-                                                        <View style={styles.priceRow}>
-                                                            <Text style={styles.cardPrice}>
-                                                                RD${item.PrecioOferta ?? item.Precio}
-                                                            </Text>
-                                                            <Text style={styles.cardUnit}> {dto.Unidad}</Text>
-                                                        </View>
-                                                    </View>
-                                                    {dto.ProveedorLogo && (
-                                                        <Image source={{ uri: dto.ProveedorLogo }} style={styles.providerLogoOnCard} />
-                                                    )}
-                                                </Pressable>
-                                            </MotiView>
-                                        );
-                                    }}
-                                />
-                            </View>
-                        );
-                    })}
-                </ScrollView>
-            )
+            } catch {
+              return [] as DealCard[];
             }
-        </SafeAreaView >
-    );
+          })
+        );
+
+        if (!cancelled) {
+          const merged = batches.flat();
+          const seen = new Set<string>();
+          const unique: DealCard[] = [];
+          for (const d of merged) {
+            const key = `${d.IdProducto}-${d.IdProveedor}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(d);
+          }
+          setDeals(unique.slice(0, 12));
+        }
+      } catch {
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onMic = () => {
+    Alert.alert('Próximamente', 'La búsqueda por voz estará disponible pronto.');
+  };
+
+  return (
+    <Screen edges={['top']} style={{ paddingBottom: 0 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: FLOATING_TAB_BAR_CLEARANCE }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Stagger step={65} delay={30}>
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <View style={styles.brandRow}>
+              <Image
+                source={require('../../../assets/icons/logo.png')}
+                style={styles.logoImg}
+                resizeMode="contain"
+              />
+              <Text style={styles.logo}>
+                To' <Text style={{ color: colors.orange }}>Barato</Text>
+              </Text>
+            </View>
+            <Pressable
+              style={styles.bell}
+              onPress={() => setNotifOpen((v) => !v)}
+              accessibilityLabel="Notificaciones"
+            >
+              <Ionicons name="notifications-outline" size={22} color={colors.navy} />
+              <View style={styles.badge} />
+            </Pressable>
+          </View>
+
+          {notifOpen ? (
+            <View style={styles.notifSheet}>
+              <Text style={styles.sectionTitle}>Notificaciones</Text>
+              <Text style={styles.muted}>
+                Sheet local (sin API de notificaciones). Los avisos reales llegarán
+                cuando el backend las exponga.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Savings */}
+          <View style={styles.savingsCard}>
+            <View style={styles.savingsLabelRow}>
+              <Ionicons name="sparkles" size={14} color={colors.orange} />
+              <Text style={styles.savingsLabel}>TU AHORRO ESTE MES</Text>
+            </View>
+            <Text style={styles.savingsValue}>
+              RD$ {money.whole}
+              <Text style={styles.savingsCents}>.{money.cents}</Text>
+            </Text>
+            <View style={styles.savingsMeta}>
+              <View style={styles.pctBadge}>
+                <Ionicons name="trending-down" size={12} color={colors.navy} />
+                <Text style={styles.pctText}>
+                  +{savingsStub.compared}% vs. mes pasado
+                </Text>
+              </View>
+            </View>
+            <Sparkline data={SPARKLINE_DATA} height={36} />
+          </View>
+
+          {/* Search */}
+          <View style={styles.searchBar}>
+            <Pressable
+              style={styles.searchMain}
+              onPress={() => router.push('/tabs/search')}
+            >
+              <Ionicons name="search" size={20} color={colors.tabInactive} />
+              <Text style={styles.searchPlaceholder}>Busca un producto...</Text>
+            </Pressable>
+            <Pressable
+              onPress={onMic}
+              hitSlop={10}
+              accessibilityLabel="Búsqueda por voz"
+            >
+              <Ionicons name="mic-outline" size={20} color={colors.tabInactive} />
+            </Pressable>
+          </View>
+
+          {/* Categories */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.catRow}
+          >
+            {CATEGORIES.map((c) => {
+              const active = c === category;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => setCategory(c)}
+                  style={[styles.catPill, active && styles.catPillActive]}
+                >
+                  <Text style={[styles.catText, active && styles.catTextActive]}>
+                    {c}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {/* Bajadas de precio */}
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                Bajadas de precio
+              </Text>
+              <View style={styles.hoyBadge}>
+                <Ionicons name="trending-down" size={11} color="#0E7A4B" />
+                <Text style={styles.hoyText}>HOY</Text>
+              </View>
+            </View>
+          </View>
+
+          {loading ? (
+            <ActivityIndicator color={colors.navy} style={{ marginVertical: 24 }} />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 12, paddingBottom: 4 }}
+            >
+              {deals.length === 0 ? (
+                <Text style={styles.muted}>No hay bajadas cargadas (API).</Text>
+              ) : (
+                deals.map((item) => {
+                  const pct = discountPct(item.Precio, item.PrecioOferta);
+                  const brand = getProviderBrand(item.IdProveedor);
+                  const price = item.PrecioOferta ?? item.Precio;
+                  const unit = resolveUnit(item);
+                  return (
+                    <Pressable
+                      key={`${item.IdProducto}-${item.IdProveedor}`}
+                      style={[styles.dealCard, { width: cardW }]}
+                      onPress={() =>
+                        router.push(`/tabs/product/${item.IdProducto}` as const)
+                      }
+                    >
+                      {pct > 0 ? (
+                        <View style={styles.discountBadge}>
+                          <Ionicons name="trending-down" size={10} color="#fff" />
+                          <Text style={styles.discountText}>-{pct}%</Text>
+                        </View>
+                      ) : null}
+                      <DealImage uri={resolveImage(item)} bg={resolveBg(item)} />
+                      <Text numberOfLines={2} style={styles.dealName}>
+                        {item.Producto.Nombre}
+                      </Text>
+                      <View style={styles.storeChip}>
+                        <View
+                          style={[styles.storeDot, { backgroundColor: brand.color }]}
+                        />
+                        <Text style={styles.storeName} numberOfLines={1}>
+                          {item.providerName}
+                        </Text>
+                      </View>
+                      <View style={styles.priceRow}>
+                        <Text style={styles.dealPrice}>RD${Number(price).toFixed(2)}</Text>
+                        {unit ? <Text style={styles.dealUnit}>{unit}</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+          )}
+
+          {/* Tiendas cerca de ti */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+              Tiendas cerca de ti
+            </Text>
+            <Pressable
+              onPress={() => router.push('/tabs/map')}
+              style={styles.linkRow}
+            >
+              <Text style={styles.link}>Ver mapa ›</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.storesGrid}>
+            {proveedores.slice(0, 4).map((p) => {
+              const brand = getProviderBrand(p.IdProveedor);
+              return (
+                <Pressable
+                  key={p.IdProveedor}
+                  style={styles.storeCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/tabs/search',
+                      params: { proveedorId: String(p.IdProveedor) },
+                    })
+                  }
+                >
+                  <View style={[styles.storeInitial, { backgroundColor: brand.bg }]}>
+                    <Text style={[styles.storeInitialText, { color: brand.color }]}>
+                      {p.Nombre.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={styles.storeCardName} numberOfLines={1}>
+                    {p.Nombre}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Recipe CTA */}
+          <Pressable
+            style={styles.recipeCta}
+            onPress={() => router.push('/tabs/lista')}
+          >
+            <View style={styles.recipeIcon}>
+              <Text style={{ fontSize: 28 }}>🥗</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.recipeEyebrow}>GENERA UNA RECETA</Text>
+              <Text style={styles.ctaTitle}>Ideas de receta con tu lista</Text>
+              <Text style={styles.recipeMeta}>Abre una lista y cocina con lo que tienes</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#A35A0E" />
+          </Pressable>
+        </Stagger>
+      </ScrollView>
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FF' },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: '#001D35',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 16,
-        paddingHorizontal: 16,
-        paddingBottom: 12,
-    },
-    headerLeft: { flexDirection: 'row', alignItems: 'center' },
-    logo: { width: 32, height: 48, marginRight: 8, resizeMode: 'contain' },
-    headerText: { color: '#FFF', fontSize: 20, fontWeight: '700' },
-
-    overlay: {
-        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center',
-        alignItems: 'center', zIndex: 100,
-    },
-    overlayBox: {
-        width: '85%', maxHeight: '70%', backgroundColor: '#FFF',
-        borderRadius: 12, padding: 20,
-    },
-    overlayTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
-    overlayClose: {
-        marginTop: 12, alignSelf: 'center', paddingVertical: 8,
-        paddingHorizontal: 16, backgroundColor: '#001D35', borderRadius: 8,
-    },
-    overlayCloseText: { color: '#FFF', fontWeight: '600' },
-    notifCard: {
-        flexDirection: 'row', backgroundColor: '#FFF', padding: 12,
-        borderRadius: 8, marginBottom: 12, alignItems: 'center', elevation: 2,
-    },
-    notifTextWrap: { marginLeft: 8, flex: 1 },
-    notifTitle: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-    notifDesc: { fontSize: 14, color: '#555' },
-    notifTime: { fontSize: 12, color: '#999', marginTop: 4 },
-
-    tabRow: { backgroundColor: '#F8F9FF', paddingVertical: 8 },
-    tabItem: { alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
-    tabActive: { borderBottomWidth: 3, borderBottomColor: '#F3732A' },
-    tabText: { fontSize: 14, color: '#555' },
-    tabTextActive: { color: '#F3732A', fontWeight: '700' },
-
-    providerRow: { paddingVertical: 12, paddingLeft: 16 },
-    // providerBtn: { marginRight: 12, backgroundColor: '#FFF', borderRadius: 15, padding: 8 },
-    providerBtn: {
-        marginRight: 12,
-        borderRadius: 15,
-        width: 72,
-        height: 40,
-        overflow: 'hidden',
-        borderWidth: 1,
-        borderColor: '#ccc',
-        backgroundColor: '#FFF',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    providerBtnActive: {
-        borderColor: '#F3732A',
-        borderWidth: 2,
-    },
-    providerBtnBackground: {
-        width: '90%',
-        height: '90%',
-    },
-    // providerBtn: {
-    //     marginRight: 12,
-    //     backgroundColor: '#F0F0F0',   // gris muy claro
-    //     borderRadius: 15,
-    //     padding: 8,
-    // },
-    // providerBtnActive: { borderWidth: 3, borderColor: 'rgba(243,115,42,0.6)', borderRadius: 15 },
-    providerLogo: { width: 60, height: 20, resizeMode: 'contain' },
-
-    categorySection: { marginBottom: 24 },
-    categoryTitle: { fontSize: 18, fontWeight: '700', color: '#101418', marginLeft: 16, marginBottom: 8 },
-
-    // card: { backgroundColor: '#FFF', borderRadius: 12, overflow: 'hidden', elevation: 3 },
-    card: {
-        backgroundColor: '#FFF',
-        borderRadius: 12,
-        // iOS shadow
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 6,
-        // Android shadow
-        elevation: 4,
-        // IMPORTANTE: para que la sombra no se recorte en Android
-        overflow: 'visible',
-    },
-    // cardImage: { width: '100%', aspectRatio: 1 },
-    cardImage: {
-        width: '100%',
-        aspectRatio: 1,
-        // redondear solo las esquinas superiores
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
-    },
-    cardBody: { padding: 12, paddingBottom: 32 },
-    cardTitle: { fontSize: 16, fontWeight: '600', color: '#101418', marginBottom: 4 },
-    priceRow: { flexDirection: 'row', alignItems: 'baseline' },
-    cardPrice: { fontSize: 16, color: '#33618D', fontWeight: '700' },
-    cardUnit: { fontSize: 12, color: '#555', marginLeft: 4 },
-    providerLogoOnCard: {
-        position: 'absolute', bottom: 8, right: 8,
-        width: 40, height: 16, resizeMode: 'contain',
-        backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 4,
-    },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  logoImg: {
+    width: 36,
+    height: 40,
+  },
+  logo: {
+    fontFamily: typography.extrabold,
+    fontSize: 22,
+    color: colors.navy,
+    letterSpacing: -0.4,
+  },
+  bell: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.navy,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  badge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.red,
+  },
+  notifSheet: {
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  savingsCard: {
+    backgroundColor: colors.navy,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+    shadowColor: colors.navy,
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
+  },
+  savingsLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  savingsLabel: {
+    color: '#FFD49A',
+    fontFamily: typography.bold,
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  savingsValue: {
+    color: colors.white,
+    fontFamily: typography.extrabold,
+    fontSize: 34,
+    marginTop: 4,
+    letterSpacing: -0.6,
+  },
+  savingsCents: {
+    fontFamily: typography.medium,
+    fontSize: 22,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  savingsMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 8,
+  },
+  pctBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.orange,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
+  },
+  pctText: {
+    fontFamily: typography.bold,
+    fontSize: 11,
+    color: colors.navy,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 13,
+    marginBottom: spacing.md,
+  },
+  searchMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  searchPlaceholder: {
+    flex: 1,
+    color: colors.muted,
+    fontFamily: typography.medium,
+    fontSize: 14,
+  },
+  catRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 4,
+    marginBottom: spacing.sm,
+  },
+  catPill: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  catPillActive: {
+    backgroundColor: colors.navy,
+    borderColor: colors.navy,
+  },
+  catText: {
+    fontFamily: typography.bold,
+    fontSize: 12.5,
+    color: colors.ink,
+  },
+  catTextActive: {
+    color: colors.white,
+  },
+  sectionTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 16,
+    color: colors.navy,
+    marginBottom: spacing.sm,
+    letterSpacing: -0.2,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hoyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.greenSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  hoyText: {
+    fontFamily: typography.extrabold,
+    fontSize: 10,
+    color: '#0E7A4B',
+  },
+  link: {
+    color: colors.orangeDeep,
+    fontFamily: typography.bold,
+    fontSize: 12,
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  dealCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#EEF0F5',
+    shadowColor: colors.navy,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+    position: 'relative',
+  },
+  discountBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.green,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  discountText: {
+    color: '#fff',
+    fontFamily: typography.extrabold,
+    fontSize: 10,
+  },
+  dealImgWrap: {
+    height: 110,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dealImg: {
+    width: '100%',
+    height: '100%',
+  },
+  dealName: {
+    fontFamily: typography.bold,
+    fontSize: 13,
+    color: colors.ink,
+    minHeight: 34,
+  },
+  storeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  storeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  storeName: {
+    fontSize: 11,
+    fontFamily: typography.semibold,
+    color: colors.muted,
+    flex: 1,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginTop: 6,
+  },
+  dealPrice: {
+    fontFamily: typography.extrabold,
+    color: colors.navy,
+    fontSize: 15,
+  },
+  dealUnit: {
+    fontSize: 10,
+    color: colors.muted,
+    fontFamily: typography.medium,
+  },
+  storesGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  storeCard: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    gap: 6,
+  },
+  storeInitial: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  storeInitialText: {
+    fontFamily: typography.extrabold,
+    fontSize: 14,
+  },
+  storeCardName: {
+    fontSize: 10,
+    fontFamily: typography.bold,
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  recipeCta: {
+    marginTop: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFF4E0',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FFD49A',
+  },
+  recipeIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recipeEyebrow: {
+    fontFamily: typography.extrabold,
+    fontSize: 10,
+    color: '#A35A0E',
+    letterSpacing: 0.5,
+  },
+  ctaTitle: {
+    fontFamily: typography.extrabold,
+    color: '#7A4B0E',
+    fontSize: 14,
+    marginTop: 2,
+  },
+  recipeMeta: {
+    fontFamily: typography.semibold,
+    fontSize: 11,
+    color: '#A35A0E',
+    marginTop: 2,
+  },
+  muted: {
+    color: colors.muted,
+    fontFamily: typography.family,
+    fontSize: 12,
+  },
 });

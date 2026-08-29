@@ -1,10 +1,2 @@
-import axios from 'axios';
-
-
-export const toBaratoApi = axios.create({
-    baseURL: process.env.EXPO_PUBLIC_API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-    },
-});
+/** @deprecated Use `@/src/shared/api` — kept as a thin re-export during migration. */
+export { api as toBaratoApi } from '../../src/shared/api/client';

@@ -1,403 +1,443 @@
-import React, { useState, useEffect } from "react";
 import {
-    SafeAreaView,
-    View,
-    ScrollView,
-    ImageBackground,
-    Image,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    Alert,
-    useColorScheme,
-    KeyboardAvoidingView,
-    Platform,
-    Keyboard,
-    TouchableWithoutFeedback,
-    StyleSheet,
-} from "react-native";
-import { router } from "expo-router";
-import * as LocalAuthentication from "expo-local-authentication";
-import * as SecureStore from "expo-secure-store";
-import axios from "axios";
-import { Ionicons } from "@expo/vector-icons";
-import { MotiView } from "moti";
-import CustomButton from "@/components/shared/CustomButton";
-import peso from "../../assets/images/peso_dominicano.jpg";
-import { globalStyles } from "@/styles/global-styles";
+  api,
+  endpoints,
+  clearSession,
+  getAccessToken,
+  getUserId,
+  getApiErrorMessage,
+  saveSession,
+} from '@/src/shared/api';
+import type { LoginResponse } from '@/src/shared/api/dto';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
+  StyleSheet,
+  Pressable,
+} from 'react-native';
+import { router } from 'expo-router';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, Field, Screen } from '@/src/shared/ui';
+import { colors, spacing, typography } from '@/src/shared/theme';
+import { initDevMode, isOfflineMode, setOfflineMode } from '@/src/shared/dev';
+
+async function validateSessionOrClear(): Promise<boolean> {
+  const storedToken = await getAccessToken();
+  const storedUserId = await getUserId();
+  if (!storedToken || !storedUserId) return false;
+  try {
+    await api.get(endpoints.usuario(storedUserId));
+    return true;
+  } catch {
+    await clearSession();
+    return false;
+  }
+}
 
 export default function IniciarSesion() {
-    const [passwordVisible, setPasswordVisible] = useState(false);
-    const [password, setPassword] = useState("");
-    const [email, setEmail] = useState("");
-    const colorScheme = useColorScheme();
-    const [checkingToken, setCheckingToken] = useState(true);
+  const insets = useSafeAreaInsets();
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [checkingToken, setCheckingToken] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [offline, setOffline] = useState(false);
 
-    //
-    // 1) AL MONTAR, MIRAMOS SI HAY TOKEN EN SECURESTORE. 
-    //    Si lo hay, hacemos un “ping” rápido al backend para validar
-    //    que siga siendo válido. Si es válido, redirigimos a Home. 
-    //    Si no es válido (401/403), lo borramos y mostramos el formulario normalmente.
-    //
-    useEffect(() => {
-        (async () => {
-            const storedToken = await SecureStore.getItemAsync("access_token");
-            const storedUserId = await SecureStore.getItemAsync("user_id");
+  useEffect(() => {
+    if (__DEV__) {
+      initDevMode().then(() => setOffline(isOfflineMode()));
+    }
+  }, []);
 
-            if (!storedToken || !storedUserId) {
-                // No hay token ni user_id → mostrar formulario de Login
-                setCheckingToken(false);
-                return;
-            }
+  const handleDevModeChange = async (nextOffline: boolean) => {
+    await setOfflineMode(nextOffline);
+    setOffline(nextOffline);
+  };
 
-            // Fijamos header temporalmente para validar token
-            axios.defaults.headers.common["Authorization"] = `Bearer ${storedToken}`;
+  useEffect(() => {
+    (async () => {
+      const valid = await validateSessionOrClear();
+      if (valid) {
+        router.replace('/tabs/home');
+        return;
+      }
+      setCheckingToken(false);
+    })();
+  }, []);
 
-            try {
-                // LLAMADA “PING” PARA VALIDAR TOKEN. Asumimos que GET /usuario/{id}
-                // devolverá 200 si el token es correcto, o 401/403 si expiró/invalidó.
-                await axios.get(`https://tobarato-api.alirizvi.dev/api/usuario/${storedUserId}`);
-                // Si llegamos aquí, el token es VÁLIDO: redirigimos a Home.
-                router.replace("/tabs/home");
-            } catch (e) {
-                // Si da error (401, 403, cualquier otro), borramos todo y mostramos el formulario
-                await SecureStore.deleteItemAsync("access_token");
-                await SecureStore.deleteItemAsync("refresh_token");
-                await SecureStore.deleteItemAsync("user_id");
-                delete axios.defaults.headers.common["Authorization"];
-                setCheckingToken(false);
-            }
-        })();
-    }, []);
+  if (checkingToken) return null;
 
-    // La pantalla no se mostrará hasta que termine de “chequear” el token
-    if (checkingToken) {
-        return null; // O un spinner si lo prefieres
+  const verificarBiometria = async () => {
+    const compatible = await LocalAuthentication.hasHardwareAsync();
+    const registrado = await LocalAuthentication.isEnrolledAsync();
+    if (!(compatible && registrado)) return;
+
+    const resultado = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Iniciar sesión con biometría',
+      fallbackLabel: 'Usar contraseña',
+    });
+
+    if (!resultado.success) {
+      Alert.alert('Autenticación fallida', 'Puedes usar tu contraseña.');
+      return;
     }
 
-    const verificarBiometria = async () => {
-        const compatible = await LocalAuthentication.hasHardwareAsync();
-        const registrado = await LocalAuthentication.isEnrolledAsync();
+    const valid = await validateSessionOrClear();
+    if (valid) {
+      router.replace('/tabs/home');
+    } else {
+      Alert.alert(
+        'Sesión requerida',
+        'Inicia sesión con tu correo y contraseña para activar la biometría.'
+      );
+    }
+  };
 
-        if (compatible && registrado) {
-            const resultado = await LocalAuthentication.authenticateAsync({
-                promptMessage: "Iniciar sesión con biometría",
-                fallbackLabel: "Usar contraseña",
-            });
+  const handleLogin = async () => {
+    if (!email || !password) {
+      return Alert.alert('Error', 'Debes ingresar correo y contraseña');
+    }
+    setLoading(true);
+    try {
+      const resp = await api.post<LoginResponse>(endpoints.login, {
+        Correo: email,
+        Clave: password,
+      });
 
-            if (resultado.success) {
-                router.replace("/tabs/home");
-            } else {
-                Alert.alert("Autenticación fallida", "Puedes usar tu contraseña.");
-            }
-        }
-    };
+      const {
+        tokens: { access_token, refresh_token },
+        usuario,
+      } = resp.data;
 
-    const handleLogin = async () => {
-        if (!email || !password) {
-            return Alert.alert("Error", "Debes ingresar correo y contraseña");
-        }
+      await saveSession({
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        userId: usuario.id.toString(),
+      });
+      router.replace('/tabs/home');
+    } catch (err) {
+      Alert.alert('Login fallido', getApiErrorMessage(err, 'Credenciales incorrectas'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        try {
-            const resp = await axios.post<{
-                message: string;
-                tokens: {
-                    access_token: string;
-                    refresh_token: string;
-                    token_type: string;
-                };
-                usuario: {
-                    id: number;
-                    email: string;
-                    nombre: string;
-                };
-            }>("https://tobarato-api.alirizvi.dev/api/login", {
-                Correo: email,
-                Clave: password,
-            });
-
-            const {
-                tokens: { access_token, refresh_token, token_type },
-                usuario,
-            } = resp.data;
-
-            // 1) Guardar tokens y user_id de forma segura
-            await SecureStore.setItemAsync("access_token", access_token);
-            await SecureStore.setItemAsync("refresh_token", refresh_token);
-            await SecureStore.setItemAsync("user_id", usuario.id.toString());
-
-            // 2) Fijar header global de axios para futuras peticiones
-            axios.defaults.headers.common["Authorization"] = `${token_type} ${access_token}`;
-
-            // 3) Redirigir a Home
-            router.replace("/tabs/home");
-        } catch (err: any) {
-            console.error(err);
-            Alert.alert(
-                "Login fallido",
-                err.response?.data?.message || "Credenciales incorrectas"
-            );
-        }
-    };
-
-    return (
-        <SafeAreaView
-            style={{
-                flex: 1,
-                // backgroundColor: colorScheme === "dark" ? "#0a0a0a" : "#F8F9FF",
-                backgroundColor: "#F8F9FF",
-
-
-            }}
-        >
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <KeyboardAvoidingView
-                    style={{ flex: 1 }}
-                    behavior={Platform.OS === "ios" ? "padding" : undefined}
-                    keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
-                >
-                    <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
-                        {/* Fondo superior con logo */}
-                        <ImageBackground
-                            source={peso}
-                            resizeMode="stretch"
-                            style={globalStyles.pesosBacground}
-                        >
-                            <View
-                                style={{
-                                    position: "absolute",
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    bottom: 0,
-                                    backgroundColor: "rgba(16, 55, 92, 0.61)",
-                                }}
-                            />
-                            <View
-                                style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    paddingHorizontal: 20,
-                                    paddingTop: 40,
-                                }}
-                            >
-                                <Image
-                                    source={require("../../assets/icons/logo.png")}
-                                    resizeMode="contain"
-                                    style={{ width: 70, height: 105, marginRight: 10 }}
-                                />
-                                <View>
-                                    <Text
-                                        style={{
-                                            marginBottom: -10,
-                                            fontSize: 47,
-                                            color: "#fff",
-                                            fontFamily: "Lexend-Medium",
-                                        }}
-                                    >
-                                        To'
-                                    </Text>
-                                    <Text
-                                        style={{
-                                            fontSize: 47,
-                                            color: "#fff",
-                                            fontWeight: "bold",
-                                            fontFamily: "Lexend-Medium",
-                                        }}
-                                    >
-                                        Barato
-                                    </Text>
-                                </View>
-                            </View>
-                        </ImageBackground>
-
-                        <MotiView
-                            from={{ opacity: 0, translateY: 25 }}
-                            animate={{ opacity: 1, translateY: 0 }}
-                            transition={{ type: "timing", duration: 500 }}
-                            style={{ paddingHorizontal: 30, paddingTop: 20 }}
-                        >
-                            <Text
-                                style={{
-                                    color: "#101418",
-                                    fontSize: 30,
-                                    textAlign: "center",
-                                    marginBottom: 15,
-                                    marginHorizontal: 10,
-                                    fontFamily: "Lexend-Black",
-                                }}
-                            >
-                                Ayuda a tu bolsillo con nosotros!
-                            </Text>
-
-                            {/* Email */}
-                            <Text
-                                style={{
-                                    color: "#001D35",
-                                    fontSize: 12,
-                                    marginBottom: 4,
-                                }}
-                            >
-                                Correo electrónico o teléfono
-                            </Text>
-                            <TextInput
-                                placeholder="Ingresa tu correo"
-                                placeholderTextColor="#999"
-                                value={email}
-                                onChangeText={setEmail}
-                                style={styles.input}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                            />
-
-                            {/* Contraseña */}
-                            <Text
-                                style={{
-                                    color: "#001D35",
-                                    fontSize: 12,
-                                    marginBottom: 4,
-                                }}
-                            >
-                                Contraseña
-                            </Text>
-                            <View style={styles.passwordWrap}>
-                                <TextInput
-                                    placeholder="Ingresa tu contraseña"
-                                    placeholderTextColor="#999"
-                                    value={password}
-                                    onChangeText={setPassword}
-                                    secureTextEntry={!passwordVisible}
-                                    style={styles.passwordInput}
-                                />
-                                <TouchableOpacity
-                                    onPress={() => setPasswordVisible((v) => !v)}
-                                    style={styles.eyeBtn}
-                                >
-                                    <Ionicons
-                                        name={passwordVisible ? "eye" : "eye-off"}
-                                        size={20}
-                                        color="#001D35"
-                                    />
-                                </TouchableOpacity>
-                            </View>
-
-                            {/* Botón login */}
-                            <CustomButton
-                                color="primary"
-                                textFont="medium"
-                                onPress={handleLogin}
-                            >
-                                Iniciar Sesión
-                            </CustomButton>
-
-                            {/* Línea divisoria */}
-                            <View style={styles.dividerRow}>
-                                <View style={styles.dividerLine} />
-                                <Text style={styles.dividerText}>o</Text>
-                            </View>
-
-                            {/* Google / Apple */}
-                            {/* <CustomButton
-                                color="white"
-                                textFont="medium"
-                                textColor="neutral"
-                                variant="withIcon"
-                                icon="logo-google"
-                                onPress={() => router.push("../tabs/home")}
-                            >
-                                Continuar con Google
-                            </CustomButton>
-
-                            <CustomButton
-                                color="white"
-                                textFont="medium"
-                                textColor="neutral"
-                                variant="withIcon"
-                                icon="logo-apple"
-                                onPress={() => router.push("../tabs/home")}
-                            >
-                                Continuar con Apple
-                            </CustomButton> */}
-
-                            <View
-                                style={{
-                                    flexDirection: "row",
-                                    justifyContent: "center",
-                                    marginBottom: 40,
-                                }}
-                            >
-                                <Text
-                                    style={{
-                                        fontFamily: "Lexend-Light",
-                                        color: "#001D35",
-                                    }}
-                                >
-                                    ¿No tienes una cuenta?
-                                </Text>
-                                <TouchableOpacity
-                                    onPress={() => router.push("/auth/RegisterScreen")}
-                                >
-                                    <Text
-                                        style={{
-                                            color: "#7F5610",
-                                            fontWeight: "bold",
-                                            paddingLeft: 5,
-                                        }}
-                                    >
-                                        Regístrate
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </MotiView>
-                    </ScrollView>
-                </KeyboardAvoidingView>
-            </TouchableWithoutFeedback>
-        </SafeAreaView>
+  const handleGoogleStub = () => {
+    Alert.alert(
+      'Próximamente',
+      'Continuar con Google estará disponible pronto.'
     );
+  };
+
+  return (
+    <Screen edges={['top', 'bottom']} gutters>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        >
+          <ScrollView
+            contentContainerStyle={[
+              styles.scroll,
+              { paddingBottom: Math.max(insets.bottom, spacing.lg) + spacing.md },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View style={styles.hero}>
+              <View style={styles.heroGlow} />
+              <Text style={styles.brand}>
+                To'<Text style={styles.brandAccent}>Barato</Text>
+              </Text>
+              <Text style={styles.tagline}>Compara, ahorra, y come rico.</Text>
+            </View>
+
+            <View style={styles.body}>
+              {__DEV__ ? (
+                <View style={styles.devBanner}>
+                  <Text style={styles.devLabel}>Modo desarrollo</Text>
+                  <View style={styles.devToggle}>
+                    <Pressable
+                      style={[styles.devOption, !offline && styles.devOptionActive]}
+                      onPress={() => handleDevModeChange(false)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: !offline }}
+                    >
+                      <Text style={[styles.devOptionText, !offline && styles.devOptionTextActive]}>
+                        Online
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.devOption, offline && styles.devOptionActive]}
+                      onPress={() => handleDevModeChange(true)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: offline }}
+                    >
+                      <Text style={[styles.devOptionText, offline && styles.devOptionTextActive]}>
+                        Offline
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.devHint}>
+                    Offline usa datos mock RD$ con latencia simulada.
+                  </Text>
+                </View>
+              ) : null}
+
+              <Text style={styles.title}>
+                Ayuda a tu bolsillo{'\n'}
+                <Text style={styles.titleAccent}>con nosotros.</Text>
+              </Text>
+              <Text style={styles.subtitle}>
+                Inicia sesión para ver los mejores precios cerca de ti.
+              </Text>
+
+              <View style={styles.form}>
+                <Field
+                  label="Correo o teléfono"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Ingresa tu correo"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="username"
+                />
+                <Field
+                  label="Contraseña"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Ingresa tu contraseña"
+                  secureTextEntry={!passwordVisible}
+                  textContentType="password"
+                  trailing={
+                    <Pressable
+                      onPress={() => setPasswordVisible((v) => !v)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'
+                      }
+                    >
+                      <Ionicons
+                        name={passwordVisible ? 'eye' : 'eye-off'}
+                        size={20}
+                        color={colors.muted}
+                      />
+                    </Pressable>
+                  }
+                />
+
+                <TouchableOpacity
+                  onPress={() =>
+                    Alert.alert(
+                      'Próximamente',
+                      'Recuperación de contraseña aún no está disponible en la API.'
+                    )
+                  }
+                  style={styles.forgot}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+                </TouchableOpacity>
+
+                <Button tone="navy" size="lg" onPress={handleLogin} loading={loading}>
+                  Iniciar sesión
+                </Button>
+
+                <Button tone="light" onPress={verificarBiometria}>
+                  <Ionicons name="finger-print" size={20} color={colors.navy} />
+                  <Text style={styles.secondaryLabel}>Usar biometría</Text>
+                </Button>
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>o continúa con</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <Button tone="light" onPress={handleGoogleStub}>
+                  <Ionicons name="logo-google" size={20} color={colors.ink} />
+                  <Text style={styles.secondaryLabel}>Continuar con Google</Text>
+                </Button>
+
+                <View style={styles.footerRow}>
+                  <Text style={styles.footerText}>¿No tienes cuenta?</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push('/auth/RegisterScreen')}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.link}> Regístrate</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({
-    input: {
-        borderWidth: 1,
-        borderColor: "#DBE1E7",
-        borderRadius: 6,
-        padding: 10,
-        marginBottom: 10,
-        backgroundColor: "#fff",
-    },
-    passwordWrap: {
-        flexDirection: "row",
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#DBE1E7",
-        borderRadius: 6,
-        backgroundColor: "#fff",
-        marginBottom: 20,
-    },
-    passwordInput: {
-        flex: 1,
-        padding: 10,
-    },
-    eyeBtn: {
-        paddingHorizontal: 10,
-    },
-    dividerRow: {
-        alignItems: "center",
-        marginBottom: 20,
-        position: "relative",
-    },
-    dividerLine: {
-        position: "absolute",
-        height: 1,
-        backgroundColor: "#B5C1CC",
-        left: 0,
-        right: 0,
-        top: 12,
-    },
-    dividerText: {
-        backgroundColor: "#F8F9FF",
-        paddingHorizontal: 10,
-        color: "#33618D",
-        fontWeight: "bold",
-    },
+  flex: { flex: 1 },
+  scroll: {
+    flexGrow: 1,
+    gap: spacing.md,
+  },
+  hero: {
+    backgroundColor: colors.navy,
+    borderRadius: 28,
+    paddingVertical: spacing.xxxl,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 168,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  heroGlow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '65%',
+    backgroundColor: colors.navySoft,
+    opacity: 0.45,
+  },
+  brand: {
+    fontFamily: typography.extrabold,
+    fontSize: 30,
+    color: colors.white,
+    letterSpacing: -0.4,
+    zIndex: 1,
+  },
+  brandAccent: { color: colors.orange },
+  tagline: {
+    marginTop: spacing.sm,
+    color: 'rgba(255,255,255,0.85)',
+    fontFamily: typography.medium,
+    fontSize: 12,
+    zIndex: 1,
+  },
+  body: {
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  title: {
+    fontFamily: typography.extrabold,
+    fontSize: 26,
+    color: colors.navy,
+    lineHeight: 32,
+    letterSpacing: -0.4,
+  },
+  titleAccent: { color: colors.orange },
+  subtitle: {
+    fontFamily: typography.family,
+    color: colors.muted,
+    fontSize: 13,
+    marginBottom: spacing.xs,
+  },
+  form: { gap: spacing.md },
+  forgot: { alignSelf: 'flex-end', marginTop: -spacing.xs },
+  forgotText: {
+    color: colors.orangeDeep,
+    fontFamily: typography.bold,
+    fontSize: 12,
+  },
+  secondaryLabel: {
+    fontFamily: typography.semibold,
+    fontSize: 14,
+    color: colors.navy,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginTop: spacing.xs,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.line,
+  },
+  dividerText: {
+    fontFamily: typography.family,
+    fontSize: 11,
+    color: colors.muted,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  footerText: {
+    fontFamily: typography.family,
+    color: colors.ink,
+    fontSize: 13,
+  },
+  link: {
+    fontFamily: typography.extrabold,
+    color: colors.orangeDeep,
+    fontSize: 13,
+  },
+  devBanner: {
+    backgroundColor: '#FFF8E7',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F0D78C',
+    padding: spacing.sm,
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  devLabel: {
+    fontFamily: typography.semibold,
+    fontSize: 11,
+    color: '#8A6D1D',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  devToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: '#E8DFC0',
+  },
+  devOption: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  devOptionActive: {
+    backgroundColor: colors.navy,
+  },
+  devOptionText: {
+    fontFamily: typography.semibold,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  devOptionTextActive: {
+    color: colors.white,
+  },
+  devHint: {
+    fontFamily: typography.family,
+    fontSize: 10,
+    color: colors.muted,
+  },
 });

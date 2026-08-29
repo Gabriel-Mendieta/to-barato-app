@@ -14,7 +14,9 @@
     },
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gabrielmendieta.tobaratoapp",
+      "appleTeamId": "6FCAX2BVX2"
     },
     "android": {
       "adaptiveIcon": {
@@ -42,7 +44,11 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      "expo-font",
+      "expo-status-bar",
+      "./plugins/withDisableUserScriptSandboxing.js"
     ],
     "experiments": {
       "typedRoutes": true

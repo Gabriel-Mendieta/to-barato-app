@@ -1,8 +1,8 @@
 // app/tabs/list/providers.tsx
 
+import { api, endpoints, clearSession, getAccessToken, getUserId, saveSession, hasStoredSession } from '@/src/shared/api';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    SafeAreaView,
     View,
     Text,
     FlatList,
@@ -17,10 +17,10 @@ import {
     Modal,
     TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import Icon from 'react-native-vector-icons/Ionicons';
+import { Ionicons as Icon } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -92,8 +92,7 @@ export default function SelectProviderScreen() {
             }
             const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
             setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-        } catch (err) {
-            console.error('[Providers] Ubicación:', err);
+        } catch {
             Alert.alert('Error', 'No pudimos obtener la ubicación.');
         } finally {
             setLoadingLocation(false);
@@ -118,13 +117,12 @@ export default function SelectProviderScreen() {
                 };
 
                 console.log('[Providers] POST /sucursal-cercana body:', body);
-                const resp = await axios.post<SucursalCercana[]>(
-                    'https://tobarato-api.alirizvi.dev/api/sucursal-cercana',
+                const resp = await api.post<SucursalCercana[]>(
+                    endpoints.sucursalCercana,
                     body
                 );
                 setSucursales(resp.data);
-            } catch (err: any) {
-                console.error('[Providers] sucursal-cercana:', err);
+            } catch {
                 Alert.alert('Error', 'No pudimos cargar las sucursales.');
             } finally {
                 setLoadingSucursales(false);
@@ -138,12 +136,11 @@ export default function SelectProviderScreen() {
         sucursales.forEach(s => {
             const id = s.IdProveedor;
             if (!proveedoresMap[id]) {
-                axios
-                    .get<ProveedorInfo>(`https://tobarato-api.alirizvi.dev/api/proveedor/${id}`)
+                api.get<ProveedorInfo>(endpoints.proveedorById(id))
                     .then(({ data }) =>
                         setProveedoresMap(m => ({ ...m, [id]: data }))
                     )
-                    .catch(e => console.warn(`[Providers] proveedor ${id}:`, e));
+                    .catch(() => undefined);
             }
         });
     }, [sucursales]);
@@ -196,8 +193,8 @@ export default function SelectProviderScreen() {
                 PrecioTotal: selectedSucursal.Precio,
             };
             console.log('[Providers] POST /lista:', payloadLista);
-            const respLista = await axios.post(
-                'https://tobarato-api.alirizvi.dev/api/lista',
+            const respLista = await api.post(
+                endpoints.lista,
                 payloadLista
             );
             const nuevaListaId = respLista.data.IdLista;
@@ -206,8 +203,8 @@ export default function SelectProviderScreen() {
             // 8.2) Para cada producto, creamos listaproducto usando la cantidad
             for (const prod of products) {
                 // obtenemos precio actual
-                const rPrecio = await axios.get<ProductoProveedorResponse>(
-                    `https://tobarato-api.alirizvi.dev/api/productos/${prod.IdProducto}/proveedores/${selectedSucursal.IdProveedor}`
+                const rPrecio = await api.get<ProductoProveedorResponse>(
+                    endpoints.productoProveedor(prod.IdProducto, selectedSucursal.IdProveedor)
                 );
                 const precioActual = Number(rPrecio.data.Precio);
                 if (precioActual <= 0) {
@@ -220,15 +217,14 @@ export default function SelectProviderScreen() {
                     Cantidad: prod.Cantidad,
                 };
                 console.log('[Providers] POST /listaproducto:', payloadLP);
-                await axios.post(
-                    'https://tobarato-api.alirizvi.dev/api/listaproducto',
+                await api.post(
+                    endpoints.listaProducto,
                     payloadLP
                 );
             }
 
             router.replace('../../tabs/lista');
-        } catch (err: any) {
-            console.error('[Providers] guardando lista:', err);
+        } catch {
             Alert.alert('Error', 'No se pudo guardar la lista.');
         }
     };

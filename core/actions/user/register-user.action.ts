@@ -1,16 +1,9 @@
-import { toBaratoApi } from "@/core/api/to-barato-api";
-import { SignupUserResponse } from "@/infrastructure/interfaces/signup-user-responde";
+import { api, endpoints } from '@/src/shared/api';
 
-export const registerUserAction = async () => {
-    try {
-
-        const { data } = await toBaratoApi.post<SignupUserResponse>('/signup');
-
-        console.log(JSON.stringify(data, null, 2));
-
-        return [];
-    } catch (error) {
-        console.log(error);
-        throw new Error('Error al registrar el usuario');
-    }
-}
+/** Legacy register helper — prefer OTP flow in `app/auth`. */
+export const registerUserAction = async (payload: Record<string, unknown>) => {
+  const { data } = await api.post(endpoints.solicitarOtp, null, {
+    params: { email: String(payload.email ?? '') },
+  });
+  return data;
+};

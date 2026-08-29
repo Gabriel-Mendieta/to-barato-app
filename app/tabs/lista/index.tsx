@@ -1,554 +1,990 @@
-// app/tabs/list/index.tsx
-
-import React, { useState, useEffect, useCallback } from 'react';
 import {
-    SafeAreaView,
-    View,
-    Text,
-    FlatList,
-    TouchableOpacity,
-    StatusBar,
-    Platform,
-    useWindowDimensions,
-    ActivityIndicator,
-    StyleSheet,
-    RefreshControl,
-    ScrollView,
-    Alert,
-    Image,
-    Linking,
-    Share,
+  api,
+  endpoints,
+  clearSession,
+} from '@/src/shared/api';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+  StyleSheet,
+  RefreshControl,
+  Alert,
+  Linking,
+  Share,
+  Platform,
 } from 'react-native';
-import { MotiView } from 'moti';
 import { router } from 'expo-router';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import axios from 'axios';
+import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
+import {
+  Screen,
+  Stagger,
+  Chip,
+  FadeInUp,
+  FLOATING_TAB_BAR_CLEARANCE,
+  CreateListModal,
+  type CreateListPayload,
+} from '@/src/shared/ui';
+import {
+  colors,
+  radii,
+  spacing,
+  typography,
+} from '@/src/shared/theme';
 
-////////////////////////////////////////////////////////////////////////////////
-// TIPOS
-////////////////////////////////////////////////////////////////////////////////
 type Lista = {
-    IdUsuario: number;
-    IdProveedor: number;
-    Nombre: string;
-    PrecioTotal: string;
-    IdLista: number;
-    FechaCreacion: string;
+  IdUsuario: number;
+  IdProveedor: number;
+  Nombre: string;
+  PrecioTotal: string;
+  IdLista: number;
+  FechaCreacion: string;
 };
 
 type ProveedorInfo = {
-    IdProveedor: number;
-    Nombre: string;
-    UrlLogo: string;
+  IdProveedor: number;
+  Nombre: string;
+  UrlLogo: string;
+  IdTipoProveedor?: number;
 };
 
-// Para compartir necesitamos también el tipo de proveedor
 type TipoProveedor = {
-    IdTipoProveedor: number;
-    NombreTipoProveedor: string;
+  IdTipoProveedor: number;
+  NombreTipoProveedor: string;
 };
 
-// Para unidades de medida
 type UnidadMedida = {
-    IdUnidadMedida: number;
-    NombreUnidadMedida: string;
+  IdUnidadMedida: number;
+  NombreUnidadMedida: string;
 };
 
-// Para sucursales cercanas
 type RutaSucursal = {
-    IdSucursal: number;
-    NombreSucursal: string;
-    Latitud: number;
-    Longitud: number;
-    IdProveedor: number;
-    Distancia: number;
+  IdSucursal: number;
+  NombreSucursal: string;
+  Latitud: number;
+  Longitud: number;
+  IdProveedor: number;
+  Distancia: number;
 };
 
-// Para los productos dentro de la lista
 type ProductoEnLista = {
-    IdProducto: number;
-    PrecioActual: string;
-    Cantidad: number;
+  IdProducto: number;
+  PrecioActual: string;
+  Cantidad: number;
 };
 
-// Para obtener detalles de producto
 type ProductoAPI = {
-    IdProducto: number;
-    Nombre: string;
-    UrlImagen: string;
-    IdUnidadMedida: number;
+  IdProducto: number;
+  Nombre: string;
+  UrlImagen: string;
+  IdUnidadMedida: number;
 };
+
+type ListVisual = { bg: string; emoji: string };
+
+const VISUAL_BY_PROVIDER: Record<number, ListVisual> = {
+  1: { bg: '#E2F1FA', emoji: '🛒' }, // Nacional
+  2: { bg: '#DCF3E5', emoji: '🛒' }, // Jumbo
+  3: { bg: '#FFE3E0', emoji: '🛒' }, // La Sirena
+  4: { bg: '#E3EDFA', emoji: '🔧' }, // Ferretería
+  5: { bg: '#FFE3E1', emoji: '💊' }, // Farmacia
+  6: { bg: '#F1E7FA', emoji: '🛒' }, // Bravo
+  7: { bg: '#DCE5F7', emoji: '🛒' }, // PriceSmart
+  8: { bg: '#FFE3E1', emoji: '🛒' },
+};
+
+const VISUAL_FALLBACK: ListVisual[] = [
+  { bg: '#FFE8D9', emoji: '🍎' },
+  { bg: '#E3EDFA', emoji: '🔧' },
+  { bg: '#F1E7FA', emoji: '🐶' },
+  { bg: '#DCF3E7', emoji: '🧃' },
+  { bg: '#FFF1C8', emoji: '🥖' },
+  { bg: '#FFE3E1', emoji: '💊' },
+];
+
+function listVisual(lista: Lista, index: number): ListVisual {
+  return (
+    VISUAL_BY_PROVIDER[lista.IdProveedor] ??
+    VISUAL_FALLBACK[index % VISUAL_FALLBACK.length]
+  );
+}
+
+/** Offline stub for “comprados” until the API exposes checked items. */
+function estimateDone(idLista: number, items: number) {
+  if (items <= 0) return 0;
+  const seed = (idLista * 7) % 10;
+  if (seed < 4) return 0;
+  return Math.min(items, Math.max(1, Math.floor((items * seed) / 12)));
+}
+
+function formatMoney(value: number) {
+  const whole = Math.floor(value);
+  const cents = Math.round((value - whole) * 100);
+  return {
+    whole: whole.toLocaleString('es-DO'),
+    cents: cents.toString().padStart(2, '0'),
+  };
+}
 
 export default function ShoppingListScreen() {
-    const { height } = useWindowDimensions();
+  const [listas, setListas] = useState<Lista[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
+  const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
-    const [listas, setListas] = useState<Lista[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
-    const [refreshing, setRefreshing] = useState<boolean>(false);
-    const [itemCounts, setItemCounts] = useState<Record<number, number>>({});
-    const [proveedoresMap, setProveedoresMap] = useState<Record<number, ProveedorInfo>>({});
-    const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
+  const fetchUserLists = useCallback(async () => {
+    try {
+      setLoading(true);
+      const token = await SecureStore.getItemAsync('access_token');
+      const userIdStr = await SecureStore.getItemAsync('user_id');
+      if (!token || !userIdStr) {
+        router.replace('/auth/IniciarSesion');
+        return;
+      }
 
-    // ---------- 1) Cargar listas del usuario ----------
-    const fetchUserLists = useCallback(async () => {
-        try {
-            setLoading(true);
-            const token = await SecureStore.getItemAsync('access_token');
-            const userIdStr = await SecureStore.getItemAsync('user_id');
-            if (!token || !userIdStr) {
-                router.replace('/auth/IniciarSesion');
-                return;
-            }
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const resp = await api.get<Lista[]>(endpoints.lista);
+      const userId = Number(userIdStr);
+      const propias = resp.data.filter((l) => l.IdUsuario === userId);
+      setListas(propias);
 
-            // 1.1) GET /lista
-            const resp = await axios.get<Lista[]>(
-                'https://tobarato-api.alirizvi.dev/api/lista'
+      const counts: Record<number, number> = {};
+      await Promise.all(
+        propias.map(async (l) => {
+          try {
+            const r = await api.get<unknown[]>(
+              endpoints.productosDeLista(l.IdLista)
             );
-            const userId = Number(userIdStr);
-            const propias = resp.data.filter((l) => l.IdUsuario === userId);
-            setListas(propias);
+            counts[l.IdLista] = r.data.length;
+          } catch {
+            counts[l.IdLista] = 0;
+          }
+        })
+      );
+      setItemCounts(counts);
+    } catch {
+      await clearSession();
+      router.replace('/auth/IniciarSesion');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-            // 1.2) Obtener conteo de productos por lista
-            const counts: Record<number, number> = {};
-            await Promise.all(
-                propias.map(async (l) => {
-                    try {
-                        const r = await axios.get<any[]>(
-                            `https://tobarato-api.alirizvi.dev/api/productosdelista/${l.IdLista}`
-                        );
-                        counts[l.IdLista] = r.data.length;
-                    } catch {
-                        counts[l.IdLista] = 0;
-                    }
-                })
-            );
-            setItemCounts(counts);
+  useEffect(() => {
+    fetchUserLists();
+  }, [fetchUserLists]);
 
-            // 1.3) Cargar info de proveedores
-            const uniqueProv = Array.from(new Set(propias.map((l) => l.IdProveedor)));
-            const provMap: Record<number, ProveedorInfo> = {};
-            await Promise.all(
-                uniqueProv.map(async (pid) => {
-                    try {
-                        const r = await axios.get<ProveedorInfo>(
-                            `https://tobarato-api.alirizvi.dev/api/proveedor/${pid}`
-                        );
-                        provMap[pid] = r.data;
-                    } catch {
-                        // ignore
-                    }
-                })
-            );
-            setProveedoresMap(provMap);
-        } catch (error) {
-            console.error(error);
-            // Si falla, limpiar credenciales y redirigir
-            await SecureStore.deleteItemAsync('access_token');
-            await SecureStore.deleteItemAsync('refresh_token');
-            await SecureStore.deleteItemAsync('user_id');
-            delete axios.defaults.headers.common['Authorization'];
-            router.replace('/auth/IniciarSesion');
-        } finally {
-            setLoading(false);
-            setRefreshing(false);
-        }
-    }, []);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchUserLists();
+  }, [fetchUserLists]);
 
-    useEffect(() => {
-        fetchUserLists();
-    }, [fetchUserLists]);
+  const isSelecting = selectedLists.size > 0;
+  const toggleSelection = (id: number) => {
+    setSelectedLists((prev) => {
+      const copy = new Set(prev);
+      if (copy.has(id)) copy.delete(id);
+      else copy.add(id);
+      return copy;
+    });
+  };
 
-    const onRefresh = useCallback(() => {
-        setRefreshing(true);
-        fetchUserLists();
-    }, [fetchUserLists]);
+  const budgetTotal = useMemo(
+    () =>
+      listas.reduce((sum, l) => sum + (parseFloat(l.PrecioTotal) || 0), 0),
+    [listas]
+  );
+  const totalItems = useMemo(
+    () => Object.values(itemCounts).reduce((a, b) => a + b, 0),
+    [itemCounts]
+  );
+  const totalDone = useMemo(
+    () =>
+      listas.reduce(
+        (sum, l) => sum + estimateDone(l.IdLista, itemCounts[l.IdLista] || 0),
+        0
+      ),
+    [listas, itemCounts]
+  );
+  const budgetPct = totalItems
+    ? Math.round((totalDone / totalItems) * 100)
+    : 0;
+  // Design stub (~20.8% of sample budget) until real savings exist.
+  const savings = Math.round(budgetTotal * 0.208 * 100) / 100;
+  const money = formatMoney(budgetTotal);
+  const savingsMoney = formatMoney(savings);
 
-    // ---------- 2) Selección con LongPress para ruta ----------
-    const isSelecting = selectedLists.size > 0;
-    const toggleSelection = (id: number) => {
-        setSelectedLists((prev) => {
-            const copy = new Set(prev);
-            if (copy.has(id)) copy.delete(id);
-            else copy.add(id);
-            return copy;
+  const handleGenerateRoute = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Sin permiso',
+          'Necesitamos tu ubicación para generar la ruta.'
+        );
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+      });
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      const provIds = listas
+        .filter((l) => selectedLists.has(l.IdLista))
+        .map((l) => l.IdProveedor);
+
+      const resp = await api.post<RutaSucursal[]>(
+        endpoints.rutaMultiplesListas,
+        { lat, lng, ids_proveedores: provIds }
+      );
+      const rutas = resp.data;
+
+      if (!rutas.length) {
+        Alert.alert(
+          'Ruta',
+          'No se encontraron sucursales para esa selección.'
+        );
+        return;
+      }
+
+      const origin = `${lat},${lng}`;
+      const coords = rutas.map((r) => `${r.Latitud},${r.Longitud}`);
+
+      if (Platform.OS === 'ios') {
+        const daddr = coords.map((c) => `&daddr=${c}`).join('');
+        Linking.openURL(`http://maps.apple.com/?saddr=${origin}${daddr}`);
+      } else {
+        const destination = coords[coords.length - 1];
+        const waypoints = coords.slice(0, -1).join('|');
+        const url =
+          `https://www.google.com/maps/dir/?api=1&origin=${origin}` +
+          `&destination=${destination}` +
+          (waypoints ? `&waypoints=${waypoints}` : '') +
+          `&travelmode=driving`;
+        Linking.openURL(url);
+      }
+    } catch {
+      Alert.alert('Error', 'No se pudo generar la ruta. Intenta nuevamente.');
+    }
+  };
+
+  const shareList = async (lista: Lista) => {
+    try {
+      const respProd = await api.get<ProductoEnLista[]>(
+        endpoints.productosDeLista(lista.IdLista)
+      );
+      const prodsEnLista = respProd.data;
+
+      const detalles = await Promise.all(
+        prodsEnLista.map(async (pl) => {
+          const r = await api.get<ProductoAPI>(
+            endpoints.productoById(pl.IdProducto)
+          );
+          return {
+            ...pl,
+            Nombre: r.data.Nombre,
+            IdUnidadMedida: r.data.IdUnidadMedida,
+          };
+        })
+      );
+
+      const rUnidades = await api.get<UnidadMedida[]>(endpoints.unidadmedida);
+      const unidadesMap = Object.fromEntries(
+        rUnidades.data.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])
+      );
+
+      const rProv = await api.get<
+        ProveedorInfo & { IdTipoProveedor: number }
+      >(endpoints.proveedorById(lista.IdProveedor));
+      const prov = rProv.data;
+      const rTipos = await api.get<TipoProveedor[]>(endpoints.tipoproveedor);
+      const tipo = rTipos.data.find(
+        (t) => t.IdTipoProveedor === prov.IdTipoProveedor
+      );
+
+      let sucursalNombre = 'N/A';
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Highest,
         });
-    };
-
-    // ---------- 3) Generar ruta para múltiples listas ----------
-    const handleGenerateRoute = async () => {
-        try {
-            // Pedir permiso de ubicación
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Sin permiso', 'Necesitamos tu ubicación para generar la ruta.');
-                return;
-            }
-
-            // Obtener posición actual
-            const pos = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Highest,
-            });
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-
-            // Filtrar los IDs de proveedor de las listas seleccionadas
-            const provIds = listas
-                .filter((l) => selectedLists.has(l.IdLista))
-                .map((l) => l.IdProveedor);
-
-            // Llamada al endpoint ruta-multiples-listas
-            const resp = await axios.post<RutaSucursal[]>(
-                'https://tobarato-api.alirizvi.dev/api/ruta-multiples-listas',
-                { lat, lng, ids_proveedores: provIds }
-            );
-            const rutas = resp.data;
-
-            if (!rutas.length) {
-                Alert.alert('Ruta', 'No se encontraron sucursales para esa selección.');
-                return;
-            }
-
-            // Construir URL de navegación
-            const origin = `${lat},${lng}`;
-            const coords = rutas.map((r) => `${r.Latitud},${r.Longitud}`);
-
-            if (Platform.OS === 'ios') {
-                // Apple Maps con múltiples destinos
-                const daddr = coords.map((c) => `&daddr=${c}`).join('');
-                Linking.openURL(`http://maps.apple.com/?saddr=${origin}${daddr}`);
-            } else {
-                // Google Maps
-                const destination = coords[coords.length - 1];
-                const waypoints = coords.slice(0, -1).join('|');
-                const url =
-                    `https://www.google.com/maps/dir/?api=1&origin=${origin}` +
-                    `&destination=${destination}` +
-                    (waypoints ? `&waypoints=${waypoints}` : '') +
-                    `&travelmode=driving`;
-                Linking.openURL(url);
-            }
-        } catch (err) {
-            console.error('[ShoppingList] Error generando ruta:', err);
-            Alert.alert('Error', 'No se pudo generar la ruta. Intenta nuevamente.');
-        }
-    };
-
-    // ---------- 4) Compartir lista como texto ----------
-    const shareList = async (lista: Lista) => {
-        try {
-            // 4.1) Productos en la lista
-            const respProd = await axios.get<ProductoEnLista[]>(
-                `https://tobarato-api.alirizvi.dev/api/productosdelista/${lista.IdLista}`
-            );
-            const prodsEnLista = respProd.data;
-
-            // 4.2) Detalles de cada producto
-            const detalles = await Promise.all(
-                prodsEnLista.map(async (pl) => {
-                    const r = await axios.get<ProductoAPI>(
-                        `https://tobarato-api.alirizvi.dev/api/producto/${pl.IdProducto}`
-                    );
-                    return {
-                        ...pl,
-                        Nombre: r.data.Nombre,
-                        IdUnidadMedida: r.data.IdUnidadMedida,
-                    };
-                })
-            );
-
-            // 4.3) Obtener unidades
-            const rUnidades = await axios.get<UnidadMedida[]>(
-                'https://tobarato-api.alirizvi.dev/api/unidadmedida'
-            );
-            const unidadesMap = Object.fromEntries(
-                rUnidades.data.map((u) => [u.IdUnidadMedida, u.NombreUnidadMedida])
-            );
-
-            // 4.4) Proveedor y tipo
-            const rProv = await axios.get<ProveedorInfo & { IdTipoProveedor: number }>(
-                `https://tobarato-api.alirizvi.dev/api/proveedor/${lista.IdProveedor}`
-            );
-            const prov = rProv.data;
-            const rTipos = await axios.get<TipoProveedor[]>(
-                'https://tobarato-api.alirizvi.dev/api/tipoproveedor'
-            );
-            const tipo = rTipos.data.find((t) => t.IdTipoProveedor === prov.IdTipoProveedor);
-
-            // 4.5) Sucursal más cercana
-            let sucursalNombre = 'N/A';
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status === 'granted') {
-                const loc = await Location.getCurrentPositionAsync({
-                    accuracy: Location.Accuracy.Highest,
-                });
-                const body = {
-                    lat: loc.coords.latitude,
-                    lng: loc.coords.longitude,
-                    ids_productos: detalles.map((d) => d.IdProducto),
-                    lista_cantidad: detalles.map((d) => d.Cantidad),
-                };
-                const rSuc = await axios.post<RutaSucursal[]>(
-                    'https://tobarato-api.alirizvi.dev/api/sucursal-cercana',
-                    body
-                );
-                const found = rSuc.data.find((b) => b.IdProveedor === lista.IdProveedor);
-                if (found) sucursalNombre = found.NombreSucursal;
-            }
-
-            // 4.6) Armar mensaje
-            let message = `Tipo Proveedor: ${tipo?.NombreTipoProveedor ?? '–'}\n`;
-            message += `Nombre del Proveedor: ${prov.Nombre}\n`;
-            message += `Nombre Sucursal: ${sucursalNombre}\n\n`;
-            message += `Productos:\n`;
-            detalles.forEach((d) => {
-                const unidad = unidadesMap[d.IdUnidadMedida] ?? '';
-                message += `• ${d.Nombre} x${d.Cantidad} ${unidad} RD$${parseFloat(
-                    d.PrecioActual
-                ).toFixed(2)}\n`;
-            });
-            message += `\nPrecio total: RD$${parseFloat(lista.PrecioTotal).toFixed(2)}`;
-
-            // 4.7) Lanzar diálogo de compartir
-            await Share.share({ message });
-        } catch (e) {
-            console.error('[ShoppingList] Error compartiendo:', e);
-            Alert.alert('Error', 'No se pudo compartir la lista.');
-        }
-    };
-
-    // ---------- 5) Renderizado ----------
-    if (loading && !refreshing) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <ActivityIndicator size="large" color="#33618D" />
-            </SafeAreaView>
+        const body = {
+          lat: loc.coords.latitude,
+          lng: loc.coords.longitude,
+          ids_productos: detalles.map((d) => d.IdProducto),
+          lista_cantidad: detalles.map((d) => d.Cantidad),
+        };
+        const rSuc = await api.post<RutaSucursal[]>(
+          endpoints.sucursalCercana,
+          body
         );
-    }
-
-    const FloatingAddButton = (
-        <TouchableOpacity
-            onPress={() => router.push('../../tabs/list/type-selection')}
-            style={[styles.floatingButton, styles.floatingButtonShadow]}
-            activeOpacity={0.8}
-        >
-            <Ionicons name="add" size={28} color="#fff" />
-        </TouchableOpacity>
-    );
-
-    // Sin listas
-    if (!listas.length) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#001D35" />
-                <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Lista de Compras</Text>
-                </View>
-                <ScrollView
-                    style={{ flex: 1, backgroundColor: '#F8F9FF' }}
-                    contentContainerStyle={[styles.noListsContainer, { minHeight: height }]}
-                    refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                >
-                    <Text style={styles.noListsText}>Aún no ha creado una lista.</Text>
-                </ScrollView>
-                {FloatingAddButton}
-            </SafeAreaView>
+        const found = rSuc.data.find(
+          (b) => b.IdProveedor === lista.IdProveedor
         );
-    }
+        if (found) sucursalNombre = found.NombreSucursal;
+      }
 
-    // Con listas
+      let message = `Tipo Proveedor: ${tipo?.NombreTipoProveedor ?? '–'}\n`;
+      message += `Nombre del Proveedor: ${prov.Nombre}\n`;
+      message += `Nombre Sucursal: ${sucursalNombre}\n\n`;
+      message += `Productos:\n`;
+      detalles.forEach((d) => {
+        const unidad = unidadesMap[d.IdUnidadMedida] ?? '';
+        message += `• ${d.Nombre} x${d.Cantidad} ${unidad} RD$${parseFloat(
+          d.PrecioActual
+        ).toFixed(2)}\n`;
+      });
+      message += `\nPrecio total: RD$${parseFloat(lista.PrecioTotal).toFixed(2)}`;
+
+      await Share.share({ message });
+    } catch {
+      Alert.alert('Error', 'No se pudo compartir la lista.');
+    }
+  };
+
+  const confirmDelete = (lista: Lista) => {
+    Alert.alert('Eliminar lista', '¿Seguro deseas eliminar esta lista?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.delete(endpoints.listaById(lista.IdLista));
+            fetchUserLists();
+          } catch {
+            Alert.alert('Error', 'No se pudo eliminar.');
+          }
+        },
+      },
+    ]);
+  };
+
+  const openMenu = (lista: Lista) => {
+    Alert.alert(lista.Nombre, undefined, [
+      {
+        text: 'Compartir',
+        onPress: () => shareList(lista),
+      },
+      {
+        text: 'Seleccionar para ruta',
+        onPress: () => toggleSelection(lista.IdLista),
+      },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => confirmDelete(lista),
+      },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  };
+
+  const openList = (item: Lista) => {
+    if (isSelecting) {
+      toggleSelection(item.IdLista);
+      return;
+    }
+    router.push({
+      pathname: '/tabs/list/[id]',
+      params: {
+        id: String(item.IdLista),
+        idProveedor: String(item.IdProveedor),
+        nombre: item.Nombre,
+      },
+    });
+  };
+
+  const goCreate = () => setCreateOpen(true);
+
+  const onConfirmCreate = async ({ tipo, nombre }: CreateListPayload) => {
+    try {
+      const userIdStr = await SecureStore.getItemAsync('user_id');
+      const userId = userIdStr ? Number(userIdStr) : null;
+      if (!userId) {
+        Alert.alert('Error', 'Inicia sesión de nuevo.');
+        return;
+      }
+
+      const { data: proveedores } = await api.get<ProveedorInfo[]>(
+        endpoints.proveedor
+      );
+      const match = (proveedores ?? []).find(
+        (p) => p.IdTipoProveedor === tipo.IdTipoProveedor
+      );
+      const idProveedor = match?.IdProveedor ?? proveedores?.[0]?.IdProveedor;
+      if (!idProveedor) {
+        Alert.alert('Error', 'No hay proveedores para esa categoría.');
+        return;
+      }
+
+      const { data: lista } = await api.post<{ IdLista: number }>(
+        endpoints.lista,
+        {
+          IdUsuario: userId,
+          IdProveedor: idProveedor,
+          Nombre: nombre.trim(),
+          PrecioTotal: '0.00',
+        }
+      );
+      const listaId = lista?.IdLista;
+      if (!listaId) throw new Error('Sin IdLista');
+
+      setCreateOpen(false);
+      router.push({
+        pathname: '/tabs/list/add',
+        params: {
+          listaId: String(listaId),
+          tipo: String(tipo.IdTipoProveedor),
+          nombre: nombre.trim(),
+          idProveedor: String(idProveedor),
+        },
+      });
+    } catch {
+      Alert.alert('Error', 'No se pudo crear la lista.');
+    }
+  };
+
+  const goHome = () => router.navigate('/tabs/home');
+
+  if (loading && !refreshing) {
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#001D35" />
+      <Screen edges={['top']} style={{ paddingBottom: 0 }}>
+        <ActivityIndicator
+          size="large"
+          color={colors.navy}
+          style={{ marginTop: 48 }}
+        />
+      </Screen>
+    );
+  }
 
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>Lista de Compras</Text>
+  return (
+    <Screen edges={['top']} style={{ paddingBottom: 0 }} gutters={false}>
+      <FlatList
+        data={listas}
+        keyExtractor={(l) => l.IdLista.toString()}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        contentContainerStyle={{
+          paddingBottom: FLOATING_TAB_BAR_CLEARANCE + (isSelecting ? 56 : 0),
+          flexGrow: 1,
+        }}
+        ListHeaderComponent={
+          <Stagger step={55} delay={20}>
+            <View style={styles.topBar}>
+              <Pressable
+                onPress={goHome}
+                style={styles.headerBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Volver a Inicio"
+                hitSlop={8}
+              >
+                <Ionicons name="chevron-back" size={22} color={colors.navy} />
+              </Pressable>
+              <Text style={styles.title} numberOfLines={1}>
+                Lista de Compras
+              </Text>
+              <Pressable
+                onPress={() => setNotifOpen((v) => !v)}
+                style={styles.headerBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Notificaciones"
+                hitSlop={8}
+              >
+                <Ionicons
+                  name="notifications-outline"
+                  size={20}
+                  color={colors.navy}
+                />
+              </Pressable>
             </View>
 
-            {/* FlatList */}
-            <FlatList
-                data={listas}
-                keyExtractor={(l) => l.IdLista.toString()}
-                renderItem={({ item, index }) => {
-                    const count = itemCounts[item.IdLista] || 0;
-                    const provInfo = proveedoresMap[item.IdProveedor];
-                    const selected = selectedLists.has(item.IdLista);
+            {notifOpen ? (
+              <View style={styles.notifSheet}>
+                <Text style={styles.notifTitle}>Notificaciones</Text>
+                <Text style={styles.notifBody}>
+                  Sheet local (sin API de notificaciones). Los avisos reales
+                  llegarán cuando el backend esté listo.
+                </Text>
+              </View>
+            ) : null}
 
-                    return (
-                        <MotiView
-                            from={{ opacity: 0, translateY: 20 }}
-                            animate={{ opacity: 1, translateY: 0 }}
-                            transition={{ delay: index * 100, type: 'timing', duration: 400 }}
-                            style={styles.listItemContainer}
-                        >
-                            <TouchableOpacity
-                                activeOpacity={0.8}
-                                style={[styles.listItemButton, selected && styles.listItemActive]}
-                                onPress={() => {
-                                    if (isSelecting) toggleSelection(item.IdLista);
-                                    else
-                                        router.push({
-                                            pathname: `../tabs/list/${item.IdLista}`,
-                                            params: { idProveedor: String(item.IdProveedor) },
-                                        });
-                                }}
-                                onLongPress={() => toggleSelection(item.IdLista)}
-                            >
-                                {provInfo ? (
-                                    <Image
-                                        source={{ uri: provInfo.UrlLogo }}
-                                        style={styles.proveedorLogo}
-                                        resizeMode="contain"
-                                    />
-                                ) : (
-                                    <Ionicons
-                                        name="storefront-outline"
-                                        size={28}
-                                        color="#33618D"
-                                        style={{ marginHorizontal: 12 }}
-                                    />
-                                )}
-
-                                <View style={styles.listItemTextContainer}>
-                                    <Text style={styles.listItemTitle}>{item.Nombre}</Text>
-                                    <Text style={styles.listItemSubtitle}>
-                                        {count} artículo{count === 1 ? '' : 's'}
-                                    </Text>
-                                    <Text style={styles.listItemPrice}>
-                                        RD${parseFloat(item.PrecioTotal).toFixed(2)}
-                                    </Text>
-                                </View>
-
-                                {/* Compartir */}
-                                <TouchableOpacity
-                                    onPress={() => shareList(item)}
-                                    style={styles.iconButton}
-                                >
-                                    <MaterialCommunityIcons
-                                        name="share-variant"
-                                        size={24}
-                                        color="#33618D"
-                                    />
-                                </TouchableOpacity>
-
-                                {/* Eliminar */}
-                                <TouchableOpacity
-                                    onPress={() =>
-                                        Alert.alert(
-                                            'Eliminar lista',
-                                            '¿Seguro deseas eliminar esta lista?',
-                                            [
-                                                { text: 'Cancelar', style: 'cancel' },
-                                                {
-                                                    text: 'Eliminar',
-                                                    style: 'destructive',
-                                                    onPress: async () => {
-                                                        try {
-                                                            await axios.delete(
-                                                                `https://tobarato-api.alirizvi.dev/api/lista/${item.IdLista}`
-                                                            );
-                                                            fetchUserLists();
-                                                        } catch {
-                                                            Alert.alert('Error', 'No se pudo eliminar.');
-                                                        }
-                                                    },
-                                                },
-                                            ]
-                                        )
-                                    }
-                                    style={styles.iconButton}
-                                >
-                                    <MaterialCommunityIcons name="delete" size={24} color="red" />
-                                </TouchableOpacity>
-                            </TouchableOpacity>
-                        </MotiView>
-                    );
-                }}
-                contentContainerStyle={{ paddingTop: 16, paddingBottom: height * 0.2 }}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            />
-
-            {/* Generar Ruta */}
-            {isSelecting && (
-                <TouchableOpacity
-                    style={[styles.routeBtn, selectedLists.size === 0 && styles.btnDisabled]}
-                    disabled={selectedLists.size === 0}
-                    onPress={handleGenerateRoute}
-                >
-                    <Text style={styles.routeBtnText}>
-                        Generar Ruta ({selectedLists.size})
+            <View style={styles.budgetPad}>
+              <View style={styles.budgetCard}>
+                <View style={styles.budgetRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.budgetLabel}>Presupuesto estimado</Text>
+                    <Text style={styles.budgetValue}>
+                      RD${' '}
+                      <Text style={styles.budgetMono}>{money.whole}</Text>
+                      <Text style={styles.budgetCents}>.{money.cents}</Text>
                     </Text>
-                </TouchableOpacity>
-            )}
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.budgetSideLabel}>Ahorras</Text>
+                    <Text style={styles.budgetSideValue}>
+                      RD$ {savingsMoney.whole}.{savingsMoney.cents}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.progressRow}>
+                  <View style={styles.progressTrack}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${Math.min(100, budgetPct)}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.progressMeta}>
+                    {totalDone}/{totalItems}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
-            {/* + Siempre visible */}
-            {FloatingAddButton}
-        </SafeAreaView>
-    );
+            {isSelecting ? (
+              <Text style={styles.selectHint}>
+                Mantén pulsado para seleccionar · {selectedLists.size} elegida
+                {selectedLists.size === 1 ? '' : 's'}
+              </Text>
+            ) : null}
+          </Stagger>
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Ionicons name="cart-outline" size={36} color={colors.muted} />
+            </View>
+            <Text style={styles.emptyTitle}>Aún no tienes listas</Text>
+            <Text style={styles.emptyBody}>
+              Crea tu primera lista de compras y compara precios entre
+              proveedores.
+            </Text>
+            <Pressable
+              onPress={goCreate}
+              style={styles.dashedCreate}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={18} color={colors.muted} />
+              <Text style={styles.dashedCreateText}>Crear nueva lista</Text>
+            </Pressable>
+          </View>
+        }
+        renderItem={({ item, index }) => {
+          const count = itemCounts[item.IdLista] || 0;
+          const done = estimateDone(item.IdLista, count);
+          const pct = count ? Math.round((done / count) * 100) : 0;
+          const visual = listVisual(item, index);
+          const selected = selectedLists.has(item.IdLista);
+
+          return (
+            <FadeInUp index={index + 2} step={55} delay={40} style={styles.cardWrap}>
+              <Pressable
+                onPress={() => openList(item)}
+                onLongPress={() => toggleSelection(item.IdLista)}
+                delayLongPress={350}
+                style={({ pressed }) => [
+                  styles.card,
+                  selected && styles.cardSelected,
+                  pressed && { opacity: 0.94 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel={item.Nombre}
+              >
+                <View style={[styles.catIcon, { backgroundColor: visual.bg }]}>
+                  <Text style={styles.catEmoji}>{visual.emoji}</Text>
+                </View>
+
+                <View style={styles.cardBody}>
+                  <View style={styles.cardTop}>
+                    <Text style={styles.cardTitle} numberOfLines={1}>
+                      {item.Nombre}
+                    </Text>
+                    <Pressable
+                      onPress={() => openMenu(item)}
+                      hitSlop={12}
+                      accessibilityLabel="Más opciones"
+                      style={styles.moreBtn}
+                    >
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={18}
+                        color={colors.tabInactive}
+                      />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaText}>
+                      {count} artículo{count === 1 ? '' : 's'}
+                    </Text>
+                    {done > 0 ? (
+                      <Chip tone="green" size="sm" style={styles.doneChip}>
+                        {done} comprados
+                      </Chip>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.cardProgressTrack}>
+                    <View
+                      style={[
+                        styles.cardProgressFill,
+                        { width: `${Math.min(100, pct)}%` },
+                      ]}
+                    />
+                  </View>
+                </View>
+              </Pressable>
+            </FadeInUp>
+          );
+        }}
+        ListFooterComponent={
+          listas.length > 0 ? (
+            <Pressable
+              onPress={goCreate}
+              style={[styles.dashedCreate, { marginHorizontal: spacing.lg }]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={18} color={colors.muted} />
+              <Text style={styles.dashedCreateText}>Crear nueva lista</Text>
+            </Pressable>
+          ) : null
+        }
+      />
+
+      {isSelecting ? (
+        <View style={styles.routeBar}>
+          <Pressable
+            style={styles.routeBtn}
+            onPress={handleGenerateRoute}
+            accessibilityRole="button"
+          >
+            <Ionicons name="navigate" size={18} color={colors.white} />
+            <Text style={styles.routeBtnText}>
+              Generar ruta ({selectedLists.size})
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setSelectedLists(new Set())}
+            style={styles.routeCancel}
+            accessibilityRole="button"
+          >
+            <Text style={styles.routeCancelText}>Cancelar</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      <CreateListModal
+        visible={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onConfirm={onConfirmCreate}
+      />
+    </Screen>
+  );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FF' },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        backgroundColor: '#001D35',
-        paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 38,
-        paddingBottom: 12,
-    },
-    headerTitle: { color: '#FFF', fontSize: 20, fontWeight: '500' },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xs,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.navy,
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  title: {
+    flex: 1,
+    textAlign: 'center',
+    fontFamily: typography.extrabold,
+    fontSize: 20,
+    color: colors.navy,
+    letterSpacing: -0.2,
+  },
 
-    noListsContainer: { justifyContent: 'center', alignItems: 'center' },
-    noListsText: { fontSize: 16, color: '#555' },
+  notifSheet: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.card,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: 14,
+  },
+  notifTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 15,
+    color: colors.navy,
+    marginBottom: 4,
+  },
+  notifBody: {
+    fontFamily: typography.medium,
+    fontSize: 12,
+    color: colors.muted,
+    lineHeight: 18,
+  },
 
-    listItemContainer: { marginHorizontal: 16, marginBottom: 16 },
-    listItemButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF',
-        borderRadius: 24,
-        padding: 12,
-        elevation: 2,
-    },
-    listItemActive: { borderColor: '#F3732A', borderWidth: 2 },
-    proveedorLogo: { width: 40, height: 40, borderRadius: 8, marginHorizontal: 12 },
-    listItemTextContainer: { flex: 1 },
-    listItemTitle: { fontSize: 16, fontWeight: '600', color: '#101418' },
-    listItemSubtitle: { fontSize: 12, color: '#6B7280', marginTop: 4 },
-    listItemPrice: { fontSize: 14, color: '#333', marginTop: 2, fontWeight: '500' },
+  budgetPad: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  budgetCard: {
+    backgroundColor: '#FFF4E0',
+    borderWidth: 1,
+    borderColor: '#FFD49A',
+    borderRadius: 18,
+    padding: 14,
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  budgetLabel: {
+    fontSize: 11,
+    fontFamily: typography.extrabold,
+    color: '#A35A0E',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  budgetValue: {
+    fontSize: 26,
+    fontFamily: typography.extrabold,
+    color: colors.navy,
+    marginTop: 2,
+    letterSpacing: -0.4,
+  },
+  budgetMono: { fontFamily: typography.extrabold },
+  budgetCents: {
+    fontSize: 18,
+    fontFamily: typography.medium,
+    opacity: 0.8,
+  },
+  budgetSideLabel: {
+    fontSize: 11,
+    fontFamily: typography.bold,
+    color: '#7A4B0E',
+  },
+  budgetSideValue: {
+    fontSize: 17,
+    fontFamily: typography.extrabold,
+    color: colors.green,
+    letterSpacing: -0.2,
+  },
+  progressRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 8,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: radii.pill,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.orange,
+    borderRadius: radii.pill,
+  },
+  progressMeta: {
+    fontSize: 11,
+    fontFamily: typography.extrabold,
+    color: '#7A4B0E',
+    minWidth: 30,
+    textAlign: 'right',
+  },
 
-    iconButton: { paddingHorizontal: 8 },
+  selectHint: {
+    fontFamily: typography.medium,
+    fontSize: 12,
+    color: colors.muted,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
 
-    routeBtn: {
-        position: 'absolute',
-        bottom: 88,
-        left: 16,
-        right: 16,
-        backgroundColor: '#F3732A',
-        paddingVertical: 14,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    routeBtnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-    btnDisabled: { opacity: 0.6 },
+  cardWrap: {
+    marginBottom: 10,
+    paddingHorizontal: spacing.lg,
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#EEF0F5',
+    shadowColor: colors.navy,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  cardSelected: {
+    borderColor: colors.orange,
+    borderWidth: 2,
+    backgroundColor: colors.orangeSoft,
+  },
+  catIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catEmoji: { fontSize: 26, lineHeight: 30 },
+  cardBody: { flex: 1, minWidth: 0 },
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  cardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: typography.extrabold,
+    color: colors.navy,
+    letterSpacing: -0.15,
+  },
+  moreBtn: { padding: 4 },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+    flexWrap: 'wrap',
+  },
+  metaText: {
+    fontSize: 12,
+    fontFamily: typography.semibold,
+    color: colors.muted,
+  },
+  doneChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  cardProgressTrack: {
+    marginTop: 8,
+    height: 5,
+    backgroundColor: '#EEF1F6',
+    borderRadius: radii.pill,
+    overflow: 'hidden',
+  },
+  cardProgressFill: {
+    height: '100%',
+    backgroundColor: colors.orange,
+    borderRadius: radii.pill,
+  },
 
-    floatingButton: {
-        position: 'absolute',
-        bottom: 24,
-        right: 24,
-        backgroundColor: '#F3732A',
-        borderRadius: 28,
-        padding: 16,
-    },
-    floatingButtonShadow: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4.65,
-        elevation: 8,
-    },
+  dashedCreate: {
+    marginTop: spacing.sm,
+    marginHorizontal: spacing.lg,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#C8CDD9',
+    borderRadius: 18,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'transparent',
+  },
+  dashedCreateText: {
+    fontFamily: typography.bold,
+    fontSize: 13,
+    color: colors.muted,
+  },
+
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: colors.blueSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  emptyTitle: {
+    fontFamily: typography.extrabold,
+    fontSize: 18,
+    color: colors.navy,
+    marginBottom: 6,
+  },
+  emptyBody: {
+    fontFamily: typography.medium,
+    fontSize: 13,
+    color: colors.muted,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.lg,
+  },
+
+  routeBar: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: FLOATING_TAB_BAR_CLEARANCE,
+    gap: 8,
+  },
+  routeBtn: {
+    backgroundColor: colors.orange,
+    borderRadius: radii.lg,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  routeBtnText: {
+    color: colors.white,
+    fontFamily: typography.bold,
+    fontSize: 15,
+  },
+  routeCancel: { alignItems: 'center', paddingVertical: 4 },
+  routeCancelText: {
+    fontFamily: typography.semibold,
+    fontSize: 13,
+    color: colors.muted,
+  },
 });

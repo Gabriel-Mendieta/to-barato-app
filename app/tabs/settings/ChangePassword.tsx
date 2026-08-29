@@ -1,8 +1,13 @@
 // Archivo: app/settings/ChangePassword.tsx
 
+import {
+    api,
+    endpoints,
+    clearSession,
+    getApiErrorMessage,
+} from '@/src/shared/api';
 import React, { useState, useEffect } from "react";
 import {
-    SafeAreaView,
     View,
     Text,
     TextInput,
@@ -14,9 +19,9 @@ import {
     Alert,
     KeyboardAvoidingView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import Ionicons from "react-native-vector-icons/Ionicons";
-import axios from "axios";
+import { Ionicons } from "@expo/vector-icons";
 import * as SecureStore from "expo-secure-store";
 
 export default function ChangePasswordScreen() {
@@ -39,19 +44,14 @@ export default function ChangePasswordScreen() {
                 const idStr = await SecureStore.getItemAsync("user_id");
                 if (!token || !idStr) {
                     // Si falta, redirigir a login
-                    await SecureStore.deleteItemAsync("access_token");
-                    await SecureStore.deleteItemAsync("refresh_token");
-                    await SecureStore.deleteItemAsync("user_id");
-                    delete axios.defaults.headers.common["Authorization"];
+                    await clearSession();
                     router.replace("/auth/IniciarSesion");
                     return;
                 }
                 // Fijar header de autorización
-                axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
                 // Convertir Id a número
                 setUserId(Number(idStr));
-            } catch (err) {
-                console.warn("[ChangePassword] Error leyendo SecureStore:", err);
+            } catch {
             } finally {
                 setLoading(false);
             }
@@ -86,27 +86,19 @@ export default function ChangePasswordScreen() {
                 ClaveNueva: newPassword,
             };
             // Enviar PUT a /change-password
-            const res = await axios.put<{ message: string }>(
-                "https://tobarato-api.alirizvi.dev/api/change-password",
+            await api.put<{ message?: string }>(
+                endpoints.changePassword,
                 payload
             );
             // Si todo sale bien, mostrar mensaje y regresar
             Alert.alert("¡Éxito!", "Contraseña cambiada correctamente.", [
                 { text: "OK", onPress: () => router.back() },
             ]);
-        } catch (err: any) {
-            console.error("[ChangePassword] Error al cambiar contraseña:", err);
-            if (err.response && err.response.data) {
-                const data = err.response.data;
-                // Si el backend devuelve algún mensaje en data, lo mostramos
-                if (typeof data.message === "string") {
-                    Alert.alert("Error", data.message);
-                } else {
-                    Alert.alert("Error", "No se pudo cambiar la contraseña. Intenta nuevamente.");
-                }
-            } else {
-                Alert.alert("Error", "No se pudo cambiar la contraseña. Intenta nuevamente.");
-            }
+        } catch (err) {
+            Alert.alert(
+                "Error",
+                getApiErrorMessage(err, "No se pudo cambiar la contraseña. Intenta nuevamente.")
+            );
         } finally {
             setSubmitting(false);
         }
