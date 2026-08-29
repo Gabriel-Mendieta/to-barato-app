@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Swipeable } from 'react-native-gesture-handler';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import { useQuery } from '@tanstack/react-query';
@@ -31,6 +30,10 @@ import {
   useUpdateListProvider,
   useLists,
 } from '@/src/features/lists/hooks';
+import {
+  ListItemSwipeRow,
+  type ListItemSwipeRowHandle,
+} from '@/src/features/lists/ListItemSwipeRow';
 import { useListProductQueries } from '@/src/features/products/hooks';
 import {
   useProviders,
@@ -182,7 +185,7 @@ export default function ListDetailScreen() {
   const [pendingOperations, setPendingOperations] = useState<Set<number>>(new Set());
   const [sending, setSending] = useState(false);
   const pendingOperationsRef = useRef(new Set<number>());
-  const swipeRefs = useRef<Record<number, Swipeable | null>>({});
+  const swipeRefs = useRef<Record<number, ListItemSwipeRowHandle | null>>({});
 
   const sessionUserQuery = useQuery({
     queryKey: ['session', 'user-id'],
@@ -507,7 +510,7 @@ export default function ListDetailScreen() {
   };
 
   const renderRightActions = (item: ListItemRow) => (
-    <View style={styles.swipeUnderlay}>
+    <View style={styles.swipeActionContent}>
       <Text style={styles.swipeLabel}>{t('lists.delete')}</Text>
       <Pressable
         onPress={() => removeProduct(item)}
@@ -676,15 +679,13 @@ export default function ListDetailScreen() {
               exiting={FadeOut.duration(160)}
               layout={LinearTransition.duration(180)}
             >
-              <Swipeable
+              <ListItemSwipeRow
                 ref={(ref) => {
                   swipeRefs.current[item.IdProducto] = ref;
                 }}
-                renderRightActions={() => renderRightActions(item)}
-                overshootRight={false}
-                friction={2}
+                renderRightActions={renderRightActions(item)}
               >
-                <View style={styles.card}>
+                <View style={styles.cardContent}>
                   <Pressable
                     onPress={() => toggleCheck(item.IdProducto)}
                     style={[styles.checkbox, checkedIds.has(item.IdProducto) && styles.checkboxOn]}
@@ -754,7 +755,7 @@ export default function ListDetailScreen() {
                     ) : null}
                   </View>
                 </View>
-              </Swipeable>
+              </ListItemSwipeRow>
             </Animated.View>
           );
         }}
@@ -873,16 +874,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginTop: 8,
   },
-  card: {
+  cardContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.card,
-    borderRadius: 16,
     padding: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.line,
   },
   checkbox: {
     width: 26,
@@ -988,11 +985,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#0E7A4B',
   },
-  swipeUnderlay: {
+  swipeActionContent: {
     flex: 1,
-    backgroundColor: '#E5564E',
-    borderRadius: 16,
-    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',

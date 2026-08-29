@@ -10,6 +10,7 @@ import {
   Linking,
   Share,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -51,7 +52,7 @@ import {
   showToast,
   triggerHaptic,
 } from '@/src/shared/ui';
-import { radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
+import { layout, radii, spacing, typography, useThemeColors } from '@/src/shared/theme';
 import { useTranslation } from 'react-i18next';
 
 function formatMoney(value: number) {
@@ -73,6 +74,8 @@ export default function ShoppingListScreen() {
   const { t } = useTranslation();
   const themeColors = useThemeColors();
   const styles = useMemo(() => createStyles(themeColors), [themeColors]);
+  const { width } = useWindowDimensions();
+  const contentHorizontalPadding = width >= layout.tabletBreakpoint ? spacing.xxl : spacing.lg;
   const [refreshing, setRefreshing] = useState(false);
   const [selectedLists, setSelectedLists] = useState<Set<number>>(new Set());
   const [createOpen, setCreateOpen] = useState(false);
@@ -349,8 +352,11 @@ export default function ShoppingListScreen() {
 
   if (loading && !refreshing) {
     return (
-      <Screen edges={['top']} style={{ paddingBottom: 0 }}>
-        <View style={styles.loadingSkeletons} testID="lists-loading-state">
+      <Screen edges={['top']} style={{ paddingBottom: 0 }} gutters={false}>
+        <View
+          style={[styles.loadingSkeletons, { paddingHorizontal: contentHorizontalPadding }]}
+          testID="lists-loading-state"
+        >
           {[0, 1, 2, 3].map((item) => (
             <View key={item} style={styles.loadingRow}>
               <Skeleton width={48} height={48} borderRadius={15} />
@@ -384,6 +390,7 @@ export default function ShoppingListScreen() {
   return (
     <Screen edges={['top']} style={{ paddingBottom: 0 }} gutters={false}>
       <FlatList
+        testID="shopping-lists"
         data={listas}
         keyExtractor={(l) => l.IdLista.toString()}
         showsVerticalScrollIndicator={false}
@@ -392,9 +399,10 @@ export default function ShoppingListScreen() {
           paddingBottom: FLOATING_TAB_BAR_CLEARANCE + (isSelecting ? 56 : 0),
           flexGrow: 1,
           width: '100%',
+          paddingHorizontal: contentHorizontalPadding,
         }}
         ListHeaderComponent={
-          <Stagger step={55} delay={20}>
+          <Stagger step={55} delay={20} style={styles.headerContent}>
             <View style={styles.topBar}>
               <Pressable
                 onPress={goHome}
@@ -597,7 +605,6 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
     topBar: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: spacing.lg,
       paddingTop: spacing.xs,
       paddingBottom: 10,
       gap: 8,
@@ -654,9 +661,8 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
     },
 
     budgetPad: {
-      paddingHorizontal: spacing.lg,
       paddingTop: 4,
-      paddingBottom: 8,
+      paddingBottom: 12,
     },
     budgetCard: {
       backgroundColor: themeColors.orangeSoft,
@@ -732,14 +738,16 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
       fontSize: 12,
       color: themeColors.muted,
       marginBottom: spacing.sm,
-      paddingHorizontal: spacing.lg,
+    },
+    headerContent: {
+      width: '100%',
     },
 
     cardWrap: {
       width: '100%',
       alignSelf: 'stretch',
+      marginTop: spacing.sm,
       marginBottom: 14,
-      paddingHorizontal: spacing.lg,
       ...Platform.select({
         web: { boxSizing: 'border-box' },
         default: {},
@@ -747,7 +755,6 @@ function createStyles(themeColors: ReturnType<typeof useThemeColors>) {
     },
     listFooter: {
       width: '100%',
-      paddingHorizontal: spacing.lg,
       paddingTop: spacing.sm,
       ...Platform.select({
         web: { boxSizing: 'border-box' },

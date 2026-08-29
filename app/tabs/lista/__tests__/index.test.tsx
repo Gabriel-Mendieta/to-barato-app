@@ -2,6 +2,7 @@ import React from 'react';
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { ShoppingListCard } from '@/src/features/lists/ShoppingListCard';
 import { CreateListButton } from '@/src/shared/ui/CreateListButton';
 import { colors } from '@/src/shared/theme';
@@ -84,9 +85,15 @@ jest.mock('@/src/shared/ui/Skeleton', () => ({
   Skeleton: () => null,
 }));
 
-jest.mock('@/src/shared/ui/CreateListModal', () => ({
-  CreateListModal: () => null,
-}));
+jest.mock('@/src/shared/ui/CreateListModal', () => {
+  const { View: mockView } = jest.requireActual<typeof import('react-native')>('react-native');
+  const mockReact = jest.requireActual<typeof React>('react');
+
+  return {
+    CreateListModal: ({ visible }: { visible: boolean }) =>
+      visible ? mockReact.createElement(mockView, { testID: 'create-list-modal' }) : null,
+  };
+});
 
 jest.mock('@/src/shared/ui/BottomSheetCompat', () => ({
   BottomSheetBackdrop: () => null,
@@ -176,6 +183,7 @@ describe('CreateListButton', () => {
 
 describe('ShoppingListScreen states', () => {
   afterEach(() => {
+    jest.clearAllMocks();
     mockScreenState.pending = false;
     mockScreenState.error = false;
     mockScreenState.lists = [];
@@ -195,5 +203,68 @@ describe('ShoppingListScreen states', () => {
 
   it('mantiene un contenedor estable cuando no hay listas', () => {
     expect(renderScreen().getByTestId('lists-empty-state')).toBeTruthy();
+  });
+
+  it('abre el modal real de creación desde el botón de la lista', () => {
+    mockScreenState.lists = [
+      {
+        IdLista: 1,
+        IdUsuario: 1,
+        IdProveedor: 1,
+        Nombre: 'Compras semana',
+        PrecioTotal: '100.00',
+        FechaCreacion: '2026-08-29',
+      },
+    ];
+
+    const screen = renderScreen();
+    fireEvent.press(screen.getByTestId('create-list-button'));
+
+    expect(screen.getByTestId('create-list-modal')).toBeTruthy();
+  });
+
+  it('mantiene gutter y espacio vertical en la columna de listas', () => {
+    mockScreenState.lists = [
+      {
+        IdLista: 1,
+        IdUsuario: 1,
+        IdProveedor: 1,
+        Nombre: 'Compras semana',
+        PrecioTotal: '100.00',
+        FechaCreacion: '2026-08-29',
+      },
+    ];
+
+    const list = renderScreen().getByTestId('shopping-lists');
+    expect(list.props.contentContainerStyle).toEqual(
+      expect.objectContaining({
+        flexGrow: 1,
+        paddingHorizontal: 16,
+      }),
+    );
+  });
+
+  it('conserva la navegación desde una card hacia el detalle', () => {
+    mockScreenState.lists = [
+      {
+        IdLista: 7,
+        IdUsuario: 1,
+        IdProveedor: 2,
+        Nombre: 'Desayuno',
+        PrecioTotal: '100.00',
+        FechaCreacion: '2026-08-29',
+      },
+    ];
+
+    fireEvent.press(renderScreen().getByText('Desayuno'));
+
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/tabs/list/[id]',
+      params: {
+        id: '7',
+        idProveedor: '2',
+        nombre: 'Desayuno',
+      },
+    });
   });
 });
