@@ -6,7 +6,7 @@ import { router } from 'expo-router';
 import { ShoppingListCard } from '@/src/features/lists/ShoppingListCard';
 import { CreateListButton } from '@/src/shared/ui/CreateListButton';
 import { colors } from '@/src/shared/theme';
-import ShoppingListScreen from '@/app/tabs/lista';
+import ShoppingListScreen from '@/app/tabs/(main)/lista';
 
 const mockScreenState = {
   pending: false,
@@ -221,6 +221,26 @@ describe('ShoppingListScreen states', () => {
     fireEvent.press(screen.getByTestId('create-list-button'));
 
     expect(screen.getByTestId('create-list-modal')).toBeTruthy();
+  });
+
+  it('monta la card real y el botón real en la ruta de Listas', () => {
+    mockScreenState.lists = [
+      {
+        IdLista: 1,
+        IdUsuario: 1,
+        IdProveedor: 1,
+        Nombre: 'Compras semana',
+        PrecioTotal: '100.00',
+        FechaCreacion: '2026-08-29',
+      },
+    ];
+
+    const screen = renderScreen();
+
+    expect(screen.getByTestId('shopping-list-card-1')).toBeTruthy();
+    expect(screen.getByTestId('shopping-list-card-content-1')).toBeTruthy();
+    expect(screen.getByTestId('create-list-button')).toBeTruthy();
+    expect(screen.getByTestId('create-list-button-content')).toBeTruthy();
   });
 
   it('mantiene gutter y espacio vertical en la columna de listas', () => {
